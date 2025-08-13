@@ -1,0 +1,1445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IndicBERT v2 Enhanced AI Chat Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 350px;
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            text-align: center;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #34495e;
+            margin-bottom: 20px;
+        }
+
+        .sidebar-header h2 {
+            color: #3498db;
+            margin-bottom: 10px;
+        }
+
+        .sidebar-section {
+            margin-bottom: 25px;
+        }
+
+        .sidebar-section h3 {
+            color: #ecf0f1;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+
+        .model-selector {
+            margin-bottom: 20px;
+        }
+
+        .model-option {
+            background: #34495e;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .model-option:hover {
+            background: #3498db;
+        }
+
+        .model-option.selected {
+            border-color: #3498db;
+            background: #2980b9;
+        }
+
+        .language-selector {
+            margin-bottom: 20px;
+        }
+
+        .language-option {
+            background: #34495e;
+            padding: 8px 12px;
+            margin: 3px 0;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .language-option:hover {
+            background: #e74c3c;
+        }
+
+        .language-option.selected {
+            background: #e74c3c;
+        }
+
+        /* File Management Section */
+        .file-management-section {
+            background: #34495e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .file-upload {
+            background: #2c3e50;
+            border: 2px dashed #7f8c8d;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 15px;
+        }
+
+        .file-upload:hover {
+            border-color: #3498db;
+            background: #34495e;
+        }
+
+        .file-upload.dragover {
+            border-color: #3498db;
+            background: #2980b9;
+        }
+
+        .upload-icon {
+            font-size: 2em;
+            color: #7f8c8d;
+            margin-bottom: 10px;
+        }
+
+        .upload-text {
+            color: #bdc3c7;
+            font-size: 14px;
+        }
+
+        .file-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
+
+        .file-item {
+            background: #2c3e50;
+            padding: 8px 12px;
+            margin: 5px 0;
+            border-radius: 5px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-item .file-name {
+            flex: 1;
+            margin-right: 10px;
+        }
+
+        .file-item .file-status {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+        }
+
+        .file-item .status-uploaded { background: #27ae60; }
+        .file-item .status-processed { background: #3498db; }
+        .file-item .status-failed { background: #e74c3c; }
+
+        /* Fine-tuning Section */
+        .fine-tuning-section {
+            background: #34495e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .fine-tune-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 14px;
+            transition: background 0.3s ease;
+            margin-bottom: 15px;
+        }
+
+        .fine-tune-btn:hover {
+            background: #c0392b;
+        }
+
+        .fine-tune-btn:disabled {
+            background: #7f8c8d;
+            cursor: not-allowed;
+        }
+
+        .training-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .control-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.3s ease;
+        }
+
+        .control-btn:hover {
+            background: #2980b9;
+        }
+
+        .control-btn.danger {
+            background: #e74c3c;
+        }
+
+        .control-btn.danger:hover {
+            background: #c0392b;
+        }
+
+        /* OpenAI Integration Section */
+        .openai-section {
+            background: #34495e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .openai-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #e74c3c;
+        }
+
+        .status-indicator.connected {
+            background: #27ae60;
+        }
+
+        .cost-info {
+            background: #2c3e50;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        .cost-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            font-size: 12px;
+        }
+
+        .cost-label {
+            color: #bdc3c7;
+        }
+
+        .cost-value {
+            color: #ecf0f1;
+            font-weight: bold;
+        }
+
+        /* Main Chat Area */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+
+        .chat-header {
+            background: #3498db;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .chat-header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .chat-header p {
+            opacity: 0.9;
+            font-size: 16px;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message.assistant {
+            justify-content: flex-start;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 15px 20px;
+            border-radius: 18px;
+            position: relative;
+            word-wrap: break-word;
+        }
+
+        .message.user .message-content {
+            background: #3498db;
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+
+        .message.assistant .message-content {
+            background: white;
+            color: #333;
+            border: 1px solid #e1e5e9;
+            border-bottom-left-radius: 5px;
+        }
+
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin: 0 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .message.user .message-avatar {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .message.assistant .message-avatar {
+            background: #2ecc71;
+            color: white;
+        }
+
+        .message-time {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .message.user .message-time {
+            text-align: right;
+        }
+
+        .message.assistant .message-time {
+            text-align: left;
+        }
+
+        .response-source {
+            font-size: 11px;
+            opacity: 0.8;
+            margin-top: 5px;
+            padding: 2px 6px;
+            background: #ecf0f1;
+            border-radius: 3px;
+            display: inline-block;
+        }
+
+        /* Chat Input Area */
+        .chat-input-container {
+            background: white;
+            padding: 20px;
+            border-top: 1px solid #e1e5e9;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        }
+
+        .input-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 15px 20px;
+            border: 2px solid #e1e5e9;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s ease;
+            resize: none;
+            min-height: 50px;
+            max-height: 120px;
+            font-family: inherit;
+        }
+
+        .chat-input:focus {
+            border-color: #3498db;
+        }
+
+        .send-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            min-width: 100px;
+        }
+
+        .send-btn:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+
+        .send-btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .voice-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.3s ease;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .voice-btn:hover {
+            background: #c0392b;
+            transform: scale(1.1);
+        }
+
+        .voice-btn.recording {
+            background: #e74c3c;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .input-options {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .option-btn {
+            background: #ecf0f1;
+            color: #2c3e50;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .option-btn:hover {
+            background: #bdc3c7;
+        }
+
+        .option-btn.active {
+            background: #3498db;
+            color: white;
+        }
+
+        /* Loading and Status */
+        .loading-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #7f8c8d;
+            font-style: italic;
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 5px;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: #7f8c8d;
+            border-radius: 50%;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes typing {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        /* File Upload Progress */
+        .upload-progress {
+            background: #ecf0f1;
+            border-radius: 10px;
+            height: 8px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: #3498db;
+            transition: width 0.3s ease;
+        }
+
+        /* Fine-tuning Status */
+        .training-status {
+            background: #34495e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border-left: 4px solid #3498db;
+        }
+
+        .status-text {
+            color: #ecf0f1;
+            margin-bottom: 10px;
+        }
+
+        .status-progress {
+            background: #2c3e50;
+            border-radius: 10px;
+            height: 8px;
+            overflow: hidden;
+        }
+
+        .status-bar {
+            height: 100%;
+            background: #e74c3c;
+            transition: width 0.3s ease;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .app-container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: auto;
+                max-height: 400px;
+            }
+            
+            .chat-input-container {
+                padding: 15px;
+            }
+            
+            .input-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .chat-input {
+                margin-bottom: 10px;
+            }
+        }
+
+        /* Tabs */
+        .tab-container {
+            margin-bottom: 20px;
+        }
+
+        .tab-buttons {
+            display: flex;
+            background: #34495e;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .tab-button {
+            flex: 1;
+            background: #2c3e50;
+            color: #bdc3c7;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .tab-button.active {
+            background: #3498db;
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>IndicBERT v2</h2>
+                <p>Enhanced AI Chat Assistant</p>
+            </div>
+
+            <!-- Tab Container -->
+            <div class="tab-container">
+                <div class="tab-buttons">
+                    <button class="tab-button active" onclick="showTab('chat')">Chat</button>
+                    <button class="tab-button" onclick="showTab('files')">Files</button>
+                    <button class="tab-button" onclick="showTab('training')">Training</button>
+                    <button class="tab-button" onclick="showTab('openai')">OpenAI</button>
+                </div>
+            </div>
+
+            <!-- Chat Tab -->
+            <div id="chat-tab" class="tab-content active">
+                <!-- Model Selection -->
+                <div class="sidebar-section">
+                    <h3>Select Model</h3>
+                    <div class="model-selector" id="model-selector">
+                        <!-- Models will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Language Selection -->
+                <div class="sidebar-section">
+                    <h3>Language</h3>
+                    <div class="language-selector" id="language-selector">
+                        <!-- Languages will be populated here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Files Tab -->
+            <div id="files-tab" class="tab-content">
+                <div class="sidebar-section">
+                    <h3>File Management</h3>
+                    <div class="file-management-section">
+                        <div class="file-upload" id="file-upload" onclick="document.getElementById('file-input').click()">
+                            <div class="upload-icon">📁</div>
+                            <div class="upload-text">Click to upload training data</div>
+                            <div class="upload-text" style="font-size: 12px; margin-top: 5px;">or drag & drop</div>
+                        </div>
+                        <input type="file" id="file-input" accept=".json,.csv,.txt" style="display: none;">
+                        
+                        <div class="file-list" id="file-list">
+                            <!-- Files will be listed here -->
+                        </div>
+                        
+                        <button class="fine-tune-btn" id="fine-tune-btn" onclick="startFineTuning()" disabled>
+                            Start Fine-tuning
+                        </button>
+                        
+                        <div id="upload-progress" style="display: none;">
+                            <div class="upload-progress">
+                                <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Training Tab -->
+            <div id="training-tab" class="tab-content">
+                <div class="sidebar-section">
+                    <h3>Fine-tuning Controls</h3>
+                    <div class="fine-tuning-section">
+                        <div class="training-controls">
+                            <button class="control-btn" onclick="refreshTrainingStatus()">Refresh</button>
+                            <button class="control-btn danger" onclick="stopAllTraining()">Stop All</button>
+                        </div>
+                        
+                        <div id="training-status-list">
+                            <!-- Training statuses will be listed here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OpenAI Tab -->
+            <div id="openai-tab" class="tab-content">
+                <div class="sidebar-section">
+                    <h3>OpenAI Integration</h3>
+                    <div class="openai-section">
+                        <div class="openai-status">
+                            <div class="status-indicator" id="openai-status-indicator"></div>
+                            <span id="openai-status-text">Checking connection...</span>
+                        </div>
+                        
+                        <div class="cost-info" id="cost-info">
+                            <!-- Cost information will be displayed here -->
+                        </div>
+                        
+                        <button class="control-btn" onclick="refreshOpenAIStatus()">Refresh</button>
+                        <button class="control-btn" onclick="resetDailyCost()">Reset Daily Cost</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Chat Area -->
+        <div class="chat-container">
+            <div class="chat-header">
+                <h1>IndicBERT v2 Enhanced AI Chat</h1>
+                <p>Multilingual AI Assistant with MongoDB Storage & OpenAI Integration</p>
+            </div>
+
+            <div class="chat-messages" id="chat-messages">
+                <!-- Welcome message -->
+                <div class="message assistant">
+                    <div class="message-avatar">AI</div>
+                    <div class="message-content">
+                        <div>नमस्ते! मैं IndicBERT v2 Enhanced AI Assistant हूं। मैं MongoDB में आपके डेटा को स्टोर करके fine-tune कर सकता हूं और OpenAI API के साथ भी काम कर सकता हूं।</div>
+                        <div style="margin-top: 10px;">Hello! I'm the IndicBERT v2 Enhanced AI Assistant. I can store your data in MongoDB for fine-tuning and also work with OpenAI API.</div>
+                        <div class="response-source">Fine-tuned Model</div>
+                        <div class="message-time" id="welcome-time"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-container">
+                <div class="input-row">
+                    <textarea 
+                        class="chat-input" 
+                        id="chat-input" 
+                        placeholder="Type your message here... अपना संदेश यहाँ लिखें..."
+                        rows="1"
+                    ></textarea>
+                    <button class="voice-btn" id="voice-btn" title="Voice Input">
+                        🎤
+                    </button>
+                    <button class="send-btn" id="send-btn" onclick="sendMessage()">
+                        Send
+                    </button>
+                </div>
+                
+                <div class="input-options">
+                    <button class="option-btn" onclick="toggleLanguage('hindi')">हिंदी</button>
+                    <button class="option-btn" onclick="toggleLanguage('english')">English</button>
+                    <button class="option-btn" onclick="toggleLanguage('bengali')">বাংলা</button>
+                    <button class="option-btn" onclick="toggleLanguage('tamil')">தமிழ்</button>
+                    <button class="option-btn" onclick="toggleLanguage('telugu')">తెలుగు</button>
+                    <button class="option-btn" onclick="toggleLanguage('marathi')">मराठी</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentModel = 'IndicBERTv2-MLM-only';
+        let currentLanguage = 'english';
+        let selectedFiles = [];
+        let isRecording = false;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let currentTab = 'chat';
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeApp();
+            setWelcomeTime();
+            setupEventListeners();
+            loadFiles();
+            refreshTrainingStatus();
+            refreshOpenAIStatus();
+        });
+
+        function initializeApp() {
+            loadModels();
+            loadLanguages();
+            setupFileUpload();
+            setupVoiceRecognition();
+        }
+
+        function setWelcomeTime() {
+            const now = new Date();
+            document.getElementById('welcome-time').textContent = now.toLocaleTimeString();
+        }
+
+        function setupEventListeners() {
+            // Auto-resize textarea
+            const chatInput = document.getElementById('chat-input');
+            chatInput.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+            });
+
+            // Enter key to send message
+            chatInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            // Drag and drop for file upload
+            const fileUpload = document.getElementById('file-upload');
+            fileUpload.addEventListener('dragover', handleDragOver);
+            fileUpload.addEventListener('drop', handleDrop);
+        }
+
+        function showTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Show selected tab
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            event.target.classList.add('active');
+            currentTab = tabName;
+
+            // Load tab-specific data
+            if (tabName === 'files') {
+                loadFiles();
+            } else if (tabName === 'training') {
+                refreshTrainingStatus();
+            } else if (tabName === 'openai') {
+                refreshOpenAIStatus();
+            }
+        }
+
+        function loadModels() {
+            const models = {
+                'IndicBERTv2-MLM-only': 'Base MLM Model',
+                'IndicBERTv2-MLM': 'Enhanced MLM Model',
+                'IndicBERTv2-MLM-News': 'News-trained Model',
+                'IndicBERTv2-MLM-News-CC': 'News + Common Crawl'
+            };
+
+            const modelSelector = document.getElementById('model-selector');
+            modelSelector.innerHTML = '';
+
+            Object.entries(models).forEach(([key, description]) => {
+                const modelOption = document.createElement('div');
+                modelOption.className = `model-option ${key === currentModel ? 'selected' : ''}`;
+                modelOption.onclick = () => selectModel(key);
+                
+                modelOption.innerHTML = `
+                    <div style="font-weight: bold;">${key}</div>
+                    <div style="font-size: 12px; opacity: 0.8;">${description}</div>
+                `;
+                
+                modelSelector.appendChild(modelOption);
+            });
+        }
+
+        function loadLanguages() {
+            const languages = {
+                'english': 'English',
+                'hindi': 'हिंदी',
+                'bengali': 'বাংলা',
+                'tamil': 'தமிழ்',
+                'telugu': 'తెలుగు',
+                'marathi': 'मराठी',
+                'gujarati': 'ગુજરાતી',
+                'kannada': 'ಕನ್ನಡ',
+                'malayalam': 'മലയാളം',
+                'punjabi': 'ਪੰਜਾਬੀ',
+                'odia': 'ଓଡ଼ିଆ',
+                'assamese': 'অসমীয়া'
+            };
+
+            const languageSelector = document.getElementById('language-selector');
+            languageSelector.innerHTML = '';
+
+            Object.entries(languages).forEach(([key, name]) => {
+                const languageOption = document.createElement('div');
+                languageOption.className = `language-option ${key === currentLanguage ? 'selected' : ''}`;
+                languageOption.onclick = () => selectLanguage(key);
+                languageOption.textContent = name;
+                
+                languageSelector.appendChild(languageOption);
+            });
+        }
+
+        function selectModel(modelKey) {
+            currentModel = modelKey;
+            
+            // Update UI
+            document.querySelectorAll('.model-option').forEach(option => {
+                option.classList.remove('selected');
+            });
+            event.target.closest('.model-option').classList.add('selected');
+        }
+
+        function selectLanguage(languageKey) {
+            currentLanguage = languageKey;
+            
+            // Update UI
+            document.querySelectorAll('.language-option').forEach(option => {
+                option.classList.remove('selected');
+            });
+            event.target.closest('.language-option').classList.add('selected');
+            
+            // Update placeholder text
+            updatePlaceholderText();
+        }
+
+        function updatePlaceholderText() {
+            const placeholders = {
+                'english': 'Type your message here...',
+                'hindi': 'अपना संदेश यहाँ लिखें...',
+                'bengali': 'আপনার বার্তা এখানে লিখুন...',
+                'tamil': 'உங்கள் செய்தியை இங்கே தட்டச்சு செய்யவும்...',
+                'telugu': 'మీ సందేశాన్ని ఇక్కడ టైప్ చేయండి...',
+                'marathi': 'तुमचा संदेश येथे टाइप करा...'
+            };
+            
+            document.getElementById('chat-input').placeholder = placeholders[currentLanguage] || placeholders['english'];
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Add user message
+            addMessage(message, 'user');
+            
+            // Clear input
+            input.value = '';
+            input.style.height = 'auto';
+            
+            // Show typing indicator
+            showTypingIndicator();
+            
+            // Send to AI
+            fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    message: message,
+                    model_name: currentModel,
+                    language: currentLanguage
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideTypingIndicator();
+                
+                if (data.success) {
+                    // Process AI response
+                    let aiResponse = processAIResponse(data.response);
+                    let responseSource = data.response.response_source || 'unknown';
+                    addMessage(aiResponse, 'assistant', responseSource);
+                    
+                    // Convert to speech if enabled
+                    if (currentLanguage !== 'english') {
+                        convertToSpeech(aiResponse);
+                    }
+                } else {
+                    addMessage(`Error: ${data.error}`, 'assistant');
+                }
+            })
+            .catch(error => {
+                hideTypingIndicator();
+                addMessage(`Network error: ${error.message}`, 'assistant');
+            });
+        }
+
+        function processAIResponse(response) {
+            if (response.routing_decision === 'hybrid') {
+                return `Fine-tuned Response: ${response.fine_tuned_response}\n\nEnhanced by OpenAI: ${response.openai_response}`;
+            } else if (response.content) {
+                return response.content;
+            } else {
+                return "I've processed your request. How can I help you further?";
+            }
+        }
+
+        function addMessage(content, sender, responseSource = null) {
+            const chatMessages = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            
+            const now = new Date();
+            const timeString = now.toLocaleTimeString();
+            
+            let responseSourceHtml = '';
+            if (responseSource && sender === 'assistant') {
+                responseSourceHtml = `<div class="response-source">${responseSource.toUpperCase()}</div>`;
+            }
+            
+            messageDiv.innerHTML = `
+                <div class="message-avatar">${sender === 'user' ? 'U' : 'AI'}</div>
+                <div class="message-content">
+                    <div>${content}</div>
+                    ${responseSourceHtml}
+                    <div class="message-time">${timeString}</div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showTypingIndicator() {
+            const chatMessages = document.getElementById('chat-messages');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message assistant';
+            typingDiv.id = 'typing-indicator';
+            
+            typingDiv.innerHTML = `
+                <div class="message-avatar">AI</div>
+                <div class="message-content">
+                    <div class="loading-indicator">
+                        <span>AI is thinking</span>
+                        <div class="typing-dots">
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(typingDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function hideTypingIndicator() {
+            const typingIndicator = document.getElementById('typing-indicator');
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+        }
+
+        function toggleLanguage(language) {
+            selectLanguage(language);
+            
+            // Update active button
+            document.querySelectorAll('.option-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+        }
+
+        // File Management Functions
+        function setupFileUpload() {
+            const fileInput = document.getElementById('file-input');
+            fileInput.addEventListener('change', handleFileSelect);
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                uploadFile(file);
+            }
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.currentTarget.classList.add('dragover');
+        }
+
+        function handleDrop(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('dragover');
+            
+            const files = event.dataTransfer.files;
+            if (files.length > 0) {
+                uploadFile(files[0]);
+            }
+        }
+
+        function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // Show progress
+            document.getElementById('upload-progress').style.display = 'block';
+            document.getElementById('fine-tune-btn').disabled = true;
+            
+            fetch('/api/upload_file', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addMessage(`File "${file.name}" uploaded successfully!`, 'assistant');
+                    loadFiles();
+                } else {
+                    addMessage(`Upload failed: ${data.error}`, 'assistant');
+                }
+                
+                document.getElementById('upload-progress').style.display = 'none';
+                document.getElementById('fine-tune-btn').disabled = false;
+            })
+            .catch(error => {
+                addMessage(`Upload error: ${error.message}`, 'assistant');
+                document.getElementById('upload-progress').style.display = 'none';
+                document.getElementById('fine-tune-btn').disabled = false;
+            });
+        }
+
+        function loadFiles() {
+            fetch('/api/files')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    displayFiles(data.files);
+                }
+            })
+            .catch(error => {
+                console.error('Error loading files:', error);
+            });
+        }
+
+        function displayFiles(files) {
+            const fileList = document.getElementById('file-list');
+            fileList.innerHTML = '';
+            
+            if (files.length === 0) {
+                fileList.innerHTML = '<div style="text-align: center; color: #7f8c8d; padding: 20px;">No files uploaded yet</div>';
+                return;
+            }
+            
+            files.forEach(file => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                
+                const statusClass = `status-${file.status}`;
+                
+                fileItem.innerHTML = `
+                    <div class="file-name">${file.filename}</div>
+                    <div class="file-status ${statusClass}">${file.status}</div>
+                `;
+                
+                fileList.appendChild(fileItem);
+            });
+            
+            // Enable fine-tune button if there are processed files
+            const hasProcessedFiles = files.some(f => f.status === 'processed');
+            document.getElementById('fine-tune-btn').disabled = !hasProcessedFiles;
+        }
+
+        function startFineTuning() {
+            // Get fine-tuning data
+            fetch('/api/fine_tuning_data')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.data.length > 0) {
+                    const ftDataIds = data.data.map(item => item._id);
+                    
+                    fetch('/api/start_fine_tuning', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            model_name: currentModel,
+                            ft_data_ids: ftDataIds,
+                            training_args: {}
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(result => {
+                        if (result.success) {
+                            addMessage(`Fine-tuning started with ID: ${result.training_id}`, 'assistant');
+                            refreshTrainingStatus();
+                        } else {
+                            addMessage(`Fine-tuning failed: ${result.error}`, 'assistant');
+                        }
+                    })
+                    .catch(error => {
+                        addMessage(`Fine-tuning error: ${error.message}`, 'assistant');
+                    });
+                } else {
+                    addMessage('No fine-tuning data available', 'assistant');
+                }
+            })
+            .catch(error => {
+                addMessage(`Error: ${error.message}`, 'assistant');
+            });
+        }
+
+        function refreshTrainingStatus() {
+            fetch('/api/models')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    displayTrainingStatus(data.models);
+                }
+            })
+            .catch(error => {
+                console.error('Error loading training status:', error);
+            });
+        }
+
+        function displayTrainingStatus(models) {
+            const statusList = document.getElementById('training-status-list');
+            statusList.innerHTML = '';
+            
+            if (models.length === 0) {
+                statusList.innerHTML = '<div style="text-align: center; color: #7f8c8d; padding: 20px;">No models available</div>';
+                return;
+            }
+            
+            models.forEach(model => {
+                const statusItem = document.createElement('div');
+                statusItem.className = 'training-status';
+                statusItem.innerHTML = `
+                    <div class="status-text">${model.version}</div>
+                    <div class="status-text" style="font-size: 12px;">Status: ${model.status}</div>
+                    <div class="status-text" style="font-size: 12px;">Created: ${new Date(model.created_date).toLocaleDateString()}</div>
+                `;
+                
+                statusList.appendChild(statusItem);
+            });
+        }
+
+        function stopAllTraining() {
+            addMessage('Stopping all training processes...', 'assistant');
+            // This would call an API endpoint to stop training
+        }
+
+        function refreshOpenAIStatus() {
+            fetch('/api/openai/cost_summary')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    displayOpenAIStatus(data.cost_summary);
+                } else {
+                    displayOpenAIStatus(null);
+                }
+            })
+            .catch(error => {
+                console.error('Error loading OpenAI status:', error);
+                displayOpenAIStatus(null);
+            });
+        }
+
+        function displayOpenAIStatus(costSummary) {
+            const statusIndicator = document.getElementById('openai-status-indicator');
+            const statusText = document.getElementById('openai-status-text');
+            const costInfo = document.getElementById('cost-info');
+            
+            if (costSummary) {
+                statusIndicator.classList.add('connected');
+                statusText.textContent = 'Connected';
+                
+                costInfo.innerHTML = `
+                    <div class="cost-item">
+                        <span class="cost-label">Total Cost:</span>
+                        <span class="cost-value">$${costSummary.total_cost}</span>
+                    </div>
+                    <div class="cost-item">
+                        <span class="cost-label">Daily Cost:</span>
+                        <span class="cost-value">$${costSummary.daily_cost}</span>
+                    </div>
+                    <div class="cost-item">
+                        <span class="cost-label">Total Tokens:</span>
+                        <span class="cost-value">${costSummary.total_tokens.toLocaleString()}</span>
+                    </div>
+                `;
+            } else {
+                statusIndicator.classList.remove('connected');
+                statusText.textContent = 'Not Connected';
+                costInfo.innerHTML = '<div style="text-align: center; color: #7f8c8d; padding: 20px;">OpenAI not available</div>';
+            }
+        }
+
+        function resetDailyCost() {
+            fetch('/api/openai/reset_daily_cost', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addMessage('Daily cost counter reset successfully', 'assistant');
+                    refreshOpenAIStatus();
+                } else {
+                    addMessage(`Failed to reset daily cost: ${data.error}`, 'assistant');
+                }
+            })
+            .catch(error => {
+                addMessage(`Error resetting daily cost: ${error.message}`, 'assistant');
+            });
+        }
+
+        // Voice Recognition Functions
+        function setupVoiceRecognition() {
+            const voiceBtn = document.getElementById('voice-btn');
+            voiceBtn.addEventListener('click', toggleVoiceRecording);
+        }
+
+        function toggleVoiceRecording() {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        }
+
+        function startRecording() {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(stream => {
+                        isRecording = true;
+                        document.getElementById('voice-btn').classList.add('recording');
+                        document.getElementById('voice-btn').textContent = '⏹️';
+                        
+                        mediaRecorder = new MediaRecorder(stream);
+                        audioChunks = [];
+                        
+                        mediaRecorder.ondataavailable = (event) => {
+                            audioChunks.push(event.data);
+                        };
+                        
+                        mediaRecorder.onstop = () => {
+                            const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                            processAudioInput(audioBlob);
+                        };
+                        
+                        mediaRecorder.start();
+                    })
+                    .catch(error => {
+                        console.error('Error accessing microphone:', error);
+                        alert('Could not access microphone. Please check permissions.');
+                    });
+            } else {
+                alert('Voice recording is not supported in your browser.');
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                isRecording = false;
+                document.getElementById('voice-btn').classList.remove('recording');
+                document.getElementById('voice-btn').textContent = '🎤';
+                
+                // Stop all tracks
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            }
+        }
+
+        function processAudioInput(audioBlob) {
+            // For demo purposes, we'll simulate speech-to-text
+            addMessage('Processing voice input...', 'assistant');
+            
+            // Simulate processing delay
+            setTimeout(() => {
+                const simulatedText = getSimulatedVoiceText();
+                document.getElementById('chat-input').value = simulatedText;
+                addMessage(`Voice input: "${simulatedText}"`, 'user');
+            }, 1000);
+        }
+
+        function getSimulatedVoiceText() {
+            const voiceTexts = {
+                'hindi': 'नमस्ते, कैसे हो आप?',
+                'english': 'Hello, how are you?',
+                'bengali': 'হ্যালো, আপনি কেমন আছেন?',
+                'tamil': 'வணக்கம், நீங்கள் எப்படி இருக்கிறீர்கள்?',
+                'telugu': 'నమస్కారం, మీరు ఎలా ఉన్నారు?',
+                'marathi': 'नमस्कार, तुम्ही कसे आहात?'
+            };
+            
+            return voiceTexts[currentLanguage] || voiceTexts['english'];
+        }
+
+        function convertToSpeech(text) {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                
+                // Set language based on current selection
+                const languageMap = {
+                    'hindi': 'hi-IN',
+                    'english': 'en-US',
+                    'bengali': 'bn-IN',
+                    'tamil': 'ta-IN',
+                    'telugu': 'te-IN',
+                    'marathi': 'mr-IN'
+                };
+                
+                utterance.lang = languageMap[currentLanguage] || 'en-US';
+                utterance.rate = 0.8;
+                
+                speechSynthesis.speak(utterance);
+            }
+        }
+    </script>
+</body>
+</html>

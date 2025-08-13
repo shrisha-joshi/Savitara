@@ -1,0 +1,3 @@
+2025-08-13 22:11:08,840 - __main__ - INFO - Starting Enhanced IndicBERT v2 System...
+2025-08-13 22:11:08,841 - __main__ - ERROR - Missing dependency: No module named 'pymongo'
+2025-08-13 22:11:08,841 - __main__ - ERROR - Please install all dependencies using: pip install -r enhanced_requirements.txt

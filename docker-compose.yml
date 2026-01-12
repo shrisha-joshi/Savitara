@@ -1,0 +1,112 @@
+# Docker Compose for Savitara Platform
+# Run with: docker-compose up -d
+
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:6.0
+    container_name: savitara-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: savitara_admin_pass
+      MONGO_INITDB_DATABASE: savitara
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - savitara-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: savitara-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - savitara-network
+
+  # Elasticsearch (Advanced Search)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    container_name: savitara-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - savitara-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: savitara-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # TODO: Change these credentials in production and use environment variables
+      - MONGO_URI=mongodb://admin:${MONGO_ADMIN_PASSWORD:-savitara_admin_pass}@mongodb:27017/savitara?authSource=admin
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./backend:/app
+    networks:
+      - savitara-network
+
+  # Admin Web Dashboard
+  admin-savitara-web:
+    build:
+      context: ./admin-savitara-web
+      dockerfile: Dockerfile
+    container_name: savitara-admin-web
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
+    depends_on:
+      - backend
+    networks:
+      - savitara-network
+
+  # Savitara Web (User Web App)
+  savitara-web:
+    build:
+      context: ./savitara-web
+      dockerfile: Dockerfile
+    container_name: savitara-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000/api/v1
+    depends_on:
+      - backend
+    networks:
+      - savitara-network
+
+volumes:
+  mongodb_data:
+  redis_data:
+  elasticsearch_data:
+
+networks:
+  savitara-network:
+    driver: bridge

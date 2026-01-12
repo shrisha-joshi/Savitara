@@ -1,0 +1,160 @@
+{
+  "welcome_message": "सवितारा में आपका स्वागत है",
+  "tagline": "आध्यात्मिक मार्गदर्शकों से जुड़ें",
+  "auth": {
+    "sign_in": "साइन इन करें",
+    "sign_up": "साइन अप करें",
+    "sign_in_with_google": "Google से साइन इन करें",
+    "logout": "लॉग आउट",
+    "select_role": "अपनी भूमिका चुनें",
+    "grihasta": "गृहस्थ (उपयोगकर्ता)",
+    "acharya": "आचार्य (पुजारी)"
+  },
+  "home": {
+    "title": "होम",
+    "featured_acharyas": "विशेष आचार्य",
+    "browse_acharyas": "सभी आचार्य देखें",
+    "search_placeholder": "नाम, विशेषज्ञता से खोजें...",
+    "no_acharyas": "कोई आचार्य उपलब्ध नहीं"
+  },
+  "acharya": {
+    "title": "आचार्य प्रोफ़ाइल",
+    "specializations": "विशेषज्ञताएं",
+    "languages": "भाषाएं",
+    "experience": "अनुभव",
+    "hourly_rate": "प्रति घंटा दर",
+    "rating": "रेटिंग",
+    "reviews": "समीक्षाएं",
+    "book_now": "अभी बुक करें",
+    "chat": "चैट",
+    "about": "के बारे में",
+    "parampara": "परंपरा",
+    "location": "स्थान",
+    "years_experience": "{{years}} वर्ष"
+  },
+  "booking": {
+    "title": "आचार्य बुक करें",
+    "new_booking": "नई बुकिंग",
+    "my_bookings": "मेरी बुकिंग",
+    "select_date": "तारीख चुनें",
+    "select_time": "समय चुनें",
+    "select_pooja": "पूजा प्रकार चुनें",
+    "with_samagri": "समग्री के साथ",
+    "without_samagri": "समग्री के बिना",
+    "duration": "अवधि (घंटे)",
+    "location": "स्थान",
+    "special_instructions": "विशेष निर्देश",
+    "confirm_booking": "बुकिंग की पुष्टि करें",
+    "status": {
+      "pending": "लंबित",
+      "confirmed": "पुष्टि की गई",
+      "in_progress": "प्रगति में",
+      "completed": "पूर्ण",
+      "cancelled": "रद्द"
+    },
+    "cancel_booking": "बुकिंग रद्द करें",
+    "rate_booking": "रेट और समीक्षा करें"
+  },
+  "payment": {
+    "title": "भुगतान",
+    "amount": "राशि",
+    "pay_now": "अभी भुगतान करें",
+    "payment_success": "भुगतान सफल",
+    "payment_failed": "भुगतान विफल",
+    "processing": "भुगतान प्रक्रिया में...",
+    "breakdown": "मूल्य विवरण",
+    "base_price": "मूल मूल्य",
+    "platform_fee": "प्लेटफ़ॉर्म शुल्क",
+    "gst": "जीएसटी (18%)",
+    "total": "कुल",
+    "loyalty_discount": "लॉयल्टी छूट"
+  },
+  "profile": {
+    "title": "प्रोफ़ाइल",
+    "edit_profile": "प्रोफ़ाइल संपादित करें",
+    "name": "नाम",
+    "email": "ईमेल",
+    "phone": "फोन",
+    "location": "स्थान",
+    "save": "सहेजें",
+    "cancel": "रद्द करें",
+    "loyalty": {
+      "title": "लॉयल्टी प्रोग्राम",
+      "tier": "स्तर",
+      "points": "अंक",
+      "total_bookings": "कुल बुकिंग",
+      "benefits": "लाभ"
+    }
+  },
+  "chat": {
+    "title": "चैट",
+    "type_message": "एक संदेश टाइप करें...",
+    "send": "भेजें",
+    "no_conversations": "अभी तक कोई वार्तालाप नहीं",
+    "online": "ऑनलाइन",
+    "offline": "ऑफ़लाइन",
+    "typing": "टाइप कर रहे हैं..."
+  },
+  "notifications": {
+    "title": "सूचनाएं",
+    "no_notifications": "कोई सूचना नहीं",
+    "mark_all_read": "सभी को पढ़ा हुआ चिह्नित करें",
+    "booking_confirmed": "बुकिंग की पुष्टि",
+    "booking_cancelled": "बुकिंग रद्द",
+    "new_message": "नया संदेश",
+    "payment_received": "भुगतान प्राप्त"
+  },
+  "reviews": {
+    "title": "समीक्षाएं",
+    "write_review": "समीक्षा लिखें",
+    "rating": "रेटिंग",
+    "comment": "टिप्पणी",
+    "submit": "समीक्षा सबमिट करें",
+    "no_reviews": "अभी तक कोई समीक्षा नहीं",
+    "helpful": "उपयोगी"
+  },
+  "search": {
+    "title": "खोजें",
+    "filters": "फ़िल्टर",
+    "sort_by": "इसके अनुसार क्रमबद्ध करें",
+    "rating": "रेटिंग",
+    "price": "मूल्य",
+    "experience": "अनुभव",
+    "location": "स्थान",
+    "specializations": "विशेषज्ञताएं",
+    "languages": "भाषाएं",
+    "apply_filters": "फ़िल्टर लागू करें",
+    "clear_filters": "फ़िल्टर साफ़ करें"
+  },
+  "errors": {
+    "network_error": "नेटवर्क त्रुटि। कृपया अपना कनेक्शन जांचें।",
+    "something_went_wrong": "कुछ गलत हो गया",
+    "try_again": "पुनः प्रयास करें",
+    "required_field": "यह फ़ील्ड आवश्यक है",
+    "invalid_email": "अमान्य ईमेल पता",
+    "invalid_phone": "अमान्य फ़ोन नंबर",
+    "booking_failed": "बुकिंग विफल। कृपया पुनः प्रयास करें।"
+  },
+  "common": {
+    "loading": "लोड हो रहा है...",
+    "retry": "पुनः प्रयास करें",
+    "cancel": "रद्द करें",
+    "ok": "ठीक है",
+    "yes": "हां",
+    "no": "नहीं",
+    "save": "सहेजें",
+    "edit": "संपादित करें",
+    "delete": "हटाएं",
+    "confirm": "पुष्टि करें",
+    "back": "पीछे",
+    "next": "आगे",
+    "done": "हो गया",
+    "close": "बंद करें",
+    "search": "खोजें",
+    "filter": "फ़िल्टर",
+    "sort": "क्रमबद्ध करें",
+    "view_all": "सभी देखें",
+    "show_more": "अधिक दिखाएं",
+    "show_less": "कम दिखाएं"
+  }
+}

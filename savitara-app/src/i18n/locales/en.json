@@ -1,0 +1,160 @@
+{
+  "welcome_message": "Welcome to Savitara",
+  "tagline": "Connect with Spiritual Guides",
+  "auth": {
+    "sign_in": "Sign In",
+    "sign_up": "Sign Up",
+    "sign_in_with_google": "Sign in with Google",
+    "logout": "Logout",
+    "select_role": "Select Your Role",
+    "grihasta": "Grihasta (User)",
+    "acharya": "Acharya (Priest)"
+  },
+  "home": {
+    "title": "Home",
+    "featured_acharyas": "Featured Acharyas",
+    "browse_acharyas": "Browse All Acharyas",
+    "search_placeholder": "Search by name, specialization...",
+    "no_acharyas": "No acharyas available"
+  },
+  "acharya": {
+    "title": "Acharya Profile",
+    "specializations": "Specializations",
+    "languages": "Languages",
+    "experience": "Experience",
+    "hourly_rate": "Hourly Rate",
+    "rating": "Rating",
+    "reviews": "Reviews",
+    "book_now": "Book Now",
+    "chat": "Chat",
+    "about": "About",
+    "parampara": "Parampara",
+    "location": "Location",
+    "years_experience": "{{years}} years"
+  },
+  "booking": {
+    "title": "Book Acharya",
+    "new_booking": "New Booking",
+    "my_bookings": "My Bookings",
+    "select_date": "Select Date",
+    "select_time": "Select Time",
+    "select_pooja": "Select Pooja Type",
+    "with_samagri": "With Samagri",
+    "without_samagri": "Without Samagri",
+    "duration": "Duration (hours)",
+    "location": "Location",
+    "special_instructions": "Special Instructions",
+    "confirm_booking": "Confirm Booking",
+    "status": {
+      "pending": "Pending",
+      "confirmed": "Confirmed",
+      "in_progress": "In Progress",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "cancel_booking": "Cancel Booking",
+    "rate_booking": "Rate & Review"
+  },
+  "payment": {
+    "title": "Payment",
+    "amount": "Amount",
+    "pay_now": "Pay Now",
+    "payment_success": "Payment Successful",
+    "payment_failed": "Payment Failed",
+    "processing": "Processing Payment...",
+    "breakdown": "Price Breakdown",
+    "base_price": "Base Price",
+    "platform_fee": "Platform Fee",
+    "gst": "GST (18%)",
+    "total": "Total",
+    "loyalty_discount": "Loyalty Discount"
+  },
+  "profile": {
+    "title": "Profile",
+    "edit_profile": "Edit Profile",
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "location": "Location",
+    "save": "Save",
+    "cancel": "Cancel",
+    "loyalty": {
+      "title": "Loyalty Program",
+      "tier": "Tier",
+      "points": "Points",
+      "total_bookings": "Total Bookings",
+      "benefits": "Benefits"
+    }
+  },
+  "chat": {
+    "title": "Chat",
+    "type_message": "Type a message...",
+    "send": "Send",
+    "no_conversations": "No conversations yet",
+    "online": "Online",
+    "offline": "Offline",
+    "typing": "typing..."
+  },
+  "notifications": {
+    "title": "Notifications",
+    "no_notifications": "No notifications",
+    "mark_all_read": "Mark All as Read",
+    "booking_confirmed": "Booking Confirmed",
+    "booking_cancelled": "Booking Cancelled",
+    "new_message": "New Message",
+    "payment_received": "Payment Received"
+  },
+  "reviews": {
+    "title": "Reviews",
+    "write_review": "Write a Review",
+    "rating": "Rating",
+    "comment": "Comment",
+    "submit": "Submit Review",
+    "no_reviews": "No reviews yet",
+    "helpful": "Helpful"
+  },
+  "search": {
+    "title": "Search",
+    "filters": "Filters",
+    "sort_by": "Sort By",
+    "rating": "Rating",
+    "price": "Price",
+    "experience": "Experience",
+    "location": "Location",
+    "specializations": "Specializations",
+    "languages": "Languages",
+    "apply_filters": "Apply Filters",
+    "clear_filters": "Clear Filters"
+  },
+  "errors": {
+    "network_error": "Network error. Please check your connection.",
+    "something_went_wrong": "Something went wrong",
+    "try_again": "Try Again",
+    "required_field": "This field is required",
+    "invalid_email": "Invalid email address",
+    "invalid_phone": "Invalid phone number",
+    "booking_failed": "Booking failed. Please try again."
+  },
+  "common": {
+    "loading": "Loading...",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "ok": "OK",
+    "yes": "Yes",
+    "no": "No",
+    "save": "Save",
+    "edit": "Edit",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "done": "Done",
+    "close": "Close",
+    "search": "Search",
+    "filter": "Filter",
+    "sort": "Sort",
+    "view_all": "View All",
+    "show_more": "Show More",
+    "show_less": "Show Less"
+  }
+}

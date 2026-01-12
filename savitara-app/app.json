@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Savitara",
+    "slug": "savitara",
+    "version": "1.0.0",
+    "scheme": "savitara",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#FF6B35"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.savitara.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FF6B35"
+      },
+      "package": "com.savitara.mobile"
+    },
+    "plugins": [
+      "expo-notifications"
+    ]
+  }
+}

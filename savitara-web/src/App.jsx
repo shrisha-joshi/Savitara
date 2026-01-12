@@ -1,0 +1,114 @@
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { useAuth } from './context/AuthContext'
+
+// Common pages
+import Home from './pages/Home'
+import Login from './pages/Login'
+import Onboarding from './pages/Onboarding'
+import Profile from './pages/Profile'
+import Privacy from './pages/Privacy'
+import Terms from './pages/Terms'
+
+// Grihasta pages
+import GrihastaDashboard from './pages/grihasta/Dashboard'
+import SearchAcharyas from './pages/grihasta/SearchAcharyas'
+import AcharyaProfile from './pages/grihasta/AcharyaProfile'
+import CreateBooking from './pages/grihasta/CreateBooking'
+import Payment from './pages/grihasta/Payment'
+import MyBookings from './pages/grihasta/MyBookings'
+import BookingDetails from './pages/grihasta/BookingDetails'
+import SubmitReview from './pages/grihasta/SubmitReview'
+
+// Acharya pages
+import AcharyaDashboard from './pages/acharya/Dashboard'
+import AcharyaBookings from './pages/acharya/Bookings'
+import StartService from './pages/acharya/StartService'
+import Earnings from './pages/acharya/Earnings'
+import Reviews from './pages/acharya/Reviews'
+import Settings from './pages/acharya/Settings'
+
+// Chat pages
+import Conversations from './pages/chat/Conversations'
+import Chat from './pages/chat/Chat'
+
+function App() {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <div>Loading...</div>
+      </div>
+    )
+  }
+
+  return (
+    <Routes>
+      {/* Public routes */}
+      <Route path="/" element={<Home />} />
+      <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
+      
+      {/* Protected routes */}
+      {!user && <Route path="*" element={<Navigate to="/login" />} />}
+      
+      {user && !user.onboarded && (
+        <Route path="/onboarding" element={<Onboarding />} />
+      )}
+
+      {user && user.onboarded && (
+        <>
+          <Route path="/profile" element={<Profile />} />
+          
+          {/* Grihasta routes */}
+          {user.role === 'grihasta' && (
+            <>
+              <Route path="/dashboard" element={<GrihastaDashboard />} />
+              <Route path="/search" element={<SearchAcharyas />} />
+              <Route path="/acharya/:id" element={<AcharyaProfile />} />
+              <Route path="/booking/create/:acharyaId" element={<CreateBooking />} />
+              <Route path="/booking/:bookingId/payment" element={<Payment />} />
+              <Route path="/bookings" element={<MyBookings />} />
+              <Route path="/booking/:bookingId" element={<BookingDetails />} />
+              <Route path="/booking/:bookingId/review" element={<SubmitReview />} />
+            </>
+          )}
+
+          {/* Acharya routes */}
+          {user.role === 'acharya' && (
+            <>
+              <Route path="/dashboard" element={<AcharyaDashboard />} />
+              <Route path="/bookings" element={<AcharyaBookings />} />
+              <Route path="/booking/:bookingId/start" element={<StartService />} />
+              <Route path="/earnings" element={<Earnings />} />
+              <Route path="/reviews" element={<Reviews />} />
+              <Route path="/settings" element={<Settings />} />
+            </>
+          )}
+
+          {/* Chat routes (common) */}
+          <Route path="/chat" element={<Conversations />} />
+          <Route path="/chat/:conversationId" element={<Chat />} />
+          
+          {/* Redirect to appropriate dashboard */}
+          <Route 
+            path="/dashboard" 
+            element={
+              <Navigate 
+                to={user.role === 'grihasta' ? '/dashboard' : '/dashboard'} 
+              />
+            } 
+          />
+        </>
+      )}
+      
+      {/* Redirect to onboarding if not completed */}
+      {user && !user.onboarded && (
+        <Route path="*" element={<Navigate to="/onboarding" />} />
+      )}
+    </Routes>
+  )
+}
+
+export default App

@@ -90,16 +90,6 @@ function App() {
           {/* Chat routes (common) */}
           <Route path="/chat" element={<Conversations />} />
           <Route path="/chat/:conversationId" element={<Chat />} />
-          
-          {/* Redirect to appropriate dashboard */}
-          <Route 
-            path="/dashboard" 
-            element={
-              <Navigate 
-                to={user.role === 'grihasta' ? '/dashboard' : '/dashboard'} 
-              />
-            } 
-          />
         </>
       )}
       
@@ -107,6 +97,15 @@ function App() {
       {user && !user.onboarded && (
         <Route path="*" element={<Navigate to="/onboarding" />} />
       )}
+      
+      {/* Redirect root to appropriate page */}
+       <Route path="/" element={
+        user ? (
+          user.onboarded ? <Navigate to="/dashboard" /> : <Navigate to="/onboarding" />
+        ) : (
+          <Home />
+        )
+      } />
     </Routes>
   )
 }

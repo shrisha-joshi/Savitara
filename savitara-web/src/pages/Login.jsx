@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Container, Box, Card, CardContent, Typography, Button, TextField, Divider, ToggleButton, ToggleButtonGroup } from '@mui/material'
-import { GoogleLogin } from '@react-oauth/google'
+import { Container, Box, Card, CardContent, Typography, Button, TextField, Divider, ToggleButton, ToggleButtonGroup, CircularProgress, Backdrop } from '@mui/material'
+import GoogleIcon from '@mui/icons-material/Google'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
@@ -14,17 +14,26 @@ export default function Login() {
   const [name, setName] = useState('')
   const [role, setRole] = useState('grihasta')
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [backdropMessage, setBackdropMessage] = useState('')
 
-  const handleGoogleSuccess = async (credentialResponse) => {
+  // Handle Firebase Google Sign-In
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true)
+    setBackdropMessage('Connecting to Google...')
     try {
-      await loginWithGoogle(credentialResponse.credential)
+      await loginWithGoogle() // No credential needed - Firebase handles popup
+      setBackdropMessage('Login successful! Redirecting...')
+      // Small delay to let user see success message before redirect
+      await new Promise(resolve => setTimeout(resolve, 1000))
     } catch (error) {
       console.error('Google login failed:', error)
+      // Show the specific error message from Firebase
+      toast.error(error.message || 'Google login failed. Please try again.')
+    } finally {
+      setGoogleLoading(false)
+      setBackdropMessage('')
     }
-  }
-
-  const handleGoogleError = () => {
-    toast.error('Google login failed. Please try again.')
   }
 
   const handleSubmit = async (e) => {
@@ -37,7 +46,8 @@ export default function Login() {
         await registerWithEmail({ email, password, name, role })
       }
     } catch (error) {
-      // Error handled in context
+      // Error is already handled and displayed by AuthContext via toast
+      console.debug('Auth error handled by context:', error.message)
     } finally {
       setLoading(false)
     }
@@ -54,6 +64,13 @@ export default function Login() {
       }}
     >
       <Container maxWidth="sm">
+        <Backdrop
+          sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.drawer + 1, flexDirection: 'column', gap: 2 }}
+          open={googleLoading || loading}
+        >
+          <CircularProgress color="inherit" />
+          <Typography variant="h6">{backdropMessage || 'Please wait...'}</Typography>
+        </Backdrop>
         <Card>
           <CardContent sx={{ p: 6, textAlign: 'center' }}>
             <Typography variant="h3" gutterBottom fontWeight={700} color="primary">
@@ -66,7 +83,31 @@ export default function Login() {
               {mode === 'login' ? 'Sign in to continue your spiritual journey' : 'Join Savitara to connect with authentic traditions'}
             </Typography>
 
-            <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2 }}>
+            {/* Firebase Google Sign-In Button */}
+            <Button
+              fullWidth
+              variant="outlined"
+              size="large"
+              onClick={handleGoogleSignIn}
+              disabled={googleLoading}
+              startIcon={googleLoading ? <CircularProgress size={20} /> : <GoogleIcon />}
+              sx={{ 
+                mt: 2, 
+                py: 1.5,
+                borderColor: '#4285f4',
+                color: '#4285f4',
+                '&:hover': {
+                  borderColor: '#357abd',
+                  backgroundColor: 'rgba(66, 133, 244, 0.04)'
+                }
+              }}
+            >
+              {googleLoading ? 'Signing in...' : 'Continue with Google'}
+            </Button>
+
+            <Divider sx={{ my: 3 }}>OR</Divider>
+
+            <Box component="form" onSubmit={handleSubmit}>
               {mode === 'register' && (
                 <>
                   <TextField
@@ -116,22 +157,10 @@ export default function Login() {
                 disabled={loading}
                 sx={{ mt: 3 }}
               >
-                {loading ? 'Please wait...' : (mode === 'login' ? 'Sign In' : 'Sign Up')}
+                {loading && 'Please wait...'}
+                {!loading && mode === 'login' && 'Sign In'}
+                {!loading && mode !== 'login' && 'Sign Up'}
               </Button>
-            </Box>
-
-            <Divider sx={{ my: 3 }}>OR</Divider>
-
-            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-              <GoogleLogin
-                onSuccess={handleGoogleSuccess}
-                onError={handleGoogleError}
-                useOneTap
-                theme="outline"
-                size="large"
-                text="signin_with"
-                shape="rectangular"
-              />
             </Box>
 
             <Box sx={{ mt: 3 }}>

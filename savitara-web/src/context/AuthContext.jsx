@@ -1,6 +1,8 @@
-import { createContext, useState, useContext, useEffect } from 'react'
+import { createContext, useState, useContext, useEffect, useMemo } from 'react'
+import PropTypes from 'prop-types'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import { signInWithGoogle as firebaseGoogleSignIn, firebaseSignOut } from '../services/firebase'
 import { toast } from 'react-toastify'
 
 const AuthContext = createContext({})
@@ -32,8 +34,10 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
-      const response = await api.get('/users/me')
-      setUser(response.data)
+      const response = await api.get('/auth/me')
+      // Extract user data from StandardResponse format
+      const userData = response.data.data || response.data
+      setUser(userData)
     } catch (error) {
       console.error('Auth check failed:', error)
       localStorage.removeItem('accessToken')
@@ -53,10 +57,10 @@ export const AuthProvider = ({ children }) => {
       
       setUser(userData)
       
-      if (!userData.onboarded) {
-        navigate('/onboarding')
-      } else {
+      if (userData.onboarded) {
         navigate('/dashboard')
+      } else {
+        navigate('/onboarding')
       }
 
       toast.success('Login successful!')
@@ -85,20 +89,38 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const loginWithGoogle = async (credential) => {
+  // Updated to use Firebase Google Sign-In
+  const loginWithGoogle = async (legacyCredential = null) => {
     try {
+      let idToken
+
+      // If called with a credential (legacy @react-oauth/google), use it
+      if (legacyCredential) {
+        idToken = legacyCredential
+      } else {
+        // Use Firebase Google Sign-In
+        const result = await firebaseGoogleSignIn()
+        idToken = result.idToken
+      }
+
+      // Send token to backend with correct field name and role
       const response = await api.post('/auth/google', {
-        token: credential
+        id_token: idToken,  // Backend expects 'id_token', not 'token'
+        role: 'grihasta'    // Default role for user app
       })
 
-      const { access_token, refresh_token, user: userData } = response.data
-
+      const { data } = response.data // Backend returns StandardResponse with data field
+      const { access_token, refresh_token, user: userData } = data
+      
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)
       
       setUser(userData)
       
-      if (!userData.onboarded) {
+      // Check if user needs onboarding
+      // Backend logic: "requires_onboarding": not (user.onboarded and profile_exists)
+      // Frontend decides navigation based on this
+      if (userData.requires_onboarding || userData.is_new_user) {
         navigate('/onboarding')
       } else {
         navigate('/dashboard')
@@ -107,7 +129,7 @@ export const AuthProvider = ({ children }) => {
       toast.success('Login successful!')
     } catch (error) {
       console.error('Login failed:', error)
-      toast.error(error.response?.data?.detail || 'Login failed')
+      toast.error(error.response?.data?.detail || error.response?.data?.message || 'Login failed')
       throw error
     }
   }
@@ -117,13 +139,20 @@ export const AuthProvider = ({ children }) => {
       await api.post('/auth/logout')
     } catch (error) {
       console.error('Logout API failed:', error)
-    } finally {
-      localStorage.removeItem('accessToken')
-      localStorage.removeItem('refreshToken')
-      setUser(null)
-      navigate('/login')
-      toast.info('Logged out successfully')
     }
+    
+    // Also sign out from Firebase
+    try {
+      await firebaseSignOut()
+    } catch (error) {
+      console.error('Firebase sign out failed:', error)
+    }
+    
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('refreshToken')
+    setUser(null)
+    navigate('/login')
+    toast.info('Logged out successfully')
   }
 
   const updateUser = (userData) => {
@@ -139,7 +168,7 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const value = {
+  const value = useMemo(() => ({
     user,
     loading,
     loginWithGoogle,
@@ -148,7 +177,11 @@ export const AuthProvider = ({ children }) => {
     logout,
     updateUser,
     refreshUserData,
-  }
+  }), [user, loading])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+AuthProvider.propTypes = {
+  children: PropTypes.node.isRequired,
 }

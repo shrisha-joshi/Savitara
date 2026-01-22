@@ -7,6 +7,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import en from './locales/en.json';
 import hi from './locales/hi.json';
+import ta from './locales/ta.json';
+import te from './locales/te.json';
+import mr from './locales/mr.json';
 
 const LANGUAGE_STORAGE_KEY = 'user_language';
 
@@ -45,6 +48,9 @@ i18n
     resources: {
       en: { translation: en },
       hi: { translation: hi },
+      ta: { translation: ta },
+      te: { translation: te },
+      mr: { translation: mr },
     },
     fallbackLng: 'en',
     interpolation: {
@@ -53,6 +59,8 @@ i18n
     compatibilityJSON: 'v3',
   });
 
+// Re-export default using export from pattern
+export { default as i18n } from 'i18next';
 export default i18n;
 
 // Helper function to change language
@@ -68,4 +76,7 @@ export const getCurrentLanguage = () => i18n.language;
 export const getAvailableLanguages = () => [
   { code: 'en', name: 'English', nativeName: 'English' },
   { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
+  { code: 'ta', name: 'Tamil', nativeName: 'தமிழ்' },
+  { code: 'te', name: 'Telugu', nativeName: 'తెలుగు' },
+  { code: 'mr', name: 'Marathi', nativeName: 'मराठी' },
 ];

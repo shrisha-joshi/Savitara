@@ -146,6 +146,19 @@ class AcharyaNotVerifiedError(SavitaraException):
         )
 
 
+class InsufficientCreditsError(SavitaraException):
+    """Insufficient credits/balance"""
+    def __init__(self, required: float, available: float, message: str = "Insufficient balance"):
+        self.required = required
+        self.available = available
+        super().__init__(
+            message=message,
+            error_code="WALLET_001",
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            details={"required": required, "available": available}
+        )
+
+
 # Chat Exceptions
 class ConversationNotFoundError(SavitaraException):
     """Conversation not found"""

@@ -3,6 +3,7 @@ User Profile API Endpoints
 Handles profile management, onboarding, and user info
 SonarQube: S5122 - Input validation with Pydantic
 """
+from dataclasses import dataclass
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import List, Dict, Any, Optional
@@ -38,6 +39,24 @@ from app.models.database import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["Users"])
+
+
+@dataclass
+class AcharyaSearchFilters:
+    """Search filters for acharya search to reduce parameter count"""
+    query: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    specialization: Optional[str] = None
+    language: Optional[str] = None
+    min_rating: float = 0.0
+    max_price: Optional[float] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    use_elasticsearch: bool = True
+    sort_by: str = "relevance"
+    page: int = 1
+    limit: int = 20
 
 
 @router.post(
@@ -104,25 +123,21 @@ async def grihasta_onboarding(
         
         await db.grihasta_profiles.insert_one(profile.dict(by_alias=True))
         
-        # Update user status to ACTIVE and add referral credits
+        # Update user status to ACTIVE, set onboarded=True, and add referral credits
         update_data = {
             "status": UserStatus.ACTIVE.value,
+            "onboarded": True,
             "updated_at": datetime.now(timezone.utc)
         }
         
+        update_operations = {"$set": update_data}
         if referral_credits > 0:
-            await db.users.update_one(
-                {"_id": user_id},
-                {
-                    "$set": update_data,
-                    "$inc": {"credits": referral_credits}
-                }
-            )
-        else:
-            await db.users.update_one(
-                {"_id": user_id},
-                {"$set": update_data}
-            )
+            update_operations["$inc"] = {"credits": referral_credits}
+        
+        await db.users.update_one(
+            {"_id": user_id},
+            update_operations
+        )
         
         logger.info(f"Grihasta onboarding completed for user {user_id}")
         
@@ -206,10 +221,13 @@ async def acharya_onboarding(
         
         await db.acharya_profiles.insert_one(profile.dict(by_alias=True))
         
-        # Update user updated_at
+        # Update user - set onboarded=True, Acharya remains PENDING until admin verification
         await db.users.update_one(
             {"_id": user_id},
-            {"$set": {"updated_at": datetime.now(timezone.utc)}}
+            {"$set": {
+                "onboarded": True,
+                "updated_at": datetime.now(timezone.utc)
+            }}
         )
         
         # Send notification to admin for verification
@@ -409,19 +427,7 @@ async def update_profile(
     description="Search and filter Acharyas by location, specialization, language, etc."
 )
 async def search_acharyas(
-    query: Optional[str] = Query(None, description="Search query text"),
-    city: Optional[str] = Query(None, description="Filter by city"),
-    state: Optional[str] = Query(None, description="Filter by state"),
-    specialization: Optional[str] = Query(None, description="Filter by specialization"),
-    language: Optional[str] = Query(None, description="Filter by language"),
-    min_rating: float = Query(0.0, ge=0.0, le=5.0, description="Minimum rating"),
-    max_price: Optional[float] = Query(None, description="Maximum price"),
-    latitude: Optional[float] = Query(None, description="User latitude for proximity search"),
-    longitude: Optional[float] = Query(None, description="User longitude for proximity search"),
-    use_elasticsearch: bool = Query(True, description="Use Elasticsearch for search"),
-    sort_by: str = Query("relevance", description="Sort by: relevance, rating, price, experience"),
-    page: int = Query(1, ge=1, description="Page number"),
-    limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    filters: AcharyaSearchFilters = Depends(),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """
@@ -437,33 +443,38 @@ async def search_acharyas(
     """
     try:
         # Try Cache First
-        cache_key = f"search:{query}:{city}:{state}:{specialization}:{language}:{min_rating}:{max_price}:{latitude}:{longitude}:{sort_by}:{page}:{limit}"
+        cache_key = (
+            f"search:{filters.query}:{filters.city}:{filters.state}:"
+            f"{filters.specialization}:{filters.language}:{filters.min_rating}:"
+            f"{filters.max_price}:{filters.latitude}:{filters.longitude}:"
+            f"{filters.sort_by}:{filters.page}:{filters.limit}"
+        )
         cached_result = await cache.get(cache_key)
         if cached_result:
             return cached_result
 
         # Use Elasticsearch if enabled and search service is available
-        if use_elasticsearch and hasattr(db.app, 'search_service'):
+        if filters.use_elasticsearch and hasattr(db.app, 'search_service'):
             from app.services.search_service import SearchService
             search_service: SearchService = db.app.search_service
             
-            filters = {
-                "city": city,
-                "state": state,
-                "specialization": specialization,
-                "language": language,
-                "min_rating": min_rating,
-                "max_price": max_price
+            search_filters = {
+                "city": filters.city,
+                "state": filters.state,
+                "specialization": filters.specialization,
+                "language": filters.language,
+                "min_rating": filters.min_rating,
+                "max_price": filters.max_price
             }
             
             result = await search_service.search_acharyas(
-                query=query or "",
-                filters=filters,
-                latitude=latitude,
-                longitude=longitude,
-                sort_by=sort_by,
-                page=page,
-                limit=limit
+                query=filters.query or "",
+                filters=search_filters,
+                latitude=filters.latitude,
+                longitude=filters.longitude,
+                sort_by=filters.sort_by,
+                page=filters.page,
+                limit=filters.limit
             )
             
             response = StandardResponse(
@@ -471,13 +482,13 @@ async def search_acharyas(
                 data={
                     "acharyas": result["hits"],
                     "pagination": {
-                        "page": page,
-                        "limit": limit,
+                        "page": filters.page,
+                        "limit": filters.limit,
                         "total": result["total"],
-                        "pages": (result["total"] + limit - 1) // limit
+                        "pages": (result["total"] + filters.limit - 1) // filters.limit
                     },
                     "search_metadata": {
-                        "query": query,
+                        "query": filters.query,
                         "took_ms": result.get("took_ms"),
                         "max_score": result.get("max_score")
                     }
@@ -490,16 +501,16 @@ async def search_acharyas(
 
         # Fallback to MongoDB search
         # Build query filter
-        query_filter = {"rating": {"$gte": min_rating}}
+        query_filter = {"rating": {"$gte": filters.min_rating}}
         
-        if city:
-            query_filter["location.city"] = {MONGO_REGEX: city, MONGO_OPTIONS: "i"}
-        if state:
-            query_filter["location.state"] = {MONGO_REGEX: state, MONGO_OPTIONS: "i"}
-        if specialization:
-            query_filter["specializations"] = {MONGO_REGEX: specialization, MONGO_OPTIONS: "i"}
-        if language:
-            query_filter["languages"] = {MONGO_REGEX: language, MONGO_OPTIONS: "i"}
+        if filters.city:
+            query_filter["location.city"] = {MONGO_REGEX: filters.city, MONGO_OPTIONS: "i"}
+        if filters.state:
+            query_filter["location.state"] = {MONGO_REGEX: filters.state, MONGO_OPTIONS: "i"}
+        if filters.specialization:
+            query_filter["specializations"] = {MONGO_REGEX: filters.specialization, MONGO_OPTIONS: "i"}
+        if filters.language:
+            query_filter["languages"] = {MONGO_REGEX: filters.language, MONGO_OPTIONS: "i"}
         
         # Get only ACTIVE acharyas
         # Join with users collection to check status
@@ -532,11 +543,11 @@ async def search_acharyas(
                 }
             },
             {"$sort": {"rating": -1, "total_bookings": -1}},
-            {"$skip": (page - 1) * limit},
-            {"$limit": limit}
+            {"$skip": (filters.page - 1) * filters.limit},
+            {"$limit": filters.limit}
         ]
         
-        acharyas = await db.acharya_profiles.aggregate(pipeline).to_list(length=limit)
+        acharyas = await db.acharya_profiles.aggregate(pipeline).to_list(length=filters.limit)
         
         # Get total count
         count_pipeline = pipeline[:4]  # Up to status filter
@@ -547,10 +558,10 @@ async def search_acharyas(
             data={
                 "acharyas": acharyas,
                 "pagination": {
-                    "page": page,
-                    "limit": limit,
+                    "page": filters.page,
+                    "limit": filters.limit,
                     "total": total_count,
-                    "pages": (total_count + limit - 1) // limit
+                    "pages": (total_count + filters.limit - 1) // filters.limit
                 }
             }
         )

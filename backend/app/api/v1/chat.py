@@ -5,7 +5,7 @@ SonarQube: S5122 - Input validation with Pydantic
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query, WebSocket, WebSocketDisconnect
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import logging
 from datetime import datetime, timedelta, timezone
 from bson import ObjectId
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
-def _create_open_chat_message(sender_id: str, content: str) -> tuple[Message, str]:
+def _create_open_chat_message(sender_id: str, content: str) -> Tuple[Message, str]:
     """Create message for open chat"""
     message = Message(
         sender_id=sender_id,
@@ -66,7 +66,7 @@ async def _get_or_create_conversation(db, sender_id: str, receiver_id: str) -> s
     return str(conversation_doc["_id"])
 
 
-async def _create_one_to_one_message(db, sender_id: str, receiver_id: str, content: str) -> tuple[Message, str]:
+async def _create_one_to_one_message(db, sender_id: str, receiver_id: str, content: str) -> Tuple[Message, str]:
     """Create message for 1-to-1 chat"""
     conversation_id = await _get_or_create_conversation(db, sender_id, receiver_id)
     message = Message(

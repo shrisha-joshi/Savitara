@@ -1,0 +1,159 @@
+{
+  "welcome_message": "సవితారాకు స్వాగతం",
+  "tagline": "ఆధ్యాత్మిక మార్గదర్శకులతో కనెక్ట్ అవ్వండి",
+  "auth": {
+    "sign_in": "సైన్ ఇన్ చేయండి",
+    "sign_up": "సైన్ అప్ చేయండి",
+    "sign_in_with_google": "Google తో సైన్ ఇన్ చేయండి",
+    "logout": "లాగ్ అవుట్",
+    "select_role": "మీ పాత్రను ఎంచుకోండి",
+    "grihasta": "గృహస్థ (వినియోగదారు)",
+    "acharya": "ఆచార్య (పూజారి)"
+  },
+  "home": {
+    "title": "హోమ్",
+    "featured_acharyas": "ప్రత్యేక ఆచార్యులు",
+    "browse_acharyas": "అన్ని ఆచార్యులను చూడండి",
+    "search_placeholder": "పేరు, స్పెషలైజేషన్ ద్వారా వెతకండి...",
+    "no_acharyas": "ఆచార్యులు అందుబాటులో లేరు"
+  },
+  "acharya": {
+    "title": "ఆచార్య ప్రొఫైల్",
+    "specializations": "స్పెషలైజేషన్లు",
+    "languages": "భాషలు",
+    "experience": "అనుభవం",
+    "hourly_rate": "గంటకు రేటు",
+    "rating": "రేటింగ్",
+    "reviews": "రివ్యూలు",
+    "book_now": "ఇప్పుడే బుక్ చేయండి",
+    "chat": "చాట్",
+    "about": "గురించి",
+    "parampara": "పరంపర",
+    "location": "స్థానం",
+    "years_experience": "{{years}} సంవత్సరాలు"
+  },
+  "booking": {
+    "title": "ఆచార్యను బుక్ చేయండి",
+    "new_booking": "కొత్త బుకింగ్",
+    "my_bookings": "నా బుకింగ్‌లు",
+    "select_date": "తేదీని ఎంచుకోండి",
+    "select_time": "సమయాన్ని ఎంచుకోండి",
+    "select_pooja": "పూజ రకాన్ని ఎంచుకోండి",
+    "with_samagri": "సామగ్రితో",
+    "without_samagri": "సామగ్రి లేకుండా",
+    "duration": "వ్యవధి (గంటలు)",
+    "location": "స్థానం",
+    "special_instructions": "ప్రత్యేక సూచనలు",
+    "confirm_booking": "బుకింగ్ నిర్ధారించండి",
+    "status": {
+      "pending": "పెండింగ్",
+      "confirmed": "నిర్ధారించబడింది",
+      "in_progress": "ప్రగతిలో ఉంది",
+      "completed": "పూర్తయింది",
+      "cancelled": "రద్దు చేయబడింది"
+    },
+    "cancel_booking": "బుకింగ్ రద్దు చేయండి",
+    "rate_booking": "రేట్ చేసి రివ్యూ చేయండి"
+  },
+  "payment": {
+    "title": "చెల్లింపు",
+    "amount": "మొత్తం",
+    "pay_now": "ఇప్పుడే చెల్లించండి",
+    "payment_success": "చెల్లింపు విజయవంతమైంది",
+    "payment_failed": "చెల్లింపు విఫలమైంది",
+    "processing": "చెల్లింపు ప్రాసెస్ అవుతోంది...",
+    "breakdown": "ధర వివరాలు",
+    "base_price": "బేస్ ధర",
+    "platform_fee": "ప్లాట్‌ఫారమ్ ఫీజు",
+    "gst": "జిఎస్టి (18%)",
+    "total": "మొత్తం",
+    "loyalty_discount": "లాయల్టీ డిస్కౌంట్"
+  },
+  "profile": {
+    "title": "ప్రొఫైల్",
+    "edit_profile": "ప్రొఫైల్ సవరించండి",
+    "name": "పేరు",
+    "email": "ఇమెయిల్",
+    "phone": "ఫోన్",
+    "location": "స్థానం",
+    "save": "సేవ్ చేయండి",
+    "cancel": "రద్దు చేయండి",
+    "loyalty": {
+      "title": "లాయల్టీ ప్రోగ్రామ్",
+      "tier": "టైర్",
+      "points": "పాయింట్లు",
+      "total_bookings": "మొత్తం బుకింగ్‌లు",
+      "benefits": "ప్రయోజనాలు"
+    }
+  },
+  "chat": {
+    "title": "చాట్",
+    "type_message": "సందేశాన్ని టైప్ చేయండి...",
+    "send": "పంపండి",
+    "no_conversations": "ఇంకా సంభాషణలు లేవు",
+    "online": "ఆన్‌లైన్",
+    "offline": "ఆఫ్‌లైన్",
+    "typing": "టైప్ చేస్తున్నారు..."
+  },
+  "notifications": {
+    "title": "నోటిఫికేషన్లు",
+    "no_notifications": "నోటిఫికేషన్లు లేవు",
+    "booking_confirmed": "బుకింగ్ నిర్ధారించబడింది",
+    "payment_received": "చెల్లింపు అందుకుంది",
+    "new_message": "కొత్త సందేశం"
+  },
+  "panchanga": {
+    "title": "పంచాంగం",
+    "today": "ఈరోజు",
+    "tithi": "తిథి",
+    "nakshatra": "నక్షత్రం",
+    "yoga": "యోగ",
+    "karana": "కరణ",
+    "sunrise": "సూర్యోదయం",
+    "sunset": "సూర్యాస్తమయం",
+    "muhurat": "ముహూర్తం",
+    "rahu_kalam": "రాహు కాలం",
+    "festivals": "పండుగలు",
+    "auspicious": "శుభం",
+    "inauspicious": "అశుభం"
+  },
+  "wallet": {
+    "title": "వాలెట్",
+    "balance": "బ్యాలెన్స్",
+    "add_money": "డబ్బు జోడించండి",
+    "withdraw": "ఉపసంహరించుకోండి",
+    "transactions": "లావాదేవీలు",
+    "earnings": "ఆదాయాలు",
+    "referral_bonus": "రిఫరల్ బోనస్"
+  },
+  "common": {
+    "loading": "లోడ్ అవుతోంది...",
+    "error": "ఏదో తప్పు జరిగింది",
+    "retry": "మళ్ళీ ప్రయత్నించండి",
+    "success": "విజయవంతం!",
+    "confirm": "నిర్ధారించండి",
+    "cancel": "రద్దు చేయండి",
+    "save": "సేవ్ చేయండి",
+    "edit": "సవరించండి",
+    "delete": "తొలగించండి",
+    "back": "వెనక్కి",
+    "next": "తదుపరి",
+    "done": "పూర్తయింది",
+    "close": "మూసివేయండి",
+    "search": "వెతకండి",
+    "filter": "ఫిల్టర్",
+    "sort": "సార్ట్",
+    "refresh": "రిఫ్రెష్",
+    "settings": "సెట్టింగ్‌లు",
+    "language": "భాష",
+    "theme": "థీమ్",
+    "dark_mode": "డార్క్ మోడ్",
+    "light_mode": "లైట్ మోడ్"
+  },
+  "errors": {
+    "network": "నెట్‌వర్క్ లోపం. మీ కనెక్షన్‌ని తనిఖీ చేయండి.",
+    "server": "సర్వర్ లోపం. తర్వాత మళ్ళీ ప్రయత్నించండి.",
+    "auth": "ప్రమాణీకరణ విఫలమైంది",
+    "validation": "డేటా ధృవీకరణ విఫలమైంది"
+  }
+}

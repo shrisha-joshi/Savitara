@@ -223,3 +223,10 @@ cache = CacheService()
 async def get_cache() -> CacheService:
     """Get cache service instance"""
     return cache
+
+
+async def get_cache_client():
+    """Get the underlying Redis client for direct access"""
+    if cache.redis is None:
+        await cache.connect()
+    return cache.redis

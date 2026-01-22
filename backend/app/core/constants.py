@@ -17,6 +17,7 @@ MONGO_COND = "$cond"
 MONGO_EQ = "$eq"
 MONGO_REGEX = "$regex"
 MONGO_OPTIONS = "$options"
+MONGO_PROJECT = "$project"
 
 # Field Names
 FIELD_RATING = "$rating"

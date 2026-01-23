@@ -40,6 +40,7 @@ class UserRole(str, Enum):
 class UserStatus(str, Enum):
     """User status enumeration"""
     PENDING = "pending"
+    ACTIVE = "active"
     VERIFIED = "verified"
     SUSPENDED = "suspended"
 

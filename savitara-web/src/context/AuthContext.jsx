@@ -50,7 +50,8 @@ export const AuthProvider = ({ children }) => {
   const loginWithEmail = async (email, password) => {
     try {
       const response = await api.post('/auth/login', { email, password })
-      const { access_token, refresh_token, user: userData } = response.data
+      // Backend returns StandardResponse: { success, data: {...}, message }
+      const { access_token, refresh_token, user: userData } = response.data.data || response.data
 
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)
@@ -74,7 +75,8 @@ export const AuthProvider = ({ children }) => {
   const registerWithEmail = async (data) => {
     try {
       const response = await api.post('/auth/register', data)
-      const { access_token, refresh_token, user: userData } = response.data
+      // Backend returns StandardResponse: { success, data: {...}, message }
+      const { access_token, refresh_token, user: userData } = response.data.data || response.data
 
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)

@@ -45,7 +45,7 @@ class Settings(BaseSettings):
         return v
     
     # Database
-    MONGODB_URL: str = "mongodb://localhost:27017"
+    MONGODB_URL: str = "mongodb+srv://sheshagirijoshi18_db_savitara:savitara123@cluster0.0q2ghgt.mongodb.net/?appName=Cluster0"
     MONGODB_DB_NAME: str = "savitara"
     MONGODB_MIN_POOL_SIZE: int = 10
     MONGODB_MAX_POOL_SIZE: int = 100
@@ -55,21 +55,21 @@ class Settings(BaseSettings):
     CACHE_TTL: int = 300
     
     # Google OAuth - SonarQube: Never expose in logs
-    GOOGLE_CLIENT_ID: str
-    GOOGLE_CLIENT_SECRET: str
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
     
     # Razorpay
-    RAZORPAY_KEY_ID: str
-    RAZORPAY_KEY_SECRET: str
+    RAZORPAY_KEY_ID: Optional[str] = None
+    RAZORPAY_KEY_SECRET: Optional[str] = None
     RAZORPAY_WEBHOOK_SECRET: str = ""  # Optional for webhook verification
     
     # Firebase
-    FIREBASE_PROJECT_ID: str
-    FIREBASE_PRIVATE_KEY_ID: str
-    FIREBASE_PRIVATE_KEY: str
-    FIREBASE_CLIENT_EMAIL: str
-    FIREBASE_CLIENT_ID: str
+    FIREBASE_PROJECT_ID: Optional[str] = None
+    FIREBASE_PRIVATE_KEY_ID: Optional[str] = None
+    FIREBASE_PRIVATE_KEY: Optional[str] = None
+    FIREBASE_CLIENT_EMAIL: Optional[str] = None
+    FIREBASE_CLIENT_ID: Optional[str] = None
     FIREBASE_CREDENTIALS_PATH: str = "./firebase-key.json"
     
     # Email
@@ -92,6 +92,8 @@ class Settings(BaseSettings):
     
     # Enterprise Features - Elasticsearch
     ELASTICSEARCH_HOSTS: Optional[str] = '["http://localhost:9200"]'
+    ELASTICSEARCH_USERNAME: Optional[str] = None
+    ELASTICSEARCH_PASSWORD: Optional[str] = None
     ENABLE_ELASTICSEARCH: bool = True
     
     # Enterprise Features - Encryption
@@ -121,7 +123,9 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"
         
     def get_database_url(self) -> str:
         """Get MongoDB connection URL - SonarQube: Secure connection string"""

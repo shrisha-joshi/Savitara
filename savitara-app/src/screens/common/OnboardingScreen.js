@@ -9,12 +9,21 @@ const OnboardingScreen = () => {
   const [role, setRole] = useState('grihasta');
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    phone_number: '',
-    location: '',
+    name: '',
+    phone: '',
+    location: {
+      city: '',
+      state: '',
+      country: 'India'
+    },
+    parampara: '',
+    preferences: {},
+    // Acharya specific fields
+    gotra: '',
     languages: [],
     specializations: [],
     experience_years: '',
-    hourly_rate: '',
+    study_place: '',
     bio: '',
   });
 
@@ -24,26 +33,31 @@ const OnboardingScreen = () => {
       
       if (role === 'grihasta') {
         await userAPI.onboardGrihasta({
-          phone_number: formData.phone_number,
+          name: formData.name,
+          phone: formData.phone,
           location: formData.location,
-          preferred_languages: formData.languages,
+          parampara: formData.parampara,
+          preferences: formData.preferences || {}
         });
       } else {
         await userAPI.onboardAcharya({
-          phone_number: formData.phone_number,
+          name: formData.name,
+          phone: formData.phone,
           location: formData.location,
-          languages: formData.languages,
+          parampara: formData.parampara,
+          gotra: formData.gotra,
+          experience_years: parseInt(formData.experience_years) || 0,
+          study_place: formData.study_place,
           specializations: formData.specializations,
-          experience_years: parseInt(formData.experience_years),
-          hourly_rate: parseFloat(formData.hourly_rate),
-          bio: formData.bio,
+          languages: formData.languages,
+          bio: formData.bio || ''
         });
       }
       
       await refreshUser();
     } catch (error) {
       console.error('Onboarding failed:', error);
-      alert(error.response?.data?.message || 'Onboarding failed');
+      alert(error.response?.data?.detail || error.response?.data?.message || 'Onboarding failed');
     } finally {
       setLoading(false);
     }
@@ -70,34 +84,89 @@ const OnboardingScreen = () => {
       </View>
       
       <TextInput
+        label="Full Name *"
+        value={formData.name}
+        onChangeText={(text) => setFormData({ ...formData, name: text })}
+        style={styles.input}
+      />
+      
+      <TextInput
         label="Phone Number *"
-        value={formData.phone_number}
-        onChangeText={(text) => setFormData({ ...formData, phone_number: text })}
+        value={formData.phone}
+        onChangeText={(text) => setFormData({ ...formData, phone: text })}
         style={styles.input}
         keyboardType="phone-pad"
       />
       
       <TextInput
-        label="Location *"
-        value={formData.location}
-        onChangeText={(text) => setFormData({ ...formData, location: text })}
+        label="City *"
+        value={formData.location.city}
+        onChangeText={(text) => setFormData({ 
+          ...formData, 
+          location: { ...formData.location, city: text } 
+        })}
         style={styles.input}
       />
       
       <TextInput
-        label="Languages (comma separated) *"
-        value={formData.languages.join(', ')}
-        onChangeText={(text) => setFormData({ ...formData, languages: text.split(',').map(s => s.trim()) })}
+        label="State *"
+        value={formData.location.state}
+        onChangeText={(text) => setFormData({ 
+          ...formData, 
+          location: { ...formData.location, state: text } 
+        })}
         style={styles.input}
       />
+      
+      <TextInput
+        label="Parampara (Spiritual Tradition) *"
+        value={formData.parampara}
+        onChangeText={(text) => setFormData({ ...formData, parampara: text })}
+        style={styles.input}
+        placeholder="e.g., Shaiva, Vaishnava, Shakta"
+      />
+      
+      {role === 'grihasta' && (
+        <TextInput
+          label="Preferred Language"
+          value={formData.preferences?.preferred_language || ''}
+          onChangeText={(text) => setFormData({ 
+            ...formData, 
+            preferences: { ...formData.preferences, preferred_language: text } 
+          })}
+          style={styles.input}
+        />
+      )}
       
       {role === 'acharya' && (
         <>
           <TextInput
+            label="Gotra *"
+            value={formData.gotra}
+            onChangeText={(text) => setFormData({ ...formData, gotra: text })}
+            style={styles.input}
+          />
+          
+          <TextInput
+            label="Languages (comma separated) *"
+            value={formData.languages.join(', ')}
+            onChangeText={(text) => setFormData({ 
+              ...formData, 
+              languages: text.split(',').map(s => s.trim()).filter(Boolean) 
+            })}
+            style={styles.input}
+            placeholder="e.g., Sanskrit, Hindi, English"
+          />
+          
+          <TextInput
             label="Specializations (comma separated) *"
             value={formData.specializations.join(', ')}
-            onChangeText={(text) => setFormData({ ...formData, specializations: text.split(',').map(s => s.trim()) })}
+            onChangeText={(text) => setFormData({ 
+              ...formData, 
+              specializations: text.split(',').map(s => s.trim()).filter(Boolean) 
+            })}
             style={styles.input}
+            placeholder="e.g., Vedic Rituals, Astrology"
           />
           
           <TextInput
@@ -109,11 +178,11 @@ const OnboardingScreen = () => {
           />
           
           <TextInput
-            label="Hourly Rate (₹) *"
-            value={formData.hourly_rate}
-            onChangeText={(text) => setFormData({ ...formData, hourly_rate: text })}
+            label="Study Place *"
+            value={formData.study_place}
+            onChangeText={(text) => setFormData({ ...formData, study_place: text })}
             style={styles.input}
-            keyboardType="numeric"
+            placeholder="Where you studied"
           />
           
           <TextInput
@@ -123,6 +192,7 @@ const OnboardingScreen = () => {
             style={styles.input}
             multiline
             numberOfLines={4}
+            placeholder="Brief description about yourself"
           />
         </>
       )}

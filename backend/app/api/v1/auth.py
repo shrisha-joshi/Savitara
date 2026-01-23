@@ -168,6 +168,7 @@ async def google_login(
                     "status": user.status.value,
                     "credits": user.credits,
                     "is_new_user": is_new_user,
+                    "onboarded": user.status in [UserStatus.ACTIVE, UserStatus.VERIFIED],
                     "requires_onboarding": user.status == UserStatus.PENDING
                 }
             },
@@ -242,17 +243,18 @@ async def register(
                     "email": user.email,
                     "role": user.role.value,
                     "status": user.status.value,
-                    "is_new_user": True
+                    "is_new_user": True,
+                    "onboarded": user.status in [UserStatus.ACTIVE, UserStatus.VERIFIED]
                 }
             }
         )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Registration error: {str(e)}")
+        logger.error(f"Registration error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
+            detail="Registration failed. Please try again."
         )
 
 
@@ -274,17 +276,26 @@ async def login(
         # Find user
         user_doc = await db.users.find_one({"email": request.email})
         if not user_doc:
-            raise AuthenticationError(message="Invalid email or password")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password"
+            )
             
         user = User(**user_doc)
         
         # Verify password
         if not user.password_hash or not security_manager.verify_password(request.password, user.password_hash):
-            raise AuthenticationError(message="Invalid email or password")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password"
+            )
             
         # Check status
         if user.status == UserStatus.SUSPENDED:
-            raise AuthenticationError(message="Account suspended")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account suspended"
+            )
             
         # Update last login
         await db.users.update_one(
@@ -322,10 +333,10 @@ async def login(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Login error: {str(e)}")
+        logger.error(f"Login error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
+            detail="Login failed. Please try again."
         )
 
 

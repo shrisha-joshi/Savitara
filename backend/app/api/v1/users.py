@@ -109,22 +109,40 @@ async def grihasta_onboarding(
             "status": UserStatus.ACTIVE.value,
             "updated_at": datetime.now(timezone.utc)
         }
-        if referral_credits > 0:
-            update_data["$inc"] = {"credits": referral_credits}
         
-        await db.users.update_one(
-            {"_id": user_id},
-            {"$set": update_data}
-        )
+        if referral_credits > 0:
+            await db.users.update_one(
+                {"_id": user_id},
+                {
+                    "$set": update_data,
+                    "$inc": {"credits": referral_credits}
+                }
+            )
+        else:
+            await db.users.update_one(
+                {"_id": user_id},
+                {"$set": update_data}
+            )
         
         logger.info(f"Grihasta onboarding completed for user {user_id}")
+        
+        # Get updated user data
+        updated_user = await db.users.find_one({"_id": user_id})
         
         return StandardResponse(
             success=True,
             data={
                 "profile_id": str(profile.id),
                 "status": UserStatus.ACTIVE.value,
-                "credits_earned": referral_credits
+                "credits_earned": referral_credits,
+                "user": {
+                    "id": str(updated_user["_id"]),
+                    "email": updated_user["email"],
+                    "role": updated_user["role"],
+                    "status": updated_user["status"],
+                    "credits": updated_user["credits"],
+                    "onboarded": True
+                }
             },
             message="Onboarding completed successfully"
         )
@@ -212,12 +230,23 @@ async def acharya_onboarding(
         
         logger.info(f"Acharya onboarding completed for user {user_id}, pending verification")
         
+        # Get updated user data
+        updated_user = await db.users.find_one({"_id": user_id})
+        
         return StandardResponse(
             success=True,
             data={
                 "profile_id": str(profile.id),
                 "status": UserStatus.PENDING.value,
-                "message": "Your profile is under review. You'll be notified once verified."
+                "message": "Your profile is under review. You'll be notified once verified.",
+                "user": {
+                    "id": str(updated_user["_id"]),
+                    "email": updated_user["email"],
+                    "role": updated_user["role"],
+                    "status": updated_user["status"],
+                    "credits": updated_user["credits"],
+                    "onboarded": updated_user["status"] in [UserStatus.ACTIVE.value, UserStatus.VERIFIED.value]
+                }
             },
             message="Onboarding submitted for verification"
         )

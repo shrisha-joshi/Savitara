@@ -58,10 +58,10 @@ export const authAPI = {
 
 // User APIs
 export const userAPI = {
-  getProfile: () => api.get('/users/me'),
-  updateProfile: (data) => api.put('/users/me', data),
-  onboardGrihasta: (data) => api.post('/users/onboard/grihasta', data),
-  onboardAcharya: (data) => api.post('/users/onboard/acharya', data),
+  getProfile: () => api.get('/users/profile'),
+  updateProfile: (data) => api.put('/users/profile', data),
+  onboardGrihasta: (data) => api.post('/users/grihasta/onboarding', data),
+  onboardAcharya: (data) => api.post('/users/acharya/onboarding', data),
   searchAcharyas: (params) => api.get('/users/acharyas/search', { params }),
   getAcharya: (id) => api.get(`/users/acharyas/${id}`),
 };

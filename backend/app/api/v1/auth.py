@@ -165,7 +165,7 @@ async def google_login(
                 email=google_info['email'],
                 google_id=google_info['google_id'],
                 role=auth_request.role,
-                status=UserStatus.ACTIVE if auth_request.role == UserRole.GRIHASTA else UserStatus.PENDING,
+                status=UserStatus.VERIFIED if auth_request.role == UserRole.GRIHASTA else UserStatus.PENDING,
                 profile_picture=google_info.get('picture'),
                 credits=100  # Welcome bonus
             )

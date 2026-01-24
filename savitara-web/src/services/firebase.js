@@ -3,7 +3,8 @@ import { getMessaging, getToken, onMessage } from 'firebase/messaging'
 import { 
   getAuth, 
   GoogleAuthProvider, 
-  signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
   onAuthStateChanged 
 } from 'firebase/auth'
@@ -28,24 +29,42 @@ export const googleProvider = new GoogleAuthProvider()
 googleProvider.addScope('email')
 googleProvider.addScope('profile')
 
-// Sign in with Google using popup
+// Check for redirect result on page load (for redirect flow)
+export const checkRedirectResult = async () => {
+  try {
+    console.log('🔍 Checking for redirect result...')
+    const result = await getRedirectResult(auth)
+    if (result) {
+      console.log('✅ Got redirect result, user:', result.user.email)
+      const idToken = await result.user.getIdToken()
+      return {
+        user: {
+          uid: result.user.uid,
+          email: result.user.email,
+          displayName: result.user.displayName,
+          photoURL: result.user.photoURL,
+        },
+        idToken
+      }
+    }
+    console.log('📭 No redirect result found')
+    return null
+  } catch (error) {
+    console.error('❌ Redirect result error:', error)
+    throw error
+  }
+}
+
+// Sign in with Google using redirect (more reliable than popup)
 export const signInWithGoogle = async () => {
   try {
-    const result = await signInWithPopup(auth, googleProvider)
-    const user = result.user
-    // Get the ID token to send to backend
-    const idToken = await user.getIdToken()
-    return {
-      user: {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-      },
-      idToken
-    }
+    console.log('🔄 Starting Google Sign-In with redirect...')
+    // Use redirect flow - this will navigate away from the page
+    await signInWithRedirect(auth, googleProvider)
+    // This line won't be reached - page will redirect to Google
+    return null
   } catch (error) {
-    console.error('Google sign-in error:', error)
+    console.error('❌ Google sign-in error:', error)
     console.error('Error code:', error.code)
     console.error('Error message:', error.message)
     
@@ -53,15 +72,6 @@ export const signInWithGoogle = async () => {
     let errorMessage
     
     switch (error.code) {
-      case 'auth/popup-closed-by-user':
-        errorMessage = 'Sign-in popup was closed. Please try again.'
-        break
-      case 'auth/popup-blocked':
-        errorMessage = 'Popup was blocked by browser. Please allow popups for this site.'
-        break
-      case 'auth/cancelled-popup-request':
-        errorMessage = 'Sign-in was cancelled. Please try again.'
-        break
       case 'auth/operation-not-allowed':
         errorMessage = 'Google Sign-In is not enabled. Please contact support.'
         break

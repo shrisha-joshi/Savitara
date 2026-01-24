@@ -2,7 +2,7 @@ import { createContext, useState, useContext, useEffect, useMemo } from 'react'
 import PropTypes from 'prop-types'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
-import { signInWithGoogle as firebaseGoogleSignIn, firebaseSignOut } from '../services/firebase'
+import { signInWithGoogle as firebaseGoogleSignIn, firebaseSignOut, checkRedirectResult } from '../services/firebase'
 import { toast } from 'react-toastify'
 
 const AuthContext = createContext({})
@@ -22,7 +22,56 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     checkAuth()
+    // Also check for Firebase redirect result
+    handleRedirectResult()
   }, [])
+
+  // Handle Firebase redirect result (for browsers that block popups)
+  const handleRedirectResult = async () => {
+    try {
+      const result = await checkRedirectResult()
+      if (result) {
+        console.log('📥 Processing redirect result...')
+        await processGoogleLogin(result.idToken)
+      }
+    } catch (error) {
+      console.error('Redirect result error:', error)
+      toast.error('Google sign-in failed. Please try again.')
+    }
+  }
+
+  // Process Google login with the ID token
+  const processGoogleLogin = async (idToken) => {
+    try {
+      console.log('📤 Sending token to backend...')
+      const response = await api.post('/auth/google', {
+        id_token: idToken,
+        role: 'grihasta'
+      })
+
+      console.log('✅ Backend response:', response.data)
+      const { data } = response.data
+      const { access_token, refresh_token, user: userData } = data
+      
+      localStorage.setItem('accessToken', access_token)
+      localStorage.setItem('refreshToken', refresh_token)
+      
+      setUser(userData)
+      
+      if (userData.requires_onboarding || userData.is_new_user) {
+        navigate('/onboarding')
+      } else {
+        navigate('/dashboard')
+      }
+
+      toast.success('Login successful!')
+      return true
+    } catch (error) {
+      console.error('Backend login failed:', error)
+      toast.error(error.response?.data?.detail || error.response?.data?.message || 'Login failed')
+      throw error
+    }
+  }
 
   const checkAuth = async () => {
     const accessToken = localStorage.getItem('accessToken')
@@ -91,7 +140,7 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  // Updated to use Firebase Google Sign-In
+  // Updated to use Firebase Google Sign-In with popup/redirect fallback
   const loginWithGoogle = async (legacyCredential = null) => {
     try {
       let idToken
@@ -99,39 +148,24 @@ export const AuthProvider = ({ children }) => {
       // If called with a credential (legacy @react-oauth/google), use it
       if (legacyCredential) {
         idToken = legacyCredential
+        await processGoogleLogin(idToken)
       } else {
-        // Use Firebase Google Sign-In
+        // Use Firebase Google Sign-In (popup with redirect fallback)
+        console.log('🔐 Calling Firebase Google Sign-In...')
         const result = await firebaseGoogleSignIn()
-        idToken = result.idToken
+        
+        // If result is null, redirect was triggered - page will reload
+        if (!result) {
+          console.log('🔄 Redirect triggered, waiting for page reload...')
+          return
+        }
+        
+        console.log('✅ Got result from Firebase:', result.user.email)
+        await processGoogleLogin(result.idToken)
       }
-
-      // Send token to backend with correct field name and role
-      const response = await api.post('/auth/google', {
-        id_token: idToken,  // Backend expects 'id_token', not 'token'
-        role: 'grihasta'    // Default role for user app
-      })
-
-      const { data } = response.data // Backend returns StandardResponse with data field
-      const { access_token, refresh_token, user: userData } = data
-      
-      localStorage.setItem('accessToken', access_token)
-      localStorage.setItem('refreshToken', refresh_token)
-      
-      setUser(userData)
-      
-      // Check if user needs onboarding
-      // Backend logic: "requires_onboarding": not (user.onboarded and profile_exists)
-      // Frontend decides navigation based on this
-      if (userData.requires_onboarding || userData.is_new_user) {
-        navigate('/onboarding')
-      } else {
-        navigate('/dashboard')
-      }
-
-      toast.success('Login successful!')
     } catch (error) {
       console.error('Login failed:', error)
-      toast.error(error.response?.data?.detail || error.response?.data?.message || 'Login failed')
+      toast.error(error.response?.data?.detail || error.response?.data?.message || error.message || 'Login failed')
       throw error
     }
   }

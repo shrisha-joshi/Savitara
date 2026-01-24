@@ -20,7 +20,19 @@ class FirebaseService:
     """Firebase Cloud Messaging service"""
     
     def __init__(self):
-        """Initialize Firebase Admin SDK"""
+        """Initialize Firebase Admin SDK with lazy loading"""
+        self._initialized = False
+        self._initialization_error = None
+        
+    def _ensure_initialized(self):
+        """Lazy initialization of Firebase - only when first used"""
+        if self._initialized:
+            return True
+            
+        if self._initialization_error:
+            logger.warning(f"Firebase previously failed to initialize: {self._initialization_error}")
+            return False
+            
         try:
             # Check if Firebase is already initialized
             if not firebase_admin._apps:
@@ -28,8 +40,10 @@ class FirebaseService:
                 cred_path = Path(settings.FIREBASE_CREDENTIALS_PATH)
                 
                 if not cred_path.exists():
-                    logger.error(f"Firebase credentials file not found: {cred_path}")
-                    raise FileNotFoundError(f"Firebase credentials not found: {cred_path}")
+                    error_msg = f"Firebase credentials file not found: {cred_path}"
+                    logger.warning(f"{error_msg} - Push notifications will be disabled")
+                    self._initialization_error = error_msg
+                    return False
                 
                 cred = credentials.Certificate(str(cred_path))
                 firebase_admin.initialize_app(cred)
@@ -37,13 +51,15 @@ class FirebaseService:
                 logger.info("Firebase Admin SDK initialized successfully")
             else:
                 logger.info("Firebase Admin SDK already initialized")
+            
+            self._initialized = True
+            return True
                 
         except Exception as e:
-            logger.error(f"Firebase initialization error: {e}", exc_info=True)
-            raise ExternalServiceError(
-                service_name="Firebase",
-                details={"error": str(e)}
-            )
+            error_msg = f"Firebase initialization error: {e}"
+            logger.warning(f"{error_msg} - Push notifications will be disabled")
+            self._initialization_error = str(e)
+            return False
     
     def send_notification(
         self,
@@ -69,6 +85,14 @@ class FirebaseService:
         Raises:
             ExternalServiceError: If notification sending fails
         """
+        # Check if Firebase is initialized
+        if not self._ensure_initialized():
+            logger.warning("Firebase not initialized - notification not sent")
+            raise ExternalServiceError(
+                service_name="Firebase",
+                details={"error": "Firebase not configured", "reason": self._initialization_error}
+            )
+            
         try:
             # Build notification
             notification = messaging.Notification(
@@ -139,6 +163,14 @@ class FirebaseService:
         Returns:
             Results with success/failure counts
         """
+        # Check if Firebase is initialized
+        if not self._ensure_initialized():
+            logger.warning("Firebase not initialized - multicast notification not sent")
+            raise ExternalServiceError(
+                service_name="Firebase",
+                details={"error": "Firebase not configured", "reason": self._initialization_error}
+            )
+            
         try:
             if len(fcm_tokens) > 500:
                 raise ValueError("Maximum 500 tokens allowed per multicast")

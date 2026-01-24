@@ -5,7 +5,7 @@ SonarQube: S5122 - Proper authorization checks
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 import logging
 from datetime import datetime, timedelta, timezone
 from bson import ObjectId
@@ -31,7 +31,7 @@ MONGO_COND = "$cond"
 TIME_RANGE_DESC = "Time range"
 
 
-def get_date_range(time_range: str) -> tuple[datetime, datetime]:
+def get_date_range(time_range: str) -> Tuple[datetime, datetime]:
     """Calculate start and end dates based on time range"""
     now = datetime.now(timezone.utc)
     end_date = now

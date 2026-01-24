@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     # CORS - SonarQube: Validate origins
-    ALLOWED_ORIGINS: str = "http://localhost:3000"
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
     
     @validator("ALLOWED_ORIGINS")
     def validate_origins(cls, v, values):
@@ -44,8 +44,8 @@ class Settings(BaseSettings):
             return False
         return v
     
-    # Database
-    MONGODB_URL: str = "mongodb+srv://sheshagirijoshi18_db_savitara:savitara123@cluster0.0q2ghgt.mongodb.net/?appName=Cluster0"
+    # Database - MongoDB Atlas
+    MONGODB_URL: str
     MONGODB_DB_NAME: str = "savitara"
     MONGODB_MIN_POOL_SIZE: int = 10
     MONGODB_MAX_POOL_SIZE: int = 100
@@ -78,6 +78,14 @@ class Settings(BaseSettings):
     SMTP_USER: Optional[str] = None
     SMTP_PASSWORD: Optional[str] = None
     EMAIL_FROM: str = "noreply@savitara.com"
+    EMAIL_FROM_NAME: str = "Savitara"
+    EMAIL_PROVIDER: str = "smtp"  # 'smtp' or 'sendgrid'
+    SENDGRID_API_KEY: Optional[str] = None
+    
+    # SMS (Twilio)
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
+    TWILIO_PHONE_NUMBER: Optional[str] = None
     
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60

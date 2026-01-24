@@ -4,7 +4,7 @@ SonarQube: S4502 - CSRF protection
 SonarQube: S5122 - CORS configuration
 SonarQube: S4830 - Certificate validation
 """
-from fastapi import FastAPI, Request, status, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, status, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
@@ -60,14 +60,24 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Savitara application...")
     
     try:
-        # Connect to MongoDB
-        await DatabaseManager.connect_to_database()
+        # Connect to MongoDB (non-blocking - app will start even if it fails)
+        try:
+            await DatabaseManager.connect_to_database()
+        except Exception as e:
+            logger.error(f"MongoDB connection failed: {e}")
+            logger.warning("Application starting without MongoDB - some features may not work")
         
-        # Connect rate limiter Redis
-        await rate_limiter.connect_redis()
+        # Connect rate limiter Redis (non-blocking)
+        try:
+            await rate_limiter.connect_redis()
+        except Exception as e:
+            logger.warning(f"Redis rate limiter connection failed: {e}")
         
-        # Connect cache Redis
-        await cache.connect()
+        # Connect cache Redis (non-blocking)
+        try:
+            await cache.connect()
+        except Exception as e:
+            logger.warning(f"Redis cache connection failed: {e}")
         
         # Initialize search service (Elasticsearch)
         try:
@@ -76,12 +86,14 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Search service initialization failed: {e}")
         
-        # Create database indexes for performance
+        # Create database indexes for performance (non-blocking)
         try:
-            db = DatabaseManager.get_database()
-            optimizer = QueryOptimizer(db)
-            await optimizer.create_all_indexes()
-            logger.info("Database indexes created")
+            # Check db connection before index creation
+            if DatabaseManager.client is not None and DatabaseManager.db is not None:
+                db = DatabaseManager.db
+                optimizer = QueryOptimizer(db)
+                await optimizer.create_all_indexes()
+                logger.info("Database indexes created")
         except Exception as e:
             logger.warning(f"Index creation failed: {e}")
         
@@ -92,9 +104,12 @@ async def lifespan(app: FastAPI):
         advanced_rate_limiter = AdvancedRateLimiter(redis_client)
         app.state.rate_limiter = advanced_rate_limiter
         
-        # Initialize audit service
-        db = DatabaseManager.get_database()
-        app.state.audit_service = AuditService(db)
+        # Initialize audit service (only if DB is available)
+        if DatabaseManager.db is not None:
+            app.state.audit_service = AuditService(DatabaseManager.db)
+        else:
+            app.state.audit_service = None
+            logger.warning("Audit service not initialized - database unavailable")
         
         logger.info("Application startup complete")
         
@@ -183,6 +198,9 @@ async def add_request_id_and_timing(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time"] = str(process_time)
     
+    # Fix for Firebase Auth COOP
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+    
     # Log
     logger.info(
         f"Request: {request.method} {request.url.path} - "
@@ -194,12 +212,31 @@ async def add_request_id_and_timing(request: Request, call_next):
     return response
 
 
+def get_cors_origin(request: Request) -> str:
+    """Get the appropriate CORS origin from request"""
+    origin = request.headers.get("origin", "")
+    allowed = settings.ALLOWED_ORIGINS
+    if isinstance(allowed, list):
+        if origin in allowed:
+            return origin
+        return allowed[0] if allowed else "*"
+    return origin if origin else "*"
+
+
+def add_cors_headers(response: JSONResponse, request: Request) -> JSONResponse:
+    """Add CORS headers to error responses"""
+    response.headers["Access-Control-Allow-Origin"] = get_cors_origin(request)
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+    return response
+
+
 # Exception Handlers
 @app.exception_handler(SavitaraException)
 async def savitara_exception_handler(request: Request, exc: SavitaraException):
     """Handle custom Savitara exceptions"""
     logger.error(f"Savitara Exception: {exc.error_code} - {exc.message}")
-    return JSONResponse(
+    response = JSONResponse(
         status_code=exc.status_code,
         content={
             "success": False,
@@ -212,6 +249,7 @@ async def savitara_exception_handler(request: Request, exc: SavitaraException):
             "request_id": getattr(request.state, "request_id", None)
         }
     )
+    return add_cors_headers(response, request)
 
 
 @app.exception_handler(RequestValidationError)
@@ -221,7 +259,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     SonarQube: Proper input validation
     """
     logger.warning(f"Validation Error: {exc.errors()}")
-    return JSONResponse(
+    response = JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "success": False,
@@ -234,12 +272,38 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "request_id": getattr(request.state, "request_id", None)
         }
     )
+    return add_cors_headers(response, request)
 
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     """Handle rate limit exceeded"""
     return handle_rate_limit_exceeded(request, exc)
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions with CORS headers"""
+    # Handle structured detail from get_db()
+    if isinstance(exc.detail, dict):
+        content = exc.detail
+    else:
+        content = {
+            "success": False,
+            "error": {
+                "code": f"HTTP_{exc.status_code}",
+                "message": exc.detail,
+                "details": {}
+            },
+            "timestamp": time.time(),
+            "request_id": getattr(request.state, "request_id", None)
+        }
+    
+    response = JSONResponse(
+        status_code=exc.status_code,
+        content=content
+    )
+    return add_cors_headers(response, request)
 
 
 @app.exception_handler(Exception)
@@ -249,19 +313,39 @@ async def general_exception_handler(request: Request, exc: Exception):
     SonarQube: S1181 - Catch specific exceptions
     """
     logger.error(f"Unhandled Exception: {str(exc)}", exc_info=True)
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "success": False,
-            "error": {
-                "code": "SERVER_001",
-                "message": "Internal server error" if settings.is_production else str(exc),
-                "details": {}
-            },
-            "timestamp": time.time(),
-            "request_id": getattr(request.state, "request_id", None)
-        }
-    )
+    
+    # Check if it's a database-related RuntimeError
+    error_message = str(exc)
+    if "Database" in error_message or "database" in error_message:
+        response = JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "success": False,
+                "error": {
+                    "code": "DB_001",
+                    "message": "Database service unavailable. Please try again later.",
+                    "details": {}
+                },
+                "timestamp": time.time(),
+                "request_id": getattr(request.state, "request_id", None)
+            }
+        )
+    else:
+        response = JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "success": False,
+                "error": {
+                    "code": "SERVER_001",
+                    "message": "Internal server error" if settings.is_production else str(exc),
+                    "details": {}
+                },
+                "timestamp": time.time(),
+                "request_id": getattr(request.state, "request_id", None)
+            }
+        )
+    
+    return add_cors_headers(response, request)
 
 
 # Health check endpoint
@@ -271,14 +355,14 @@ async def health_check():
     Health check endpoint
     SonarQube: Required for monitoring
     """
+    db_status = "unhealthy"
     try:
         # Check database connection
-        db = DatabaseManager.get_database()
-        await db.command('ping')
-        db_status = "healthy"
+        if DatabaseManager.db is not None:
+            await DatabaseManager.db.command('ping')
+            db_status = "healthy"
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
-        db_status = "unhealthy"
     
     return {
         "status": "healthy" if db_status == "healthy" else "degraded",
@@ -303,7 +387,7 @@ async def root():
 
 
 # Include API routers
-from app.api.v1 import auth, users, bookings, chat, reviews, admin
+from app.api.v1 import auth, users, bookings, chat, reviews, admin, panchanga, wallet, analytics
 
 API_V1_PREFIX = "/api/v1"
 app.include_router(auth.router, prefix=API_V1_PREFIX)
@@ -312,6 +396,9 @@ app.include_router(bookings.router, prefix=API_V1_PREFIX)
 app.include_router(chat.router, prefix=API_V1_PREFIX)
 app.include_router(reviews.router, prefix=API_V1_PREFIX)
 app.include_router(admin.router, prefix=API_V1_PREFIX)
+app.include_router(panchanga.router, prefix=API_V1_PREFIX)
+app.include_router(wallet.router, prefix=API_V1_PREFIX)
+app.include_router(analytics.router, prefix=API_V1_PREFIX)
 
 
 # WebSocket endpoint for real-time communication

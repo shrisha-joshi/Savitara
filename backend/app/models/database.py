@@ -81,6 +81,9 @@ class User(BaseModel):
     password_hash: Optional[str] = None
     role: UserRole
     status: UserStatus = UserStatus.PENDING
+    onboarded: bool = False  # Track if user completed onboarding
+    profile_picture: Optional[str] = None  # User's profile photo URL
+    referral_code: Optional[str] = None  # Unique referral code for user
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_login: Optional[datetime] = None

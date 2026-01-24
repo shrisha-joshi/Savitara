@@ -52,6 +52,8 @@ class DatabaseManager:
             
         except Exception as e:
             logger.error(f"Failed to connect to MongoDB: {e}")
+            cls.client = None
+            cls.db = None
             raise
     
     @classmethod
@@ -191,10 +193,13 @@ class DatabaseManager:
     
     @classmethod
     def get_database(cls) -> AsyncIOMotorDatabase:
-        """Get database instance"""
-        if cls.db is None:
-            raise RuntimeError("Database not initialized. Call connect_to_database first.")
+        """Get database instance - returns None if not connected"""
         return cls.db
+    
+    @classmethod
+    def is_connected(cls) -> bool:
+        """Check if database is connected"""
+        return cls.db is not None
 
 
 # Dependency for FastAPI
@@ -202,5 +207,20 @@ def get_db() -> AsyncIOMotorDatabase:
     """
     FastAPI dependency to get database
     SonarQube: Proper dependency injection
+    Raises ServiceUnavailableError if database is not connected
     """
-    return DatabaseManager.get_database()
+    db = DatabaseManager.get_database()
+    if db is None:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "DB_001",
+                    "message": "Database service unavailable. Please try again later.",
+                    "details": {}
+                }
+            }
+        )
+    return db

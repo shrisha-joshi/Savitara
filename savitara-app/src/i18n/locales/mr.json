@@ -1,0 +1,159 @@
+{
+  "welcome_message": "सवितारा मध्ये आपले स्वागत आहे",
+  "tagline": "आध्यात्मिक मार्गदर्शकांशी जोडा",
+  "auth": {
+    "sign_in": "साइन इन करा",
+    "sign_up": "साइन अप करा",
+    "sign_in_with_google": "Google सह साइन इन करा",
+    "logout": "लॉग आउट",
+    "select_role": "तुमची भूमिका निवडा",
+    "grihasta": "गृहस्थ (वापरकर्ता)",
+    "acharya": "आचार्य (पुजारी)"
+  },
+  "home": {
+    "title": "होम",
+    "featured_acharyas": "विशेष आचार्य",
+    "browse_acharyas": "सर्व आचार्य पहा",
+    "search_placeholder": "नाव, स्पेशलायझेशनद्वारे शोधा...",
+    "no_acharyas": "आचार्य उपलब्ध नाहीत"
+  },
+  "acharya": {
+    "title": "आचार्य प्रोफाइल",
+    "specializations": "स्पेशलायझेशन",
+    "languages": "भाषा",
+    "experience": "अनुभव",
+    "hourly_rate": "तासाचा दर",
+    "rating": "रेटिंग",
+    "reviews": "रिव्ह्यूज",
+    "book_now": "आता बुक करा",
+    "chat": "चॅट",
+    "about": "बद्दल",
+    "parampara": "परंपरा",
+    "location": "स्थान",
+    "years_experience": "{{years}} वर्षे"
+  },
+  "booking": {
+    "title": "आचार्य बुक करा",
+    "new_booking": "नवीन बुकिंग",
+    "my_bookings": "माझी बुकिंग",
+    "select_date": "तारीख निवडा",
+    "select_time": "वेळ निवडा",
+    "select_pooja": "पूजा प्रकार निवडा",
+    "with_samagri": "समग्रीसह",
+    "without_samagri": "समग्रीशिवाय",
+    "duration": "कालावधी (तास)",
+    "location": "स्थान",
+    "special_instructions": "विशेष सूचना",
+    "confirm_booking": "बुकिंग पुष्टी करा",
+    "status": {
+      "pending": "प्रलंबित",
+      "confirmed": "पुष्टी झाली",
+      "in_progress": "प्रगतीपथावर",
+      "completed": "पूर्ण",
+      "cancelled": "रद्द"
+    },
+    "cancel_booking": "बुकिंग रद्द करा",
+    "rate_booking": "रेट आणि रिव्ह्यू करा"
+  },
+  "payment": {
+    "title": "पेमेंट",
+    "amount": "रक्कम",
+    "pay_now": "आता पे करा",
+    "payment_success": "पेमेंट यशस्वी",
+    "payment_failed": "पेमेंट अयशस्वी",
+    "processing": "पेमेंट प्रोसेसिंग...",
+    "breakdown": "किंमत विवरण",
+    "base_price": "बेस किंमत",
+    "platform_fee": "प्लॅटफॉर्म फी",
+    "gst": "जीएसटी (18%)",
+    "total": "एकूण",
+    "loyalty_discount": "लॉयल्टी सूट"
+  },
+  "profile": {
+    "title": "प्रोफाइल",
+    "edit_profile": "प्रोफाइल संपादित करा",
+    "name": "नाव",
+    "email": "ईमेल",
+    "phone": "फोन",
+    "location": "स्थान",
+    "save": "जतन करा",
+    "cancel": "रद्द करा",
+    "loyalty": {
+      "title": "लॉयल्टी प्रोग्राम",
+      "tier": "टियर",
+      "points": "पॉइंट्स",
+      "total_bookings": "एकूण बुकिंग",
+      "benefits": "फायदे"
+    }
+  },
+  "chat": {
+    "title": "चॅट",
+    "type_message": "संदेश टाइप करा...",
+    "send": "पाठवा",
+    "no_conversations": "अजून संभाषण नाही",
+    "online": "ऑनलाइन",
+    "offline": "ऑफलाइन",
+    "typing": "टाइप करत आहे..."
+  },
+  "notifications": {
+    "title": "सूचना",
+    "no_notifications": "सूचना नाहीत",
+    "booking_confirmed": "बुकिंग पुष्टी झाली",
+    "payment_received": "पेमेंट मिळाले",
+    "new_message": "नवीन संदेश"
+  },
+  "panchanga": {
+    "title": "पंचांग",
+    "today": "आज",
+    "tithi": "तिथी",
+    "nakshatra": "नक्षत्र",
+    "yoga": "योग",
+    "karana": "करण",
+    "sunrise": "सूर्योदय",
+    "sunset": "सूर्यास्त",
+    "muhurat": "मुहूर्त",
+    "rahu_kalam": "राहू काल",
+    "festivals": "सण",
+    "auspicious": "शुभ",
+    "inauspicious": "अशुभ"
+  },
+  "wallet": {
+    "title": "वॉलेट",
+    "balance": "शिल्लक",
+    "add_money": "पैसे जोडा",
+    "withdraw": "काढा",
+    "transactions": "व्यवहार",
+    "earnings": "कमाई",
+    "referral_bonus": "रेफरल बोनस"
+  },
+  "common": {
+    "loading": "लोड होत आहे...",
+    "error": "काहीतरी चूक झाली",
+    "retry": "पुन्हा प्रयत्न करा",
+    "success": "यशस्वी!",
+    "confirm": "पुष्टी करा",
+    "cancel": "रद्द करा",
+    "save": "जतन करा",
+    "edit": "संपादित करा",
+    "delete": "हटवा",
+    "back": "मागे",
+    "next": "पुढे",
+    "done": "पूर्ण",
+    "close": "बंद करा",
+    "search": "शोधा",
+    "filter": "फिल्टर",
+    "sort": "क्रमवारी",
+    "refresh": "रिफ्रेश",
+    "settings": "सेटिंग्ज",
+    "language": "भाषा",
+    "theme": "थीम",
+    "dark_mode": "डार्क मोड",
+    "light_mode": "लाइट मोड"
+  },
+  "errors": {
+    "network": "नेटवर्क एरर. तुमचे कनेक्शन तपासा.",
+    "server": "सर्व्हर एरर. नंतर पुन्हा प्रयत्न करा.",
+    "auth": "प्रमाणीकरण अयशस्वी",
+    "validation": "डेटा व्हॅलिडेशन अयशस्वी"
+  }
+}

@@ -102,8 +102,11 @@ export const AuthProvider = ({ children }) => {
       ]);
       
       setUser(userData);
+      return userData; // Return user data for navigation decision
     } catch (err) {
-      setError(err.response?.data?.detail || 'Login failed');
+      // Handle specific error messages from backend
+      const errorMessage = err.response?.data?.detail || 'Login failed';
+      setError(errorMessage);
       throw err;
     } finally {
       setLoading(false);
@@ -125,8 +128,10 @@ export const AuthProvider = ({ children }) => {
       ]);
       
       setUser(userData);
+      return userData; // Return user data for navigation decision
     } catch (err) {
-      setError(err.response?.data?.detail || 'Registration failed');
+      const errorMessage = err.response?.data?.detail || 'Registration failed';
+      setError(errorMessage);
       throw err;
     } finally {
       setLoading(false);
@@ -147,7 +152,8 @@ export const AuthProvider = ({ children }) => {
   const refreshUser = async () => {
     try {
       const response = await userAPI.getProfile();
-      const userData = response.data;
+      // Handle StandardResponse format from backend
+      const userData = response.data.data || response.data;
       
       await AsyncStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
@@ -166,7 +172,8 @@ export const AuthProvider = ({ children }) => {
     logout,
     refreshUser,
     isAuthenticated: !!user,
-    isOnboarded: user?.onboarding_completed || false,
+    // Support both field names for compatibility
+    isOnboarded: user?.onboarded || user?.onboarding_completed || false,
     userRole: user?.role,
   }), [user, loading, error, login, logout, refreshUser]);
 

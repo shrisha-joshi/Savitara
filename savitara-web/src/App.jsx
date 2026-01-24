@@ -42,22 +42,29 @@ function App() {
     )
   }
 
+  // Helper to check if user has completed onboarding
+  const isOnboarded = user?.onboarded || user?.onboarding_completed
+
   return (
     <Routes>
       {/* Public routes */}
       <Route path="/" element={<Home />} />
-      <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login />} />
+      <Route path="/login" element={user ? <Navigate to={isOnboarded ? "/dashboard" : "/onboarding"} /> : <Login />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
       
+      {/* Onboarding route - accessible when logged in but not onboarded */}
+      <Route path="/onboarding" element={
+        !user ? <Navigate to="/login" /> :
+        isOnboarded ? <Navigate to="/dashboard" /> :
+        <Onboarding />
+      } />
+
       {/* Protected routes */}
       {!user && <Route path="*" element={<Navigate to="/login" />} />}
-      
-      {user && !user.onboarded && (
-        <Route path="/onboarding" element={<Onboarding />} />
-      )}
 
-      {user && user.onboarded && (
+      {/* Main app routes - only accessible if user is logged in AND onboarded */}
+      {user && isOnboarded && (
         <>
           <Route path="/profile" element={<Profile />} />
           
@@ -94,14 +101,14 @@ function App() {
       )}
       
       {/* Redirect to onboarding if not completed */}
-      {user && !user.onboarded && (
+      {user && !isOnboarded && (
         <Route path="*" element={<Navigate to="/onboarding" />} />
       )}
       
       {/* Redirect root to appropriate page */}
        <Route path="/" element={
         user ? (
-          user.onboarded ? <Navigate to="/dashboard" /> : <Navigate to="/onboarding" />
+          isOnboarded ? <Navigate to="/dashboard" /> : <Navigate to="/onboarding" />
         ) : (
           <Home />
         )

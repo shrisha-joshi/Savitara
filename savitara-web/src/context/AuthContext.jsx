@@ -2,7 +2,7 @@ import { createContext, useState, useContext, useEffect, useMemo } from 'react'
 import PropTypes from 'prop-types'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
-import { signInWithGoogle as firebaseGoogleSignIn, firebaseSignOut, checkRedirectResult } from '../services/firebase'
+import { signInWithGoogle as firebaseGoogleSignIn, firebaseSignOut } from '../services/firebase'
 import { toast } from 'react-toastify'
 
 const AuthContext = createContext({})
@@ -22,56 +22,7 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     checkAuth()
-    // Also check for Firebase redirect result
-    handleRedirectResult()
   }, [])
-
-  // Handle Firebase redirect result (for browsers that block popups)
-  const handleRedirectResult = async () => {
-    try {
-      const result = await checkRedirectResult()
-      if (result) {
-        console.log('📥 Processing redirect result...')
-        await processGoogleLogin(result.idToken)
-      }
-    } catch (error) {
-      console.error('Redirect result error:', error)
-      toast.error('Google sign-in failed. Please try again.')
-    }
-  }
-
-  // Process Google login with the ID token
-  const processGoogleLogin = async (idToken) => {
-    try {
-      console.log('📤 Sending token to backend...')
-      const response = await api.post('/auth/google', {
-        id_token: idToken,
-        role: 'grihasta'
-      })
-
-      console.log('✅ Backend response:', response.data)
-      const { data } = response.data
-      const { access_token, refresh_token, user: userData } = data
-      
-      localStorage.setItem('accessToken', access_token)
-      localStorage.setItem('refreshToken', refresh_token)
-      
-      setUser(userData)
-      
-      if (userData.requires_onboarding || userData.is_new_user) {
-        navigate('/onboarding')
-      } else {
-        navigate('/dashboard')
-      }
-
-      toast.success('Login successful!')
-      return true
-    } catch (error) {
-      console.error('Backend login failed:', error)
-      toast.error(error.response?.data?.detail || error.response?.data?.message || 'Login failed')
-      throw error
-    }
-  }
 
   const checkAuth = async () => {
     const accessToken = localStorage.getItem('accessToken')
@@ -86,22 +37,12 @@ export const AuthProvider = ({ children }) => {
       const response = await api.get('/auth/me')
       // Extract user data from StandardResponse format
       const userData = response.data.data || response.data
-      
-      if (!userData || !userData.id) {
-        throw new Error('Invalid user data received')
-      }
-      
       setUser(userData)
     } catch (error) {
       console.error('Auth check failed:', error)
       localStorage.removeItem('accessToken')
       localStorage.removeItem('refreshToken')
       setUser(null)
-      
-      // Only show error toast if it's not a 401 (expected when token expires)
-      if (error.response?.status !== 401) {
-        toast.error('Session validation failed. Please login again.')
-      }
     } finally {
       setLoading(false)
     }
@@ -109,21 +50,17 @@ export const AuthProvider = ({ children }) => {
 
   const loginWithEmail = async (email, password) => {
     try {
-      setLoading(true)
       const response = await api.post('/auth/login', { email, password })
       // Backend returns StandardResponse: { success, data: {...}, message }
       const { access_token, refresh_token, user: userData } = response.data.data || response.data
-
-      if (!access_token || !refresh_token || !userData) {
-        throw new Error('Invalid response from server')
-      }
 
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)
       
       setUser(userData)
       
-      if (userData.onboarded) {
+      // Navigate based on onboarding status
+      if (userData.onboarded || userData.onboarding_completed) {
         navigate('/dashboard')
       } else {
         navigate('/onboarding')
@@ -132,48 +69,35 @@ export const AuthProvider = ({ children }) => {
       toast.success('Login successful!')
     } catch (error) {
       console.error('Login failed:', error)
-      const errorMessage = error.response?.data?.detail 
-        || error.response?.data?.message 
-        || error.message 
-        || 'Login failed. Please check your credentials.'
+      // Show specific error message from backend
+      const errorMessage = error.response?.data?.detail || 'Login failed'
       toast.error(errorMessage)
       throw error
-    } finally {
-      setLoading(false)
     }
   }
 
   const registerWithEmail = async (data) => {
     try {
-      setLoading(true)
       const response = await api.post('/auth/register', data)
       // Backend returns StandardResponse: { success, data: {...}, message }
       const { access_token, refresh_token, user: userData } = response.data.data || response.data
-
-      if (!access_token || !refresh_token || !userData) {
-        throw new Error('Invalid response from server')
-      }
 
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)
       
       setUser(userData)
+      // New users always go to onboarding
       navigate('/onboarding')
       toast.success('Registration successful! Please complete your profile.')
     } catch (error) {
       console.error('Registration failed:', error)
-      const errorMessage = error.response?.data?.detail 
-        || error.response?.data?.message 
-        || error.message 
-        || 'Registration failed. Please try again.'
+      const errorMessage = error.response?.data?.detail || 'Registration failed'
       toast.error(errorMessage)
       throw error
-    } finally {
-      setLoading(false)
     }
   }
 
-  // Updated to use Firebase Google Sign-In with popup/redirect fallback
+  // Updated to use Firebase Google Sign-In
   const loginWithGoogle = async (legacyCredential = null) => {
     try {
       let idToken
@@ -181,24 +105,38 @@ export const AuthProvider = ({ children }) => {
       // If called with a credential (legacy @react-oauth/google), use it
       if (legacyCredential) {
         idToken = legacyCredential
-        await processGoogleLogin(idToken)
       } else {
-        // Use Firebase Google Sign-In (popup with redirect fallback)
-        console.log('🔐 Calling Firebase Google Sign-In...')
+        // Use Firebase Google Sign-In
         const result = await firebaseGoogleSignIn()
-        
-        // If result is null, redirect was triggered - page will reload
-        if (!result) {
-          console.log('🔄 Redirect triggered, waiting for page reload...')
-          return
-        }
-        
-        console.log('✅ Got result from Firebase:', result.user.email)
-        await processGoogleLogin(result.idToken)
+        idToken = result.idToken
       }
+
+      // Send token to backend with correct field name and role
+      const response = await api.post('/auth/google', {
+        id_token: idToken,  // Backend expects 'id_token', not 'token'
+        role: 'grihasta'    // Default role for user app
+      })
+
+      const { data } = response.data // Backend returns StandardResponse with data field
+      const { access_token, refresh_token, user: userData } = data
+      
+      localStorage.setItem('accessToken', access_token)
+      localStorage.setItem('refreshToken', refresh_token)
+      
+      setUser(userData)
+      
+      // Check if user needs onboarding
+      // New users or users without completed onboarding go to onboarding page
+      if (userData.onboarded || userData.onboarding_completed) {
+        navigate('/dashboard')
+      } else {
+        navigate('/onboarding')
+      }
+
+      toast.success('Login successful!')
     } catch (error) {
       console.error('Login failed:', error)
-      toast.error(error.response?.data?.detail || error.response?.data?.message || error.message || 'Login failed')
+      toast.error(error.response?.data?.detail || error.response?.data?.message || 'Login failed')
       throw error
     }
   }
@@ -230,8 +168,10 @@ export const AuthProvider = ({ children }) => {
 
   const refreshUserData = async () => {
     try {
-      const response = await api.get('/users/me')
-      setUser(response.data)
+      const response = await api.get('/auth/me')
+      // Handle StandardResponse format from backend
+      const userData = response.data.data || response.data
+      setUser(userData)
     } catch (error) {
       console.error('Failed to refresh user data:', error)
     }

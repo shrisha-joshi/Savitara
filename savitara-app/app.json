@@ -21,10 +21,22 @@
       "adaptiveIcon": {
         "backgroundColor": "#FF6B35"
       },
-      "package": "com.savitara.mobile"
+      "package": "com.savitara.mobile",
+      "googleServicesFile": "./google-services.json"
     },
     "plugins": [
-      "expo-notifications"
-    ]
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#FF6B35"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "savitara-app"
+      }
+    }
   }
 }

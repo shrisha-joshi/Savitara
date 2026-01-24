@@ -99,13 +99,13 @@ class User(BaseModel):
 class GrihastaProfile(BaseModel):
     """Grihasta (Seeker) profile model"""
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    user_id: PyObjectId
+    user_id: str  # Store as string for consistent querying
     name: str
     phone: Optional[str] = None
     location: Location
     parampara: str  # Spiritual tradition
     preferences: Dict[str, Any] = {}
-    referred_by: Optional[PyObjectId] = None
+    referred_by: Optional[str] = None  # Changed to str
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
@@ -125,7 +125,7 @@ class AvailabilitySlot(BaseModel):
 class AcharyaProfile(BaseModel):
     """Acharya (Scholar) profile model"""
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    user_id: PyObjectId
+    user_id: str  # Store as string for consistent querying
     name: str
     phone: Optional[str] = None
     parampara: str
@@ -137,7 +137,7 @@ class AcharyaProfile(BaseModel):
     location: Location
     availability: List[AvailabilitySlot] = []
     verification_documents: List[str] = []  # URLs to documents
-    referred_by: Optional[PyObjectId] = None
+    referred_by: Optional[str] = None  # Changed to str
     referral_code: Optional[str] = None
     ratings: Dict[str, float] = {
         "average": 0.0,

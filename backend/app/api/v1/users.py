@@ -3,12 +3,12 @@ User Profile API Endpoints
 Handles profile management, onboarding, and user info
 SonarQube: S5122 - Input validation with Pydantic
 """
-from dataclasses import dataclass
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import List, Dict, Any, Optional
 import logging
 from datetime import datetime, timezone
+from bson import ObjectId
 from app.core.constants import MONGO_REGEX, MONGO_OPTIONS
 
 from app.schemas.requests import (
@@ -41,24 +41,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["Users"])
 
 
-@dataclass
-class AcharyaSearchFilters:
-    """Search filters for acharya search to reduce parameter count"""
-    query: Optional[str] = None
-    city: Optional[str] = None
-    state: Optional[str] = None
-    specialization: Optional[str] = None
-    language: Optional[str] = None
-    min_rating: float = 0.0
-    max_price: Optional[float] = None
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    use_elasticsearch: bool = True
-    sort_by: str = "relevance"
-    page: int = 1
-    limit: int = 20
-
-
 @router.post(
     "/grihasta/onboarding",
     response_model=StandardResponse,
@@ -79,6 +61,8 @@ async def grihasta_onboarding(
     """
     try:
         user_id = current_user["id"]
+        user_oid = ObjectId(user_id)  # Convert to ObjectId for MongoDB queries
+        logger.info(f"Starting grihasta onboarding for user_id: {user_id}")
         
         # Check if profile already exists
         existing_profile = await db.grihasta_profiles.find_one({"user_id": user_id})
@@ -121,33 +105,40 @@ async def grihasta_onboarding(
             preferences=onboarding_data.preferences or {}
         )
         
-        await db.grihasta_profiles.insert_one(profile.dict(by_alias=True))
+        # Exclude _id from dict so MongoDB can auto-generate it
+        profile_dict = profile.dict(by_alias=True, exclude_none=True)
+        result = await db.grihasta_profiles.insert_one(profile_dict)
+        profile_id = result.inserted_id
         
-        # Update user status to ACTIVE, set onboarded=True, and add referral credits
+        # Update user status to ACTIVE and add referral credits
         update_data = {
             "status": UserStatus.ACTIVE.value,
-            "onboarded": True,
             "updated_at": datetime.now(timezone.utc)
         }
         
-        update_operations = {"$set": update_data}
         if referral_credits > 0:
-            update_operations["$inc"] = {"credits": referral_credits}
-        
-        await db.users.update_one(
-            {"_id": user_id},
-            update_operations
-        )
+            await db.users.update_one(
+                {"_id": user_oid},
+                {
+                    "$set": update_data,
+                    "$inc": {"credits": referral_credits}
+                }
+            )
+        else:
+            await db.users.update_one(
+                {"_id": user_oid},
+                {"$set": update_data}
+            )
         
         logger.info(f"Grihasta onboarding completed for user {user_id}")
         
         # Get updated user data
-        updated_user = await db.users.find_one({"_id": user_id})
+        updated_user = await db.users.find_one({"_id": user_oid})
         
         return StandardResponse(
             success=True,
             data={
-                "profile_id": str(profile.id),
+                "profile_id": str(profile_id),
                 "status": UserStatus.ACTIVE.value,
                 "credits_earned": referral_credits,
                 "user": {
@@ -156,7 +147,8 @@ async def grihasta_onboarding(
                     "role": updated_user["role"],
                     "status": updated_user["status"],
                     "credits": updated_user["credits"],
-                    "onboarded": True
+                    "onboarded": True,
+                    "onboarding_completed": True
                 }
             },
             message="Onboarding completed successfully"
@@ -168,7 +160,7 @@ async def grihasta_onboarding(
         logger.error(f"Grihasta onboarding error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Onboarding failed"
+            detail=f"Onboarding failed: {str(e)}"
         )
 
 
@@ -191,6 +183,7 @@ async def acharya_onboarding(
     """
     try:
         user_id = current_user["id"]
+        user_oid = ObjectId(user_id)  # Convert to ObjectId for MongoDB queries
         
         # Check if profile already exists
         existing_profile = await db.acharya_profiles.find_one({"user_id": user_id})
@@ -219,15 +212,15 @@ async def acharya_onboarding(
             poojas=[]
         )
         
-        await db.acharya_profiles.insert_one(profile.dict(by_alias=True))
+        # Exclude _id from dict so MongoDB can auto-generate it
+        profile_dict = profile.dict(by_alias=True, exclude_none=True)
+        result = await db.acharya_profiles.insert_one(profile_dict)
+        profile_id = result.inserted_id
         
-        # Update user - set onboarded=True, Acharya remains PENDING until admin verification
+        # Update user updated_at
         await db.users.update_one(
-            {"_id": user_id},
-            {"$set": {
-                "onboarded": True,
-                "updated_at": datetime.now(timezone.utc)
-            }}
+            {"_id": user_oid},
+            {"$set": {"updated_at": datetime.now(timezone.utc)}}
         )
         
         # Send notification to admin for verification
@@ -240,7 +233,7 @@ async def acharya_onboarding(
                 await notification_service.send_multicast(
                     tokens=admin_tokens,
                     title="New Acharya Verification Request",
-                    body=f"{current_user['full_name']} submitted profile for verification",
+                    body=f"User submitted profile for verification",
                     data={"type": "acharya_verification", "acharya_id": str(user_id)}
                 )
         except Exception as e:
@@ -249,12 +242,12 @@ async def acharya_onboarding(
         logger.info(f"Acharya onboarding completed for user {user_id}, pending verification")
         
         # Get updated user data
-        updated_user = await db.users.find_one({"_id": user_id})
+        updated_user = await db.users.find_one({"_id": user_oid})
         
         return StandardResponse(
             success=True,
             data={
-                "profile_id": str(profile.id),
+                "profile_id": str(profile_id),
                 "status": UserStatus.PENDING.value,
                 "message": "Your profile is under review. You'll be notified once verified.",
                 "user": {
@@ -263,7 +256,9 @@ async def acharya_onboarding(
                     "role": updated_user["role"],
                     "status": updated_user["status"],
                     "credits": updated_user["credits"],
-                    "onboarded": updated_user["status"] in [UserStatus.ACTIVE.value, UserStatus.VERIFIED.value]
+                    # Profile exists, so onboarding is complete (even if pending verification)
+                    "onboarded": True,
+                    "onboarding_completed": True
                 }
             },
             message="Onboarding submitted for verification"
@@ -293,10 +288,11 @@ async def get_profile(
     """Get complete user profile based on role"""
     try:
         user_id = current_user["id"]
+        user_oid = ObjectId(user_id)  # Convert to ObjectId for MongoDB queries
         role = current_user["role"]
         
         # Get base user info
-        user_doc = await db.users.find_one({"_id": user_id})
+        user_doc = await db.users.find_one({"_id": user_oid})
         if not user_doc:
             raise ResourceNotFoundError(resource_type="User", resource_id=user_id)
         
@@ -322,6 +318,9 @@ async def get_profile(
                     "parampara": profile_doc.get("parampara"),
                     "preferences": profile_doc.get("preferences", {})
                 }
+            # Add onboarding status based on whether profile exists
+            user_data["onboarded"] = profile_doc is not None
+            user_data["onboarding_completed"] = profile_doc is not None
         
         elif role == UserRole.ACHARYA.value:
             profile_doc = await db.acharya_profiles.find_one({"user_id": user_id})
@@ -341,6 +340,14 @@ async def get_profile(
                     "total_bookings": profile_doc.get("total_bookings", 0),
                     "verification_status": user_doc.get("status")
                 }
+            # Add onboarding status based on whether profile exists
+            user_data["onboarded"] = profile_doc is not None
+            user_data["onboarding_completed"] = profile_doc is not None
+        
+        else:
+            # Admin users don't need onboarding
+            user_data["onboarded"] = True
+            user_data["onboarding_completed"] = True
         
         return StandardResponse(
             success=True,
@@ -427,7 +434,19 @@ async def update_profile(
     description="Search and filter Acharyas by location, specialization, language, etc."
 )
 async def search_acharyas(
-    filters: AcharyaSearchFilters = Depends(),
+    query: Optional[str] = Query(None, description="Search query text"),
+    city: Optional[str] = Query(None, description="Filter by city"),
+    state: Optional[str] = Query(None, description="Filter by state"),
+    specialization: Optional[str] = Query(None, description="Filter by specialization"),
+    language: Optional[str] = Query(None, description="Filter by language"),
+    min_rating: float = Query(0.0, ge=0.0, le=5.0, description="Minimum rating"),
+    max_price: Optional[float] = Query(None, description="Maximum price"),
+    latitude: Optional[float] = Query(None, description="User latitude for proximity search"),
+    longitude: Optional[float] = Query(None, description="User longitude for proximity search"),
+    use_elasticsearch: bool = Query(True, description="Use Elasticsearch for search"),
+    sort_by: str = Query("relevance", description="Sort by: relevance, rating, price, experience"),
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """
@@ -443,38 +462,33 @@ async def search_acharyas(
     """
     try:
         # Try Cache First
-        cache_key = (
-            f"search:{filters.query}:{filters.city}:{filters.state}:"
-            f"{filters.specialization}:{filters.language}:{filters.min_rating}:"
-            f"{filters.max_price}:{filters.latitude}:{filters.longitude}:"
-            f"{filters.sort_by}:{filters.page}:{filters.limit}"
-        )
+        cache_key = f"search:{query}:{city}:{state}:{specialization}:{language}:{min_rating}:{max_price}:{latitude}:{longitude}:{sort_by}:{page}:{limit}"
         cached_result = await cache.get(cache_key)
         if cached_result:
             return cached_result
 
         # Use Elasticsearch if enabled and search service is available
-        if filters.use_elasticsearch and hasattr(db.app, 'search_service'):
+        if use_elasticsearch and hasattr(db.app, 'search_service'):
             from app.services.search_service import SearchService
             search_service: SearchService = db.app.search_service
             
-            search_filters = {
-                "city": filters.city,
-                "state": filters.state,
-                "specialization": filters.specialization,
-                "language": filters.language,
-                "min_rating": filters.min_rating,
-                "max_price": filters.max_price
+            filters = {
+                "city": city,
+                "state": state,
+                "specialization": specialization,
+                "language": language,
+                "min_rating": min_rating,
+                "max_price": max_price
             }
             
             result = await search_service.search_acharyas(
-                query=filters.query or "",
-                filters=search_filters,
-                latitude=filters.latitude,
-                longitude=filters.longitude,
-                sort_by=filters.sort_by,
-                page=filters.page,
-                limit=filters.limit
+                query=query or "",
+                filters=filters,
+                latitude=latitude,
+                longitude=longitude,
+                sort_by=sort_by,
+                page=page,
+                limit=limit
             )
             
             response = StandardResponse(
@@ -482,13 +496,13 @@ async def search_acharyas(
                 data={
                     "acharyas": result["hits"],
                     "pagination": {
-                        "page": filters.page,
-                        "limit": filters.limit,
+                        "page": page,
+                        "limit": limit,
                         "total": result["total"],
-                        "pages": (result["total"] + filters.limit - 1) // filters.limit
+                        "pages": (result["total"] + limit - 1) // limit
                     },
                     "search_metadata": {
-                        "query": filters.query,
+                        "query": query,
                         "took_ms": result.get("took_ms"),
                         "max_score": result.get("max_score")
                     }
@@ -501,16 +515,16 @@ async def search_acharyas(
 
         # Fallback to MongoDB search
         # Build query filter
-        query_filter = {"rating": {"$gte": filters.min_rating}}
+        query_filter = {"rating": {"$gte": min_rating}}
         
-        if filters.city:
-            query_filter["location.city"] = {MONGO_REGEX: filters.city, MONGO_OPTIONS: "i"}
-        if filters.state:
-            query_filter["location.state"] = {MONGO_REGEX: filters.state, MONGO_OPTIONS: "i"}
-        if filters.specialization:
-            query_filter["specializations"] = {MONGO_REGEX: filters.specialization, MONGO_OPTIONS: "i"}
-        if filters.language:
-            query_filter["languages"] = {MONGO_REGEX: filters.language, MONGO_OPTIONS: "i"}
+        if city:
+            query_filter["location.city"] = {MONGO_REGEX: city, MONGO_OPTIONS: "i"}
+        if state:
+            query_filter["location.state"] = {MONGO_REGEX: state, MONGO_OPTIONS: "i"}
+        if specialization:
+            query_filter["specializations"] = {MONGO_REGEX: specialization, MONGO_OPTIONS: "i"}
+        if language:
+            query_filter["languages"] = {MONGO_REGEX: language, MONGO_OPTIONS: "i"}
         
         # Get only ACTIVE acharyas
         # Join with users collection to check status
@@ -543,11 +557,11 @@ async def search_acharyas(
                 }
             },
             {"$sort": {"rating": -1, "total_bookings": -1}},
-            {"$skip": (filters.page - 1) * filters.limit},
-            {"$limit": filters.limit}
+            {"$skip": (page - 1) * limit},
+            {"$limit": limit}
         ]
         
-        acharyas = await db.acharya_profiles.aggregate(pipeline).to_list(length=filters.limit)
+        acharyas = await db.acharya_profiles.aggregate(pipeline).to_list(length=limit)
         
         # Get total count
         count_pipeline = pipeline[:4]  # Up to status filter
@@ -558,10 +572,10 @@ async def search_acharyas(
             data={
                 "acharyas": acharyas,
                 "pagination": {
-                    "page": filters.page,
-                    "limit": filters.limit,
+                    "page": page,
+                    "limit": limit,
                     "total": total_count,
-                    "pages": (total_count + filters.limit - 1) // filters.limit
+                    "pages": (total_count + limit - 1) // limit
                 }
             }
         )

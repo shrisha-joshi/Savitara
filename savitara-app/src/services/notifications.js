@@ -1,34 +1,76 @@
 /**
  * Push Notification Service
+ * Note: Push notifications are not available in Expo Go (SDK 53+).
+ * For push notifications, use a development build or production build.
  */
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './api';
 
 const PUSH_TOKEN_KEY = 'push_notification_token';
 
-// Configure notification handler
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+// Check if running in Expo Go
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// Lazy load notification modules to avoid initialization issues in Expo Go
+let Notifications = null;
+let Device = null;
+
+async function loadNotificationModules() {
+  if (isExpoGo && Platform.OS !== 'web') {
+    console.log('📱 Running in Expo Go - Push notifications disabled (SDK 53+)');
+    return false;
+  }
+  
+  try {
+    Notifications = await import('expo-notifications');
+    Device = await import('expo-device');
+    
+    // Configure notification handler
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+    return true;
+  } catch (error) {
+    console.warn('Failed to load notification modules:', error.message);
+    return false;
+  }
+}
 
 class NotificationService {
   constructor() {
     this.notificationListener = null;
     this.responseListener = null;
+    this.isExpoGo = isExpoGo;
+    this.initialized = false;
   }
 
   async initialize(navigation) {
-    if (!Device.isDevice) {
+    // Skip in Expo Go on mobile devices
+    if (this.isExpoGo && Platform.OS !== 'web') {
+      console.log('ℹ️ Push notifications are not available in Expo Go (SDK 53+).');
+      console.log('ℹ️ To test push notifications, create a development build with: npx expo run:android');
+      return;
+    }
+
+    // Try to load notification modules
+    const loaded = await loadNotificationModules();
+    if (!loaded || !Notifications) {
+      console.log('ℹ️ Notification modules not available');
+      return;
+    }
+
+    if (Device && !Device.isDevice) {
       console.log('Push notifications only work on physical devices');
       return;
     }
+
+    this.initialized = true;
 
     // Register for push notifications
     const token = await this.registerForPushNotifications();
@@ -50,6 +92,11 @@ class NotificationService {
   }
 
   async registerForPushNotifications() {
+    // Skip if not initialized or modules not loaded
+    if (!this.initialized || !Notifications) {
+      return null;
+    }
+
     try {
       // Check existing permissions
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -80,8 +127,13 @@ class NotificationService {
         return null;
       }
 
-      // Get Expo push token
-      const token = (await Notifications.getExpoPushTokenAsync()).data;
+      // Get project ID from app config
+      const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? 
+                        Constants.easConfig?.projectId ?? 
+                        'savitara-app';
+
+      // Get Expo push token with projectId
+      const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
       console.log('Push notification token:', token);
       
       return token;
@@ -92,6 +144,9 @@ class NotificationService {
   }
 
   setupNotificationListeners(navigation) {
+    // Skip if notifications not loaded
+    if (!Notifications) return;
+
     // Notification received while app is open
     this.notificationListener = Notifications.addNotificationReceivedListener(
       notification => {
@@ -151,6 +206,11 @@ class NotificationService {
   }
 
   async scheduleLocalNotification(title, body, data = {}, triggerSeconds = 1) {
+    if (!Notifications) {
+      console.log('ℹ️ Cannot schedule notification - notifications not available');
+      return null;
+    }
+    
     try {
       const id = await Notifications.scheduleNotificationAsync({
         content: {
@@ -172,6 +232,8 @@ class NotificationService {
   }
 
   async cancelNotification(notificationId) {
+    if (!Notifications) return;
+    
     try {
       await Notifications.cancelScheduledNotificationAsync(notificationId);
     } catch (error) {
@@ -180,6 +242,8 @@ class NotificationService {
   }
 
   async cancelAllNotifications() {
+    if (!Notifications) return;
+    
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
     } catch (error) {
@@ -188,6 +252,8 @@ class NotificationService {
   }
 
   async getBadgeCount() {
+    if (!Notifications) return 0;
+    
     try {
       return await Notifications.getBadgeCountAsync();
     } catch (error) {
@@ -197,6 +263,8 @@ class NotificationService {
   }
 
   async setBadgeCount(count) {
+    if (!Notifications) return;
+    
     try {
       await Notifications.setBadgeCountAsync(count);
     } catch (error) {
@@ -205,6 +273,8 @@ class NotificationService {
   }
 
   cleanup() {
+    if (!Notifications) return;
+    
     if (this.notificationListener) {
       Notifications.removeNotificationSubscription(this.notificationListener);
     }

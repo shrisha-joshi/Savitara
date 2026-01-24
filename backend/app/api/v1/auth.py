@@ -23,21 +23,8 @@ from app.core.security import SecurityManager, get_current_user
 from app.core.exceptions import AuthenticationError, InvalidInputError
 from app.db.connection import get_db
 from app.models.database import User, UserRole, UserStatus
-from app.utils.sanitizer import TokenBlacklist
-from app.services.cache_service import get_cache_client
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from datetime import datetime, timezone
-
-# Token blacklist instance - initialized on first use
-_token_blacklist: TokenBlacklist = None
-
-async def get_token_blacklist() -> TokenBlacklist:
-    """Get or create token blacklist instance"""
-    global _token_blacklist
-    if _token_blacklist is None:
-        redis_client = await get_cache_client()
-        _token_blacklist = TokenBlacklist(redis_client)
-    return _token_blacklist
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -49,63 +36,32 @@ settings = get_settings()
 def verify_google_token(token: str) -> Dict[str, Any]:
     """
     Verify Google ID token and extract user info
-    Supports both Firebase Auth tokens and regular Google OAuth tokens
     SonarQube: S4502 - Uses Google's official library for secure token verification
     """
     try:
-        # Try to verify the token - Firebase tokens work with verify_firebase_token
-        # which verifies against Firebase project ID
-        try:
-            # Firebase tokens use the Firebase project ID as audience
-            idinfo = id_token.verify_firebase_token(
-                token,
-                google_requests.Request(),
-                audience=settings.FIREBASE_PROJECT_ID
-            )
-            logger.info("Token verified as Firebase token")
-            
-            # Extract user info from Firebase token
-            return {
-                'email': idinfo.get('email'),
-                'google_id': idinfo.get('user_id') or idinfo.get('sub'),
-                'name': idinfo.get('name'),
-                'picture': idinfo.get('picture'),
-                'email_verified': idinfo.get('email_verified', False)
-            }
-        except Exception as firebase_error:
-            # If Firebase verification fails, try regular Google OAuth
-            logger.info(f"Not a Firebase token, trying Google OAuth: {str(firebase_error)[:100]}")
-            
-            idinfo = id_token.verify_oauth2_token(
-                token,
-                google_requests.Request(),
-                settings.GOOGLE_CLIENT_ID
-            )
-            
-            # Verify issuer for Google OAuth tokens
-            if idinfo.get('iss') not in ['accounts.google.com', 'https://accounts.google.com']:
-                raise ValueError('Invalid issuer')
-            
-            logger.info("Token verified as Google OAuth token")
-            
-            # Extract user info
-            return {
-                'email': idinfo['email'],
-                'google_id': idinfo['sub'],
-                'name': idinfo.get('name'),
-                'picture': idinfo.get('picture'),
-                'email_verified': idinfo.get('email_verified', False)
-            }
+        # Verify token with Google
+        idinfo = id_token.verify_oauth2_token(
+            token,
+            google_requests.Request(),
+            settings.GOOGLE_CLIENT_ID
+        )
+        
+        # Verify issuer
+        if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
+            raise ValueError('Invalid issuer')
+        
+        # Extract user info
+        return {
+            'email': idinfo['email'],
+            'google_id': idinfo['sub'],
+            'name': idinfo.get('name'),
+            'picture': idinfo.get('picture'),
+            'email_verified': idinfo.get('email_verified', False)
+        }
     except ValueError as e:
         logger.error(f"Google token verification failed: {e}")
         raise AuthenticationError(
             message="Invalid Google token",
-            details={"error": str(e)}
-        )
-    except Exception as e:
-        logger.error(f"Google token verification error: {e}", exc_info=True)
-        raise AuthenticationError(
-            message="Failed to verify Google token",
             details={"error": str(e)}
         )
 
@@ -134,7 +90,7 @@ async def google_login(
     """
     try:
         # Verify Google token
-        google_info = verify_google_token(auth_request.id_token)
+        google_info = await verify_google_token(auth_request.id_token)
         
         if not google_info['email_verified']:
             raise AuthenticationError(
@@ -160,12 +116,12 @@ async def google_login(
             user = User(**user_doc)
             is_new_user = False
         else:
-            # New user - create account
+            # New user - create account with PENDING status until onboarding
             user = User(
                 email=google_info['email'],
                 google_id=google_info['google_id'],
                 role=auth_request.role,
-                status=UserStatus.VERIFIED if auth_request.role == UserRole.GRIHASTA else UserStatus.PENDING,
+                status=UserStatus.PENDING,  # Always PENDING for new users until onboarding
                 profile_picture=google_info.get('picture'),
                 credits=100  # Welcome bonus
             )
@@ -189,6 +145,11 @@ async def google_login(
                 details={}
             )
         
+        # Check if user has completed onboarding by checking if profile exists
+        profile_collection = "grihasta_profiles" if user.role == UserRole.GRIHASTA else "acharya_profiles"
+        profile = await db[profile_collection].find_one({"user_id": str(user.id)})
+        has_completed_onboarding = profile is not None
+        
         # Generate JWT tokens
         access_token = security_manager.create_access_token(
             user_id=str(user.id),
@@ -197,13 +158,6 @@ async def google_login(
         refresh_token = security_manager.create_refresh_token(
             user_id=str(user.id)
         )
-        
-        # Check if user has completed profile
-        profile_exists = False
-        if user.role == UserRole.GRIHASTA:
-            profile_exists = await db.grihasta_profiles.find_one({"user_id": user.id}) is not None
-        elif user.role == UserRole.ACHARYA:
-            profile_exists = await db.acharya_profiles.find_one({"user_id": user.id}) is not None
         
         return StandardResponse(
             success=True,
@@ -218,11 +172,9 @@ async def google_login(
                     "role": user.role.value,
                     "status": user.status.value,
                     "credits": user.credits,
-                    "onboarded": user.onboarded and profile_exists,
-                    "profile_picture": user.profile_picture,
-                    "referral_code": user.referral_code,
                     "is_new_user": is_new_user,
-                    "requires_onboarding": not (user.onboarded and profile_exists)
+                    "onboarded": has_completed_onboarding,
+                    "onboarding_completed": has_completed_onboarding
                 }
             },
             message="Authentication successful"
@@ -261,12 +213,12 @@ async def register(
                 detail="Email already registered"
             )
 
-        # Create new user
+        # Create new user - status is PENDING until onboarding is complete
         user = User(
             email=request.email,
             password_hash=security_manager.get_password_hash(request.password),
             role=request.role,
-            status=UserStatus.VERIFIED if request.role == UserRole.GRIHASTA else UserStatus.PENDING,
+            status=UserStatus.PENDING,  # Always PENDING for new users until onboarding
             credits=100  # Welcome bonus
         )
         
@@ -283,6 +235,7 @@ async def register(
             user_id=user_id
         )
         
+        # New user always needs onboarding
         return StandardResponse(
             success=True,
             message="Registration successful",
@@ -296,10 +249,10 @@ async def register(
                     "email": user.email,
                     "role": user.role.value,
                     "status": user.status.value,
+                    "credits": user.credits,
                     "is_new_user": True,
                     "onboarded": False,
-                    "profile_picture": None,
-                    "referral_code": None
+                    "onboarding_completed": False
                 }
             }
         )
@@ -333,7 +286,7 @@ async def login(
         if not user_doc:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password"
+                detail="No account found with this email. Please sign up first."
             )
             
         user = User(**user_doc)
@@ -358,14 +311,10 @@ async def login(
             {"$set": {"last_login": datetime.now(timezone.utc)}}
         )
         
-        # Check profile existence
-        profile_exists = False
-        if user.role == UserRole.GRIHASTA:
-            profile = await db.grihasta_profiles.find_one({"user_id": user.id})
-            profile_exists = profile is not None
-        elif user.role == UserRole.ACHARYA:
-            profile = await db.acharya_profiles.find_one({"user_id": user.id})
-            profile_exists = profile is not None
+        # Check if user has completed onboarding by checking if profile exists
+        profile_collection = "grihasta_profiles" if user.role == UserRole.GRIHASTA else "acharya_profiles"
+        profile = await db[profile_collection].find_one({"user_id": str(user.id)})
+        has_completed_onboarding = profile is not None
         
         # Generate tokens
         access_token = security_manager.create_access_token(
@@ -390,10 +339,10 @@ async def login(
                     "email": user.email,
                     "role": user.role.value,
                     "status": user.status.value,
+                    "credits": user.credits,
                     "is_new_user": False,
-                    "onboarded": user.onboarded and profile_exists,
-                    "profile_picture": user.profile_picture,
-                    "referral_code": user.referral_code
+                    "onboarded": has_completed_onboarding,
+                    "onboarding_completed": has_completed_onboarding
                 }
             }
         )
@@ -478,42 +427,25 @@ async def refresh_token(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Logout",
-    description="Invalidate user session and blacklist current token"
+    description="Invalidate user session (client should delete tokens)"
 )
 async def logout(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
-    Logout endpoint with token blacklisting
+    Logout endpoint
     
-    - Blacklists the current access token in Redis
-    - Token cannot be reused after logout
-    - Client should also delete tokens locally
+    Note: JWT tokens are stateless. Client must delete tokens.
+    In production, implement token blacklist with Redis for immediate invalidation.
     
     SonarQube: S2068 - No password in code
     """
-    try:
-        # Blacklist the current token
-        token = credentials.credentials
-        blacklist = await get_token_blacklist()
-        
-        # Blacklist token for the remaining validity period (24 hours max)
-        await blacklist.blacklist_token(token, expires_in=86400)
-        
-        logger.info(f"User {current_user['id']} logged out, token blacklisted")
-        
-        return StandardResponse(
-            success=True,
-            message="Logged out successfully. Token has been invalidated."
-        )
-    except Exception as e:
-        logger.error(f"Logout error: {e}")
-        # Still return success - logout should not fail from user perspective
-        return StandardResponse(
-            success=True,
-            message="Logged out successfully. Please delete tokens on client side."
-        )
+    logger.info(f"User {current_user['id']} logged out")
+    
+    return StandardResponse(
+        success=True,
+        message="Logged out successfully. Please delete tokens on client side."
+    )
 
 
 @router.get(
@@ -537,12 +469,10 @@ async def get_current_user_info(
     
     user = User(**user_doc)
     
-    # Check if user has completed onboarding by checking profile existence
-    profile_exists = False
-    if user.role == UserRole.GRIHASTA:
-        profile_exists = await db.grihasta_profiles.find_one({"user_id": user.id}) is not None
-    elif user.role == UserRole.ACHARYA:
-        profile_exists = await db.acharya_profiles.find_one({"user_id": user.id}) is not None
+    # Check if user has completed onboarding by checking if profile exists
+    profile_collection = "grihasta_profiles" if user.role == UserRole.GRIHASTA else "acharya_profiles"
+    profile = await db[profile_collection].find_one({"user_id": str(user.id)})
+    has_completed_onboarding = profile is not None
     
     return StandardResponse(
         success=True,
@@ -552,11 +482,11 @@ async def get_current_user_info(
             "role": user.role.value,
             "status": user.status.value,
             "credits": user.credits,
-            "onboarded": user.onboarded and profile_exists,
-            "profile_picture": user.profile_picture,
-            "referral_code": user.referral_code,
+            "profile_picture": getattr(user, 'profile_picture', None),
             "created_at": user.created_at,
-            "last_login": user.last_login
+            "last_login": user.last_login,
+            "onboarded": has_completed_onboarding,
+            "onboarding_completed": has_completed_onboarding
         }
     )
 

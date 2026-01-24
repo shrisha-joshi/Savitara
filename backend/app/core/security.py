@@ -165,7 +165,12 @@ def get_current_user(
             detail="Invalid token payload"
         )
     
-    return payload
+    # Return user info with consistent field names
+    return {
+        "id": user_id,
+        "role": payload.get("role"),
+        "sub": user_id  # Keep for backwards compatibility
+    }
 
 
 def get_current_user_with_role(

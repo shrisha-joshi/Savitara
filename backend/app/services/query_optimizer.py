@@ -24,7 +24,7 @@ class QueryOptimizer:
         index_definitions = [
             # Users collection
             ("users", [("email", 1)], {"unique": True}),
-            ("users", [("phone", 1)], {"unique": True, "sparse": True}),
+            ("users", [("phone", 1)], {"unique": True, "sparse": True, "name": "phone_unique_idx"}),
             ("users", [("role", 1), ("status", 1)], {}),
             ("users", [("created_at", -1)], {}),
             

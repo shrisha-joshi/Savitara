@@ -86,11 +86,22 @@ export const AuthProvider = ({ children }) => {
       const response = await api.get('/auth/me')
       // Extract user data from StandardResponse format
       const userData = response.data.data || response.data
+      
+      if (!userData || !userData.id) {
+        throw new Error('Invalid user data received')
+      }
+      
       setUser(userData)
     } catch (error) {
       console.error('Auth check failed:', error)
       localStorage.removeItem('accessToken')
       localStorage.removeItem('refreshToken')
+      setUser(null)
+      
+      // Only show error toast if it's not a 401 (expected when token expires)
+      if (error.response?.status !== 401) {
+        toast.error('Session validation failed. Please login again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -98,9 +109,14 @@ export const AuthProvider = ({ children }) => {
 
   const loginWithEmail = async (email, password) => {
     try {
+      setLoading(true)
       const response = await api.post('/auth/login', { email, password })
       // Backend returns StandardResponse: { success, data: {...}, message }
       const { access_token, refresh_token, user: userData } = response.data.data || response.data
+
+      if (!access_token || !refresh_token || !userData) {
+        throw new Error('Invalid response from server')
+      }
 
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)
@@ -116,27 +132,44 @@ export const AuthProvider = ({ children }) => {
       toast.success('Login successful!')
     } catch (error) {
       console.error('Login failed:', error)
-      toast.error(error.response?.data?.detail || 'Login failed')
+      const errorMessage = error.response?.data?.detail 
+        || error.response?.data?.message 
+        || error.message 
+        || 'Login failed. Please check your credentials.'
+      toast.error(errorMessage)
       throw error
+    } finally {
+      setLoading(false)
     }
   }
 
   const registerWithEmail = async (data) => {
     try {
+      setLoading(true)
       const response = await api.post('/auth/register', data)
       // Backend returns StandardResponse: { success, data: {...}, message }
       const { access_token, refresh_token, user: userData } = response.data.data || response.data
+
+      if (!access_token || !refresh_token || !userData) {
+        throw new Error('Invalid response from server')
+      }
 
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)
       
       setUser(userData)
       navigate('/onboarding')
-      toast.success('Registration successful!')
+      toast.success('Registration successful! Please complete your profile.')
     } catch (error) {
       console.error('Registration failed:', error)
-      toast.error(error.response?.data?.detail || 'Registration failed')
+      const errorMessage = error.response?.data?.detail 
+        || error.response?.data?.message 
+        || error.message 
+        || 'Registration failed. Please try again.'
+      toast.error(errorMessage)
       throw error
+    } finally {
+      setLoading(false)
     }
   }
 

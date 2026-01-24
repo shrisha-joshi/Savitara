@@ -9,13 +9,21 @@ import {
   onAuthStateChanged 
 } from 'firebase/auth'
 
+// Validate required Firebase environment variables
+if (!import.meta.env.VITE_FIREBASE_API_KEY) {
+  throw new Error('Missing VITE_FIREBASE_API_KEY environment variable')
+}
+if (!import.meta.env.VITE_FIREBASE_PROJECT_ID) {
+  throw new Error('Missing VITE_FIREBASE_PROJECT_ID environment variable')
+}
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyABhtSIIz-mjMqArISDtnUAsPsv9eYD2c8",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "savitara-90a1c.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "savitara-90a1c",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "savitara-90a1c.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "397566787449",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:397566787449:web:eb5fca6f1b7a0272dc79a8",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 }
 
 // Initialize Firebase

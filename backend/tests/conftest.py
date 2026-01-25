@@ -4,10 +4,11 @@ Pytest Configuration and Fixtures
 import pytest
 import asyncio
 from typing import AsyncGenerator, Generator
+from httpx import AsyncClient, ASGITransport
 from fastapi.testclient import TestClient
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.main import app
-from app.db.connection import MongoDB
+from app.db.connection import DatabaseManager
 from app.core.config import settings
 
 
@@ -20,10 +21,28 @@ def event_loop() -> Generator:
 
 
 @pytest.fixture(scope="function")
-async def test_db() -> AsyncGenerator[AsyncIOMotorDatabase, None]:
+async def test_db(monkeypatch) -> AsyncGenerator[AsyncIOMotorDatabase, None]:
     """Create test database connection"""
+    # 1. Prevent real connection attempt during lifespan
+    async def mock_connect():
+        pass
+    monkeypatch.setattr(DatabaseManager, "connect_to_database", mock_connect)
+    
+    # 2. Prevent real disconnect clearing our mock
+    async def mock_close():
+        pass
+    monkeypatch.setattr(DatabaseManager, "close_database_connection", mock_close)
+
     client = AsyncIOMotorClient(settings.MONGODB_URL)
     db = client[f"{settings.MONGODB_DB_NAME}_test"]
+    
+    # 3. Set the global state explicitly
+    DatabaseManager.client = client
+    DatabaseManager.db = db
+    DatabaseManager._test_db = db  # Fallback for tests
+    
+    # 4. Patch get_database to ensure it returns our db
+    monkeypatch.setattr(DatabaseManager, "get_database", lambda: db)
     
     # Clean database before tests
     collections = await db.list_collection_names()
@@ -38,12 +57,38 @@ async def test_db() -> AsyncGenerator[AsyncIOMotorDatabase, None]:
         await db[collection].delete_many({})
     
     client.close()
+    DatabaseManager.client = None
+    DatabaseManager.db = None
+    if hasattr(DatabaseManager, "_test_db"):
+        del DatabaseManager._test_db
 
 
-@pytest.fixture(scope="module")
-def client() -> TestClient:
-    """Create test client"""
-    return TestClient(app)
+
+
+@pytest.fixture(scope="function")
+def client(test_db) -> Generator:
+    """Create test client with overridden dependencies"""
+    from app.db.connection import get_db
+    app.dependency_overrides[get_db] = lambda: test_db
+    
+    with TestClient(app) as c:
+        yield c
+    
+    # Clear overrides
+    app.dependency_overrides = {}
+
+
+@pytest.fixture(scope="function")
+async def async_client(test_db):
+    """Create async test client with overridden dependencies"""
+    from app.db.connection import get_db
+    app.dependency_overrides[get_db] = lambda: test_db
+    
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        yield ac
+    
+    # Clear overrides
+    app.dependency_overrides = {}
 
 
 @pytest.fixture
@@ -120,3 +165,21 @@ async def authenticated_token(client, mock_user_data, test_db):
 def auth_headers(authenticated_token):
     """Get authorization headers"""
     return {"Authorization": f"Bearer {authenticated_token}"}
+
+
+@pytest.fixture
+async def async_client(test_db):
+    """Async client for e2e tests"""
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+    from app.db.connection import get_db
+    
+    app.dependency_overrides[get_db] = lambda: test_db
+    
+    # Use ASGITransport for FastAPI app
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+    
+    app.dependency_overrides = {}
+

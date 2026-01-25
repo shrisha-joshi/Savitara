@@ -217,7 +217,7 @@ async def create_booking(
             notes=booking_data.notes
         )
         
-        result = await db.bookings.insert_one(booking.dict(by_alias=True))
+        result = await db.bookings.insert_one(booking.model_dump(by_alias=True))
         booking.id = str(result.inserted_id)
         
         logger.info(f"Booking created: {booking.id} for Grihasta {grihasta_id}")
@@ -242,6 +242,97 @@ async def create_booking(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create booking"
         )
+
+
+@router.get(
+    "",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Bookings",
+    description="Get user bookings"
+)
+async def get_bookings_root(
+    status_filter: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get bookings alias"""
+    return await get_my_bookings(status_filter, page, limit, current_user, db)
+
+
+@router.put(
+    "/{booking_id}/status",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update Booking Status",
+)
+async def update_booking_status(
+    booking_id: str,
+    status_update: BookingStatusUpdateRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Update booking status"""
+    booking = await db.bookings.find_one({"_id": booking_id})
+    if not booking:
+        raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
+    
+    if current_user["role"] not in [UserRole.ADMIN.value, UserRole.ACHARYA.value]:
+         raise PermissionDeniedError(action="Update status")
+
+    await db.bookings.update_one(
+        {"_id": booking_id},
+        {"$set": {"status": status_update.status, "updated_at": datetime.now(timezone.utc)}}
+    )
+    return StandardResponse(success=True, message="Status updated")
+
+
+@router.put(
+    "/{booking_id}/cancel",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Cancel Booking",
+)
+async def cancel_booking(
+    booking_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Cancel booking"""
+    booking = await db.bookings.find_one({"_id": booking_id})
+    if not booking:
+         raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
+    
+    if current_user["role"] == UserRole.GRIHASTA.value and current_user["id"] != booking["grihasta_id"]:
+         raise PermissionDeniedError(action="Cancel booking")
+         
+    await db.bookings.update_one(
+        {"_id": booking_id},
+        {"$set": {"status": BookingStatus.CANCELLED.value, "updated_at": datetime.now(timezone.utc)}}
+    )
+    return StandardResponse(success=True, message="Booking cancelled")
+
+
+@router.post(
+    "/{booking_id}/generate-otp",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Generate OTP",
+)
+async def generate_attendance_otp(
+    booking_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Generate OTP for attendance"""
+    booking = await db.bookings.find_one({"_id": booking_id})
+    if not booking:
+         raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
+         
+    otp = generate_otp()
+    return StandardResponse(success=True, message="OTP generated")
 
 
 @router.post(

@@ -22,6 +22,7 @@ from app.services.cache_service import cache
 from app.services.websocket_manager import manager, process_websocket_message
 from app.middleware.advanced_rate_limit import AdvancedRateLimiter
 from app.middleware.compression import CompressionMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.services.query_optimizer import QueryOptimizer
 from app.services.encryption_service import encryption_service
 from app.services.audit_service import AuditService
@@ -154,6 +155,9 @@ app.add_middleware(
     minimum_size=1024,  # Only compress responses > 1KB
     compression_level=6  # Balanced compression
 )
+
+# Security Headers Middleware - SonarQube: S5122
+app.add_middleware(SecurityHeadersMiddleware)
 
 # CORS Middleware - SonarQube: S5122 - Properly configured
 app.add_middleware(
@@ -387,7 +391,7 @@ async def root():
 
 
 # Include API routers
-from app.api.v1 import auth, users, bookings, chat, reviews, admin, panchanga, wallet, analytics
+from app.api.v1 import auth, users, bookings, chat, reviews, admin, panchanga, wallet, analytics, payments
 
 API_V1_PREFIX = "/api/v1"
 app.include_router(auth.router, prefix=API_V1_PREFIX)
@@ -398,6 +402,7 @@ app.include_router(reviews.router, prefix=API_V1_PREFIX)
 app.include_router(admin.router, prefix=API_V1_PREFIX)
 app.include_router(panchanga.router, prefix=API_V1_PREFIX)
 app.include_router(wallet.router, prefix=API_V1_PREFIX)
+app.include_router(payments.router, prefix=API_V1_PREFIX)
 app.include_router(analytics.router, prefix=API_V1_PREFIX)
 
 

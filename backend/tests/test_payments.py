@@ -2,16 +2,12 @@
 Payment Tests
 """
 import pytest
-from fastapi.testclient import TestClient
 from app.main import app
-
-client = TestClient(app)
-
 
 class TestPaymentInitiation:
     """Test payment initiation"""
     
-    def test_initiate_payment_without_auth(self):
+    def test_initiate_payment_without_auth(self, client):
         """Test initiating payment without authentication"""
         response = client.post(
             "/api/v1/payments/initiate",
@@ -19,7 +15,7 @@ class TestPaymentInitiation:
         )
         assert response.status_code == 401
     
-    def test_initiate_payment_invalid_amount(self):
+    def test_initiate_payment_invalid_amount(self, client):
         """Test initiating payment with invalid amount"""
         response = client.post(
             "/api/v1/payments/initiate",
@@ -27,7 +23,7 @@ class TestPaymentInitiation:
         )
         assert response.status_code in [400, 401, 422]
     
-    def test_initiate_payment_missing_booking_id(self):
+    def test_initiate_payment_missing_booking_id(self, client):
         """Test initiating payment without booking ID"""
         response = client.post(
             "/api/v1/payments/initiate",
@@ -39,7 +35,7 @@ class TestPaymentInitiation:
 class TestPaymentVerification:
     """Test payment verification"""
     
-    def test_verify_payment_without_signature(self):
+    def test_verify_payment_without_signature(self, client):
         """Test verifying payment without signature"""
         response = client.post(
             "/api/v1/payments/verify",
@@ -50,7 +46,7 @@ class TestPaymentVerification:
         )
         assert response.status_code in [400, 401, 422]
     
-    def test_verify_payment_invalid_signature(self):
+    def test_verify_payment_invalid_signature(self, client):
         """Test verifying payment with invalid signature"""
         response = client.post(
             "/api/v1/payments/verify",
@@ -66,14 +62,14 @@ class TestPaymentVerification:
 class TestRefunds:
     """Test refund functionality"""
     
-    def test_initiate_refund_without_auth(self):
+    def test_initiate_refund_without_auth(self, client):
         """Test initiating refund without authentication"""
         response = client.post(
             "/api/v1/payments/507f1f77bcf86cd799439011/refund"
         )
         assert response.status_code == 401
     
-    def test_get_refund_status_without_auth(self):
+    def test_get_refund_status_without_auth(self, client):
         """Test getting refund status without auth"""
         response = client.get("/api/v1/payments/refunds/rfnd_123")
         assert response.status_code == 401
@@ -82,12 +78,12 @@ class TestRefunds:
 class TestPaymentHistory:
     """Test payment history"""
     
-    def test_get_payment_history_without_auth(self):
+    def test_get_payment_history_without_auth(self, client):
         """Test getting payment history without auth"""
         response = client.get("/api/v1/payments/history")
         assert response.status_code == 401
     
-    def test_get_payment_by_id_without_auth(self):
+    def test_get_payment_by_id_without_auth(self, client):
         """Test getting payment details without auth"""
         response = client.get("/api/v1/payments/507f1f77bcf86cd799439011")
         assert response.status_code == 401

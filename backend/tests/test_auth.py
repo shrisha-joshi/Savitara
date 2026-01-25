@@ -2,21 +2,17 @@
 Authentication Tests
 """
 import pytest
-from fastapi.testclient import TestClient
 from app.main import app
-
-client = TestClient(app)
-
 
 class TestAuthentication:
     """Test authentication endpoints"""
     
-    def test_google_login_missing_token(self):
+    def test_google_login_missing_token(self, client):
         """Test Google login without token"""
         response = client.post("/api/v1/auth/google", json={"role": "grihasta"})
         assert response.status_code == 422
     
-    def test_google_login_invalid_role(self):
+    def test_google_login_invalid_role(self, client):
         """Test Google login with invalid role"""
         response = client.post(
             "/api/v1/auth/google",
@@ -24,27 +20,27 @@ class TestAuthentication:
         )
         assert response.status_code == 422
     
-    def test_google_callback_success(self):
+    def test_google_callback_success(self, client):
         """Test Google OAuth callback"""
         # This would need mocking Google's OAuth response
         pass
     
-    def test_refresh_token_missing(self):
+    def test_refresh_token_missing(self, client):
         """Test refresh without token"""
         response = client.post("/api/v1/auth/refresh")
         assert response.status_code in [401, 422]
     
-    def test_logout_without_auth(self):
+    def test_logout_without_auth(self, client):
         """Test logout without authentication"""
         response = client.post("/api/v1/auth/logout")
         assert response.status_code == 401
     
-    def test_get_current_user_without_token(self):
+    def test_get_current_user_without_token(self, client):
         """Test getting current user without token"""
         response = client.get("/api/v1/users/me")
         assert response.status_code == 401
     
-    def test_invalid_token_format(self):
+    def test_invalid_token_format(self, client):
         """Test with invalid token format"""
         response = client.get(
             "/api/v1/users/me",
@@ -52,7 +48,7 @@ class TestAuthentication:
         )
         assert response.status_code == 401
     
-    def test_expired_token(self):
+    def test_expired_token(self, client):
         """Test with expired token"""
         expired_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2MDk0NTkyMDB9.test"
         response = client.get(
@@ -65,12 +61,12 @@ class TestAuthentication:
 class TestAuthorization:
     """Test role-based authorization"""
     
-    def test_grihasta_cannot_access_acharya_routes(self):
+    def test_grihasta_cannot_access_acharya_routes(self, client):
         """Test that grihasta cannot access acharya-only routes"""
         # Would need authenticated grihasta token
         pass
     
-    def test_acharya_cannot_access_admin_routes(self):
+    def test_acharya_cannot_access_admin_routes(self, client):
         """Test that acharya cannot access admin routes"""
         # Would need authenticated acharya token
         pass

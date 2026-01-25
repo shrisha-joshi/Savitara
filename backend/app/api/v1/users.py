@@ -3,7 +3,7 @@ User Profile API Endpoints
 Handles profile management, onboarding, and user info
 SonarQube: S5122 - Input validation with Pydantic
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import List, Dict, Any, Optional
 import logging
@@ -91,7 +91,7 @@ async def grihasta_onboarding(
                     referred_id=user_id,
                     credits_earned=50
                 )
-                await db.referrals.insert_one(referral.dict(by_alias=True))
+                await db.referrals.insert_one(referral.model_dump(by_alias=True))
                 
                 logger.info(f"Referral applied: {onboarding_data.referral_code}")
         
@@ -106,7 +106,7 @@ async def grihasta_onboarding(
         )
         
         # Exclude _id from dict so MongoDB can auto-generate it
-        profile_dict = profile.dict(by_alias=True, exclude_none=True)
+        profile_dict = profile.model_dump(by_alias=True, exclude_none=True)
         result = await db.grihasta_profiles.insert_one(profile_dict)
         profile_id = result.inserted_id
         
@@ -208,12 +208,12 @@ async def acharya_onboarding(
             bio=onboarding_data.bio,
             rating=0.0,
             total_bookings=0,
-            availability={},
+            availability=[],
             poojas=[]
         )
         
         # Exclude _id from dict so MongoDB can auto-generate it
-        profile_dict = profile.dict(by_alias=True, exclude_none=True)
+        profile_dict = profile.model_dump(by_alias=True, exclude_none=True)
         result = await db.acharya_profiles.insert_one(profile_dict)
         profile_id = result.inserted_id
         
@@ -294,7 +294,7 @@ async def get_profile(
         # Get base user info
         user_doc = await db.users.find_one({"_id": user_oid})
         if not user_doc:
-            raise ResourceNotFoundError(resource_type="User", resource_id=user_id)
+            raise ResourceNotFoundError(message="User not found", resource_id=user_id)
         
         user_data = {
             "id": str(user_doc["_id"]),
@@ -365,6 +365,13 @@ async def get_profile(
 
 
 @router.put(
+    "/me",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update Profile",
+    description="Update user profile information"
+)
+@router.put(
     "/profile",
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
@@ -382,7 +389,7 @@ async def update_profile(
         role = current_user["role"]
         
         # Build update dict (only non-None fields)
-        update_fields = dict(update_data.dict(exclude_none=True))
+        update_fields = dict(update_data.model_dump(exclude_none=True))
         
         if not update_fields:
             raise InvalidInputError(
@@ -407,7 +414,7 @@ async def update_profile(
             raise PermissionDeniedError(action="Update profile")
         
         if result.matched_count == 0:
-            raise ResourceNotFoundError(resource_type="Profile", resource_id=user_id)
+            raise ResourceNotFoundError(message="Profile not found", resource_id=user_id)
         
         logger.info(f"Profile updated for user {user_id}")
         
@@ -447,7 +454,8 @@ async def search_acharyas(
     sort_by: str = Query("relevance", description="Sort by: relevance, rating, price, experience"),
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    request: Request = None
 ):
     """
     Search Acharyas with advanced filters
@@ -467,10 +475,24 @@ async def search_acharyas(
         if cached_result:
             return cached_result
 
+        # Debugging request type
+        if request is not None:
+             pass # Removed print to clean up logs, logic fix below is key
+        
         # Use Elasticsearch if enabled and search service is available
-        if use_elasticsearch and hasattr(db.app, 'search_service'):
+        # Fix: Check request is not None explicitly to avoid PyMongo database bool check error if mis-injected
+        has_search_service = False
+        if request is not None:
+             try:
+                 app_instance = getattr(request, 'app', None)
+                 if app_instance and hasattr(app_instance, 'search_service'):
+                     has_search_service = True
+             except Exception:
+                 pass
+
+        if use_elasticsearch and has_search_service:
             from app.services.search_service import SearchService
-            search_service: SearchService = db.app.search_service
+            search_service: SearchService = request.app.search_service
             
             filters = {
                 "city": city,
@@ -510,7 +532,7 @@ async def search_acharyas(
             )
             
             # Cache Result
-            await cache.set(cache_key, response.dict(), expire=300)
+            await cache.set(cache_key, response.model_dump(), expire=300)
             return response
 
         # Fallback to MongoDB search
@@ -581,7 +603,7 @@ async def search_acharyas(
         )
         
         # Cache Result
-        await cache.set(cache_key, response.dict(), expire=300)
+        await cache.set(cache_key, response.model_dump(), expire=300)
         
         return response
         
@@ -609,12 +631,12 @@ async def get_acharya_details(
         # Get Acharya profile
         profile_doc = await db.acharya_profiles.find_one({"_id": acharya_id})
         if not profile_doc:
-            raise ResourceNotFoundError(resource_type="Acharya", resource_id=acharya_id)
+            raise ResourceNotFoundError(message="Acharya not found", resource_id=acharya_id)
         
         # Check if Acharya is active
         user_doc = await db.users.find_one({"_id": profile_doc["user_id"]})
         if not user_doc or user_doc["status"] != UserStatus.ACTIVE.value:
-            raise ResourceNotFoundError(resource_type="Acharya", resource_id=acharya_id)
+            raise ResourceNotFoundError(message="Acharya not found", resource_id=acharya_id)
         
         # Get public reviews
         reviews = await db.reviews.find({
@@ -657,3 +679,72 @@ async def get_acharya_details(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch Acharya details"
         )
+
+
+# Alias /me to /profile for compatibility with tests and standard expectation
+@router.get(
+    "/me",
+    include_in_schema=False
+)
+async def get_me(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """
+    Get current user profile (Alias for /profile)
+    """
+    return await get_profile(current_user, db)
+
+
+# Alias /grihasta/profile to /grihasta/onboarding
+@router.post(
+    "/grihasta/profile",
+    include_in_schema=False
+)
+async def create_grihasta_profile_alias(
+    onboarding_data: GrihastaOnboardingRequest,
+    current_user: Dict[str, Any] = Depends(get_current_grihasta),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    return await grihasta_onboarding(onboarding_data, current_user, db)
+
+
+# Alias /acharya/profile to /acharya/onboarding
+@router.post(
+    "/acharya/profile",
+    include_in_schema=False
+)
+async def create_acharya_profile_alias(
+    onboarding_data: AcharyaOnboardingRequest,
+    current_user: Dict[str, Any] = Depends(get_current_acharya),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    return await acharya_onboarding(onboarding_data, current_user, db)
+
+
+# Alias /search to /acharyas
+@router.get(
+    "/search",
+    include_in_schema=False
+)
+async def search_users_alias(
+    query: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    specialization: Optional[str] = Query(None),
+    language: Optional[str] = Query(None),
+    min_rating: float = Query(0.0),
+    max_price: Optional[float] = Query(None),
+    latitude: Optional[float] = Query(None),
+    longitude: Optional[float] = Query(None),
+    use_elasticsearch: bool = Query(True),
+    sort_by: str = Query("relevance"),
+    page: int = Query(1),
+    limit: int = Query(20),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    return await search_acharyas(
+        query, city, state, specialization, language, min_rating, 
+        max_price, latitude, longitude, use_elasticsearch, sort_by, 
+        page, limit, db
+    )

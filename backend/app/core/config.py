@@ -2,9 +2,9 @@
 Centralized Configuration Management
 SonarQube: S6437 - Use environment variables for sensitive data
 """
-from typing import List, Optional
-from pydantic_settings import BaseSettings
-from pydantic import validator
+from typing import List, Optional, Union
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator, ValidationInfo
 import secrets
 
 
@@ -28,20 +28,36 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     # CORS - SonarQube: Validate origins
-    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
+    ALLOWED_ORIGINS: Union[List[str], str] = ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"]
     
-    @validator("ALLOWED_ORIGINS")
-    def validate_origins(cls, v, values):
+    @field_validator("ALLOWED_ORIGINS", mode="after")
+    @classmethod
+    def validate_origins(cls, v: Union[str, List[str]], info: ValidationInfo) -> List[str]:
         """Validate CORS origins"""
-        origins = [origin.strip() for origin in v.split(",") if origin.strip()]
-        if "*" in origins and values.get("APP_ENV") == "production":
+        if isinstance(v, str):
+            # Try JSON first? No, just split comma
+             if v.startswith("["):
+                 import json
+                 try:
+                     return json.loads(v)
+                 except:
+                     pass
+             origins = [origin.strip() for origin in v.split(",") if origin.strip()]
+        else:
+             origins = v
+        
+        if "*" in origins and info.data.get("APP_ENV") == "production":
              raise ValueError("Wildcard CORS not allowed in production")
         return origins
 
-    @validator("DEBUG", pre=True)
-    def validate_debug(cls, v, values):
-        if values.get("APP_ENV") == "production":
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def validate_debug(cls, v: Union[str, bool], info: ValidationInfo) -> bool:
+        if info.data.get("APP_ENV") == "production":
             return False
+        if isinstance(v, str):
+            return v.lower() in ("true", "1", "t")
         return v
     
     # Database - MongoDB Atlas
@@ -129,11 +145,12 @@ class Settings(BaseSettings):
     SKIP_OTP_VERIFICATION: bool = False
     TEST_OTP_CODE: Optional[str] = "123456"
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore"
+    )
         
     def get_database_url(self) -> str:
         """Get MongoDB connection URL - SonarQube: Secure connection string"""

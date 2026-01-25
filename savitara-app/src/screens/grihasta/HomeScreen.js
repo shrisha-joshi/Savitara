@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Image } from 'react-native';
 import { Text, Card, Button, Chip, Searchbar } from 'react-native-paper';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '../../context/AuthContext';
 import { userAPI } from '../../services/api';
+import Skeleton from '../../components/common/Skeleton';
 
 const HomeScreen = ({ navigation }) => {
   const { user } = useAuth();
@@ -62,11 +64,22 @@ const HomeScreen = ({ navigation }) => {
           Top Rated Acharyas
         </Text>
         {loading ? (
-          <Text>Loading...</Text>
+          <View>
+            {[1, 2, 3].map((key) => (
+              <View key={key} style={[styles.card, { padding: 15, backgroundColor: 'white', borderRadius: 10, elevation: 1, flexDirection: 'row' }]}>
+                <Skeleton variant="rect" width={80} height={80} style={{ borderRadius: 8, marginRight: 15 }} />
+                <View style={{ flex: 1, justifyContent: 'space-around' }}>
+                  <Skeleton variant="rect" width="70%" height={20} />
+                  <Skeleton variant="rect" width="50%" height={15} />
+                  <Skeleton variant="rect" width="30%" height={15} />
+                </View>
+              </View>
+            ))}
+          </View>
         ) : (
-          featuredAcharyas.map((acharya) => (
+          featuredAcharyas.map((acharya, index) => (
+            <Animated.View key={acharya._id} entering={FadeInDown.delay(index * 100).duration(500)}>
             <Card 
-              key={acharya._id} 
               style={styles.card}
               onPress={() => navigation.navigate('AcharyaDetails', { acharyaId: acharya._id })}
             >
@@ -89,6 +102,7 @@ const HomeScreen = ({ navigation }) => {
                 </View>
               </Card.Content>
             </Card>
+            </Animated.View>
           ))
         )}
       </View>

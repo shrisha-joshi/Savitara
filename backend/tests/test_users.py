@@ -2,26 +2,22 @@
 User API Tests
 """
 import pytest
-from fastapi.testclient import TestClient
 from app.main import app
-
-client = TestClient(app)
-
 
 class TestUserProfile:
     """Test user profile endpoints"""
     
-    def test_get_profile_without_auth(self):
+    def test_get_profile_without_auth(self, client):
         """Test getting profile without authentication"""
         response = client.get("/api/v1/users/me")
         assert response.status_code == 401
     
-    def test_update_profile_without_auth(self):
+    def test_update_profile_without_auth(self, client):
         """Test updating profile without authentication"""
         response = client.put("/api/v1/users/me", json={"name": "New Name"})
         assert response.status_code == 401
     
-    def test_get_user_by_id_invalid_id(self):
+    def test_get_user_by_id_invalid_id(self, client):
         """Test getting user with invalid ID"""
         response = client.get("/api/v1/users/invalid_id")
         assert response.status_code in [400, 404, 422]
@@ -30,7 +26,7 @@ class TestUserProfile:
 class TestGrihastaProfile:
     """Test Grihasta profile endpoints"""
     
-    def test_create_grihasta_profile_without_auth(self):
+    def test_create_grihasta_profile_without_auth(self, client):
         """Test creating grihasta profile without auth"""
         profile_data = {
             "location": {
@@ -44,35 +40,38 @@ class TestGrihastaProfile:
         assert response.status_code == 401
 
 
+@pytest.mark.asyncio
 class TestAcharyaProfile:
     """Test Acharya profile endpoints"""
     
-    def test_get_acharyas_list(self):
+    async def test_get_acharyas_list(self, async_client):
         """Test getting list of acharyas"""
-        response = client.get("/api/v1/users/acharyas")
+        response = await async_client.get("/api/v1/users/acharyas")
         assert response.status_code == 200
         assert "data" in response.json()
     
-    def test_get_acharya_by_id_invalid(self):
+    async def test_get_acharya_by_id_invalid(self, async_client):
         """Test getting acharya with invalid ID"""
-        response = client.get("/api/v1/users/acharyas/invalid_id")
+        response = await async_client.get("/api/v1/users/acharyas/invalid_id")
         assert response.status_code in [400, 404, 422]
     
-    def test_create_acharya_profile_validation(self):
+    # This one might not need DB if it fails auth first, but consistency is good
+    async def test_create_acharya_profile_validation(self, async_client):
         """Test acharya profile creation with missing fields"""
-        response = client.post("/api/v1/users/acharya/profile", json={})
+        response = await async_client.post("/api/v1/users/acharya/profile", json={})
         assert response.status_code in [401, 422]
 
 
+@pytest.mark.asyncio
 class TestUserSearch:
     """Test user search functionality"""
     
-    def test_search_users_without_query(self):
+    async def test_search_users_without_query(self, async_client):
         """Test search without query parameter"""
-        response = client.get("/api/v1/users/search")
+        response = await async_client.get("/api/v1/users/search")
         assert response.status_code in [200, 422]
     
-    def test_search_users_with_query(self):
+    async def test_search_users_with_query(self, async_client):
         """Test search with query parameter"""
-        response = client.get("/api/v1/users/search?q=test")
+        response = await async_client.get("/api/v1/users/search?q=test")
         assert response.status_code == 200

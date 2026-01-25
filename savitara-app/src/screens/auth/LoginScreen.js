@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { Button, Text, TextInput, SegmentedButtons } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 const LoginScreen = () => {
   const { login, loginWithEmail, registerWithEmail, loading, error } = useAuth();
@@ -38,7 +39,10 @@ const LoginScreen = () => {
       </Text>
       
       {error && (
-        <Text style={styles.error}>{error}</Text>
+        <View style={styles.errorContainer}>
+           <MaterialCommunityIcons name="alert-circle-outline" size={20} color="#B00020" style={styles.errorIcon} />
+           <Text style={styles.errorText} variant="bodySmall">{getErrorMessage(error)}</Text>
+        </View>
       )}
 
       <View style={styles.form}>
@@ -171,10 +175,24 @@ const styles = StyleSheet.create({
   switchButton: {
     marginTop: 16,
   },
-  error: {
-    color: '#B00020',
-    textAlign: 'center',
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 16,
+    padding: 12,
+    backgroundColor: '#FDECEC',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#F8CACA',
+  },
+  errorIcon: {
+    marginRight: 8,
+  },
+  errorText: {
+    color: '#B00020',
+    flex: 1,
+    flexWrap: 'wrap',
   },
 });
 

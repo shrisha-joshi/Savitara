@@ -2,9 +2,12 @@
 API Request/Response Schemas
 SonarQube: S1192 - No string duplication
 """
-from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional, List, Dict, Any
-from datetime import datetime
+from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict, ValidationInfo
+from typing import Optional, List, Dict, Any, Union
+from datetime import datetime, timezone
+
+def utcnow():
+    return datetime.now(timezone.utc)
 
 from app.models.database import UserRole, UserStatus, BookingStatus, Location
 from app.core.constants import PHONE_REGEX
@@ -29,13 +32,14 @@ class GoogleAuthRequest(BaseModel):
     id_token: str = Field(..., description="Google ID token")
     role: UserRole = Field(..., description="User role selection")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjEifQ...",
                 "role": "grihasta"
             }
         }
+    )
 
 
 class TokenResponse(BaseModel):
@@ -73,8 +77,8 @@ class GrihastaOnboardingRequest(BaseModel):
     preferences: Optional[Dict[str, Any]] = {}
     referral_code: Optional[str] = None
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "name": "Rajesh Kumar",
                 "phone": "+919876543210",
@@ -90,6 +94,7 @@ class GrihastaOnboardingRequest(BaseModel):
                 }
             }
         }
+    )
 
 
 class AcharyaOnboardingRequest(BaseModel):
@@ -100,14 +105,14 @@ class AcharyaOnboardingRequest(BaseModel):
     gotra: str
     experience_years: int = Field(..., ge=0, le=100)
     study_place: str
-    specializations: List[str] = Field(..., min_items=1)
-    languages: List[str] = Field(..., min_items=1)
+    specializations: List[str] = Field(..., min_length=1)
+    languages: List[str] = Field(..., min_length=1)
     location: Location
     bio: Optional[str] = Field(None, max_length=500)
     referral_code: Optional[str] = None
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "name": "Swami Ramakrishna",
                 "phone": "+919876543210",
@@ -122,9 +127,10 @@ class AcharyaOnboardingRequest(BaseModel):
                     "state": "Uttar Pradesh",
                     "country": "India"
                 },
-                "bio": "Traditional Vedanta scholar with 20 years of teaching experience"
+                "bio": "Experienced Acharya specializing in Vedic rituals."
             }
         }
+    )
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -150,8 +156,9 @@ class BookingCreateRequest(BaseModel):
     coupon_code: Optional[str] = None
     notes: Optional[str] = Field(None, max_length=500)
     
-    @validator('date')
-    def validate_date(cls, v):
+    @field_validator('date')
+    @classmethod
+    def validate_date(cls, v: str) -> str:
         """Validate date format"""
         try:
             datetime.strptime(v, '%Y-%m-%d')
@@ -159,8 +166,9 @@ class BookingCreateRequest(BaseModel):
         except ValueError:
             raise ValueError('Date must be in YYYY-MM-DD format')
     
-    @validator('time')
-    def validate_time(cls, v):
+    @field_validator('time')
+    @classmethod
+    def validate_time(cls, v: str) -> str:
         """Validate time format"""
         try:
             datetime.strptime(v, '%H:%M')
@@ -168,8 +176,8 @@ class BookingCreateRequest(BaseModel):
         except ValueError:
             raise ValueError('Time must be in HH:MM format')
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "acharya_id": "507f1f77bcf86cd799439011",
                 "pooja_id": "507f1f77bcf86cd799439012",
@@ -184,6 +192,7 @@ class BookingCreateRequest(BaseModel):
                 "notes": "Please bring tulsi leaves"
             }
         }
+    )
 
 
 class BookingResponse(BaseModel):
@@ -254,8 +263,8 @@ class ReviewCreateRequest(BaseModel):
     comment: Optional[str] = Field(None, max_length=1000)
     review_type: str = Field(..., pattern="^(acharya|pooja|platform)$")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "booking_id": "507f1f77bcf86cd799439011",
                 "rating": 5,
@@ -263,6 +272,7 @@ class ReviewCreateRequest(BaseModel):
                 "review_type": "acharya"
             }
         }
+    )
 
 
 class ReviewResponse(BaseModel):
@@ -310,16 +320,17 @@ class AvailabilitySlotRequest(BaseModel):
     date: str = Field(..., description="Date in YYYY-MM-DD format")
     time_slots: List[Dict[str, str]] = Field(..., description="List of time ranges")
     
-    @validator('date')
-    def validate_date(cls, v):
+    @field_validator('date')
+    @classmethod
+    def validate_date(cls, v: str) -> str:
         try:
             datetime.strptime(v, '%Y-%m-%d')
             return v
         except ValueError:
             raise ValueError('Date must be in YYYY-MM-DD format')
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "date": "2026-02-01",
                 "time_slots": [
@@ -328,6 +339,7 @@ class AvailabilitySlotRequest(BaseModel):
                 ]
             }
         }
+    )
 
 
 # ============= Standard Response Wrapper =============
@@ -337,4 +349,4 @@ class StandardResponse(BaseModel):
     success: bool
     data: Optional[Any] = None
     message: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utcnow)

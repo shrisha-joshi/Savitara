@@ -3,31 +3,44 @@ Pydantic Models for Database Documents
 SonarQube: S1192 - No string duplication
 SonarQube: S117 - Proper naming conventions
 """
-from pydantic import BaseModel, Field, validator, EmailStr
+from pydantic import BaseModel, Field, field_validator, EmailStr, GetCoreSchemaHandler, ConfigDict
+from pydantic_core import CoreSchema, core_schema
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from bson import ObjectId
+
+def utcnow():
+    return datetime.now(timezone.utc)
+
 
 
 class PyObjectId(ObjectId):
     """Custom ObjectId type for Pydantic"""
-    
+
     @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
-    
+    def __get_pydantic_core_schema__(
+        cls, _source_type: Any, _handler: GetCoreSchemaHandler
+    ) -> CoreSchema:
+        return core_schema.json_or_python_schema(
+            json_schema=core_schema.str_schema(),
+            python_schema=core_schema.union_schema([
+                core_schema.is_instance_schema(ObjectId),
+                core_schema.chain_schema([
+                    core_schema.str_schema(),
+                    core_schema.no_info_plain_validator_function(cls.validate),
+                ]),
+            ]),
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                lambda x: str(x)
+            ),
+        )
+
     @classmethod
-    def validate(cls, v, values=None):
-        if not ObjectId.is_valid(v):
+    def validate(cls, value: Any) -> ObjectId:
+        if not ObjectId.is_valid(value):
             raise ValueError("Invalid ObjectId")
-        return ObjectId(v)
-    
-    @classmethod
-    def __get_pydantic_json_schema__(cls, core_schema, handler):
-        json_schema = handler(core_schema)
-        json_schema.update(type="string")
-        return json_schema
+        return ObjectId(value)
 
 
 class UserRole(str, Enum):
@@ -84,16 +97,16 @@ class User(BaseModel):
     onboarded: bool = False  # Track if user completed onboarding
     profile_picture: Optional[str] = None  # User's profile photo URL
     referral_code: Optional[str] = None  # Unique referral code for user
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     last_login: Optional[datetime] = None
     device_tokens: List[str] = []
     credits: int = 0
     
-    class Config:
-        populate_by_name = True
-        json_encoders = {ObjectId: str}
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
 
 
 class GrihastaProfile(BaseModel):
@@ -106,13 +119,13 @@ class GrihastaProfile(BaseModel):
     parampara: str  # Spiritual tradition
     preferences: Dict[str, Any] = {}
     referred_by: Optional[str] = None  # Changed to str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     
-    class Config:
-        populate_by_name = True
-        json_encoders = {ObjectId: str}
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
 
 
 class AvailabilitySlot(BaseModel):
@@ -145,13 +158,13 @@ class AcharyaProfile(BaseModel):
     }
     bio: Optional[str] = None
     profile_picture: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     
-    class Config:
-        populate_by_name = True
-        json_encoders = {ObjectId: str}
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
 
 
 class Pooja(BaseModel):
@@ -166,13 +179,13 @@ class Pooja(BaseModel):
     image_url: Optional[str] = None
     is_active: bool = True
     created_by: PyObjectId  # Admin who created
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     
-    class Config:
-        populate_by_name = True
-        json_encoders = {ObjectId: str}
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
 
 
 class AttendanceConfirmation(BaseModel):
@@ -209,13 +222,13 @@ class Booking(BaseModel):
     start_otp: Optional[str] = None  # OTP for starting the event
     attendance: Optional[AttendanceConfirmation] = None
     notes: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     
-    class Config:
-        populate_by_name = True
-        json_encoders = {ObjectId: str}
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
 
 
 class Message(BaseModel):
@@ -228,12 +241,12 @@ class Message(BaseModel):
     is_open_chat: bool = False
     expires_at: Optional[datetime] = None  # For 7-day auto-delete
     read: bool = False
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     
-    class Config:
-        populate_by_name = True
-        json_encoders = {ObjectId: str}
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
 
 
 class Conversation(BaseModel):
@@ -242,13 +255,13 @@ class Conversation(BaseModel):
     participants: List[PyObjectId]
     is_open_chat: bool = False
     expires_at: Optional[datetime] = None
-    last_message_at: datetime = Field(default_factory=datetime.utcnow)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_message_at: datetime = Field(default_factory=utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     
-    class Config:
-        populate_by_name = True
-        json_encoders = {ObjectId: str}
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
 
 
 class Review(BaseModel):
@@ -262,12 +275,12 @@ class Review(BaseModel):
     comment: Optional[str] = None
     review_type: str  # "acharya", "pooja", "platform"
     is_public: bool = False  # Admin decides visibility
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     
-    class Config:
-        populate_by_name = True
-        json_encoders = {ObjectId: str}
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
 
 
 class Referral(BaseModel):
@@ -278,12 +291,12 @@ class Referral(BaseModel):
     referred_users: List[PyObjectId] = []
     credits_earned: int = 0
     status: str = "active"  # active, inactive
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     
-    class Config:
-        populate_by_name = True
-        json_encoders = {ObjectId: str}
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
 
 
 class Notification(BaseModel):
@@ -295,12 +308,12 @@ class Notification(BaseModel):
     notification_type: str  # booking, chat, announcement, etc.
     data: Dict[str, Any] = {}
     read: bool = False
-    sent_at: datetime = Field(default_factory=datetime.utcnow)
+    sent_at: datetime = Field(default_factory=utcnow)
     
-    class Config:
-        populate_by_name = True
-        json_encoders = {ObjectId: str}
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
 
 
 class PanchangaEvent(BaseModel):
@@ -319,7 +332,7 @@ class PanchangaEvent(BaseModel):
     auspicious_timings: List[Dict[str, str]] = []
     bookings: List[PyObjectId] = []  # Bookings on this date
     
-    class Config:
-        populate_by_name = True
-        json_encoders = {ObjectId: str}
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )

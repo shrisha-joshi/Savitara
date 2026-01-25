@@ -303,7 +303,7 @@ async def verify_acharya(  # noqa: C901
             notification_type="verification",
             data={"action": verification.action}
         )
-        await db.notifications.insert_one(notification.dict(by_alias=True))
+        await db.notifications.insert_one(notification.model_dump(by_alias=True))
         
         # Send push notification
         acharya_doc = await db.users.find_one({"_id": ObjectId(acharya_id)})
@@ -469,7 +469,7 @@ async def moderate_review(
             notification_type="review_moderation",
             data={"review_id": review_id, "action": action}
         )
-        await db.notifications.insert_one(notification.dict(by_alias=True))
+        await db.notifications.insert_one(notification.model_dump(by_alias=True))
         
         logger.info(f"Review {review_id} {action}ed by admin {admin_id}")
         
@@ -630,7 +630,7 @@ async def suspend_user(
             notification_type="account_status",
             data={"action": "suspended"}
         )
-        await db.notifications.insert_one(notification.dict(by_alias=True))
+        await db.notifications.insert_one(notification.model_dump(by_alias=True))
         
         logger.info(f"User {user_id} suspended by admin {admin_id}")
         
@@ -695,7 +695,7 @@ async def activate_user(
             notification_type="account_status",
             data={"action": "activated"}
         )
-        await db.notifications.insert_one(notification.dict(by_alias=True))
+        await db.notifications.insert_one(notification.model_dump(by_alias=True))
         
         logger.info(f"User {user_id} activated by admin {current_user['id']}")
         
@@ -747,7 +747,7 @@ async def broadcast_notification(
                 body=notification_data.body,
                 notification_type="broadcast",
                 data=notification_data.data or {}
-            ).dict(by_alias=True)
+            ).model_dump(by_alias=True)
             for user_id in user_ids
         ]
         

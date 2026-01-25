@@ -90,7 +90,7 @@ async def google_login(
     """
     try:
         # Verify Google token
-        google_info = await verify_google_token(auth_request.id_token)
+        google_info = verify_google_token(auth_request.id_token)
         
         if not google_info['email_verified']:
             raise AuthenticationError(
@@ -126,7 +126,7 @@ async def google_login(
                 credits=100  # Welcome bonus
             )
             
-            result = await db.users.insert_one(user.dict(by_alias=True))
+            result = await db.users.insert_one(user.model_dump(by_alias=True))
             user.id = str(result.inserted_id)
             is_new_user = True
             

@@ -55,7 +55,7 @@ async def _get_or_create_conversation(db, sender_id: str, receiver_id: str) -> s
             is_open_chat=False,
             last_message_at=datetime.now(timezone.utc)
         )
-        result = await db.conversations.insert_one(conversation.dict(by_alias=True))
+        result = await db.conversations.insert_one(conversation.model_dump(by_alias=True))
         return str(result.inserted_id)
     
     # Update last message time
@@ -165,7 +165,7 @@ async def send_message(  # noqa: C901
             conversation_doc = await db.conversations.find_one({"_id": conversation_id})
         
         # Save message
-        result = await db.messages.insert_one(message.dict(by_alias=True))
+        result = await db.messages.insert_one(message.model_dump(by_alias=True))
         message.id = str(result.inserted_id)
         
         # Send push notification for 1-to-1 messages

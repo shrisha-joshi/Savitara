@@ -21,7 +21,7 @@ pwd_context = CryptContext(
 )
 
 # HTTP Bearer for JWT tokens
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 class SecurityManager:
@@ -141,12 +141,18 @@ class SecurityManager:
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Security(security)
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(security)
 ) -> Dict[str, Any]:
     """
     Dependency to get current authenticated user
     SonarQube: Validates token on every request
     """
+    if not credentials:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     token = credentials.credentials
     
     payload = SecurityManager.verify_token(token)

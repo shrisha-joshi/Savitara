@@ -2,7 +2,7 @@
 Pagination Utility
 """
 from typing import TypeVar, Generic, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from math import ceil
 
 T = TypeVar('T')
@@ -18,8 +18,7 @@ class PaginationParams(BaseModel):
         """Calculate skip value for database query"""
         return (self.page - 1) * self.limit
     
-    class Config:
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 class PaginatedResponse(BaseModel, Generic[T]):
@@ -32,8 +31,7 @@ class PaginatedResponse(BaseModel, Generic[T]):
     has_next: bool
     has_prev: bool
     
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 def paginate(

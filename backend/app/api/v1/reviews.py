@@ -104,7 +104,7 @@ async def create_review(
             is_public=False  # Private by default
         )
         
-        result = await db.reviews.insert_one(review.dict(by_alias=True))
+        result = await db.reviews.insert_one(review.model_dump(by_alias=True))
         review.id = str(result.inserted_id)
         
         # Notify admin for review approval

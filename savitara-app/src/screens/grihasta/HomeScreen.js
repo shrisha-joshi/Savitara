@@ -5,6 +5,8 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '../../context/AuthContext';
 import { userAPI } from '../../services/api';
 import Skeleton from '../../components/common/Skeleton';
+import PanchangaWidget from '../../components/PanchangaWidget';
+import HeroCarousel from '../../components/HeroCarousel';
 
 const HomeScreen = ({ navigation }) => {
   const { user } = useAuth();
@@ -32,19 +34,24 @@ const HomeScreen = ({ navigation }) => {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text variant="headlineMedium" style={styles.greeting}>
-          Namaste, {user?.full_name?.split(' ')[0]}!
-        </Text>
-        <Text variant="bodyMedium" style={styles.subtitle}>
-          Find authentic Acharyas for your spiritual needs
-        </Text>
-      </View>
+      <HeroCarousel navigation={navigation} />
 
-      <Searchbar
-        placeholder="Search for rituals, poojas..."
-        onIconPress={() => navigation.navigate('Search')}
-        style={styles.searchbar}
+      <View style={styles.content}>
+        <View style={styles.header}>
+          <Text variant="headlineMedium" style={styles.greeting}>
+            Namaste, {user?.full_name?.split(' ')[0]}!
+          </Text>
+          <Text variant="bodyMedium" style={styles.subtitle}>
+            Find authentic Acharyas for your spiritual needs
+          </Text>
+        </View>
+
+        <PanchangaWidget />
+
+        <Searchbar
+          placeholder="Search for rituals, poojas..."
+          onIconPress={() => navigation.navigate('Search')}
+          style={styles.searchbar}
       />
 
       <View style={styles.section}>
@@ -114,6 +121,7 @@ const HomeScreen = ({ navigation }) => {
       >
         Browse All Acharyas
       </Button>
+      </View>
     </ScrollView>
   );
 };
@@ -122,6 +130,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  content: {
+    flex: 1,
   },
   header: {
     padding: 20,

@@ -433,6 +433,112 @@ async def update_profile(
         )
 
 
+@router.put(
+    "/grihasta/profile",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update Grihasta Profile",
+    description="Update Grihasta profile information"
+)
+async def update_grihasta_profile(
+    update_data: ProfileUpdateRequest,
+    current_user: Dict[str, Any] = Depends(get_current_grihasta),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Update Grihasta profile with specific validation"""
+    try:
+        user_id = current_user["id"]
+        
+        # Build update dict (only non-None fields)
+        update_fields = dict(update_data.model_dump(exclude_none=True))
+        
+        if not update_fields:
+            raise InvalidInputError(
+                message="No fields to update",
+                field="body"
+            )
+        
+        update_fields["updated_at"] = datetime.now(timezone.utc)
+        
+        # Update grihasta profile
+        result = await db.grihasta_profiles.update_one(
+            {"user_id": user_id},
+            {"$set": update_fields}
+        )
+        
+        if result.matched_count == 0:
+            raise ResourceNotFoundError(message="Grihasta profile not found", resource_id=user_id)
+        
+        logger.info(f"Grihasta profile updated for user {user_id}")
+        
+        return StandardResponse(
+            success=True,
+            message="Grihasta profile updated successfully"
+        )
+        
+    except (InvalidInputError, ResourceNotFoundError):
+        raise
+    except Exception as e:
+        logger.error(f"Update grihasta profile error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update grihasta profile"
+        )
+
+
+@router.put(
+    "/acharya/profile",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update Acharya Profile",
+    description="Update Acharya profile information"
+)
+async def update_acharya_profile(
+    update_data: ProfileUpdateRequest,
+    current_user: Dict[str, Any] = Depends(get_current_acharya),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Update Acharya profile with specific validation"""
+    try:
+        user_id = current_user["id"]
+        
+        # Build update dict (only non-None fields)
+        update_fields = dict(update_data.model_dump(exclude_none=True))
+        
+        if not update_fields:
+            raise InvalidInputError(
+                message="No fields to update",
+                field="body"
+            )
+        
+        update_fields["updated_at"] = datetime.now(timezone.utc)
+        
+        # Update acharya profile
+        result = await db.acharya_profiles.update_one(
+            {"user_id": user_id},
+            {"$set": update_fields}
+        )
+        
+        if result.matched_count == 0:
+            raise ResourceNotFoundError(message="Acharya profile not found", resource_id=user_id)
+        
+        logger.info(f"Acharya profile updated for user {user_id}")
+        
+        return StandardResponse(
+            success=True,
+            message="Acharya profile updated successfully"
+        )
+        
+    except (InvalidInputError, ResourceNotFoundError):
+        raise
+    except Exception as e:
+        logger.error(f"Update acharya profile error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update acharya profile"
+        )
+
+
 @router.get(
     "/acharyas",
     response_model=StandardResponse,

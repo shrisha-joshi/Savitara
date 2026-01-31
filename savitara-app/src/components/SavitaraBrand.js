@@ -46,9 +46,9 @@ const SavitaraBrand = ({
   const { fontSize, omSize, taglineSize } = sizeStyles[size];
   const colorStyle = colorStyles[variant] || colorStyles.default;
 
-  // Uses Samarkan font loaded at app level (App.js)
+  // Uses Poppins Bold as brand font (Samarkan.otf not available)
   // Falls back to serif if not loaded
-  const brandFontFamily = 'Samarkan';
+  const brandFontFamily = 'Poppins_700Bold';
 
   return (
     <View style={[styles.container, style]}>

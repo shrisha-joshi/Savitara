@@ -46,13 +46,14 @@ export const adminAPI = {
   
   // User Management - matches /admin/users/search
   searchUsers: (params) => api.get('/admin/users/search', { params }),
+  getUserById: (userId) => api.get(`/admin/users/${userId}`),
   suspendUser: (userId, reason) => api.post(`/admin/users/${userId}/suspend`, null, { params: { reason } }),
   unsuspendUser: (userId) => api.post(`/admin/users/${userId}/unsuspend`),
   
   // Acharya Verification - matches /admin/acharyas/pending and /admin/acharyas/{id}/verify
   getPendingVerifications: () => api.get('/admin/acharyas/pending'),
-  verifyAcharya: (acharyaId) => api.post(`/admin/acharyas/${acharyaId}/verify`, null, { params: { action: 'approve' } }),
-  rejectAcharya: (acharyaId, reason) => api.post(`/admin/acharyas/${acharyaId}/verify`, null, { params: { action: 'reject', notes: reason } }),
+  verifyAcharya: (acharyaId) => api.post(`/admin/acharyas/${acharyaId}/verify`, { action: 'approve' }),
+  rejectAcharya: (acharyaId, reason) => api.post(`/admin/acharyas/${acharyaId}/verify`, { action: 'reject', notes: reason }),
   
   // Review Moderation - matches /admin/reviews/pending and /admin/reviews/{id}/moderate
   getPendingReviews: () => api.get('/admin/reviews/pending'),

@@ -268,6 +268,9 @@ const Dashboard = () => {
         api.get(`/analytics/acharya-performance`)
       ]);
 
+      console.log('Analytics Overview Response:', statsResponse.data);
+      console.log('Stats Data:', statsResponse.data.data);
+      
       setStats(statsResponse.data.data);
       setRevenueData(revenueResponse.data.data);
       setUserGrowthData(userGrowthResponse.data.data);
@@ -282,6 +285,7 @@ const Dashboard = () => {
       setAcharyaPerformanceData(performanceResponse.data.data);
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
+      console.error('Error details:', error.response?.data || error.message);
     } finally {
       if (!silent) setLoading(false);
     }

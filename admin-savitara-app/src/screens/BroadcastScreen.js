@@ -1,35 +1,43 @@
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
-import { View, StyleSheet, ScrollView, Text } from 'react-native';
-import { TextInput, Button, RadioButton, Card } from 'react-native-paper';
+import { View, StyleSheet, ScrollView } from 'react-native';
+import { TextInput, Button, RadioButton, Card, Text, Snackbar } from 'react-native-paper';
 import api from '../services/api';
 
 export default function BroadcastScreen({ navigation }) {
   const [title, setTitle] = useState('');
-  const [message, setMessage] = useState('');
-  const [audience, setAudience] = useState('all');
+  const [body, setBody] = useState('');
+  const [targetRole, setTargetRole] = useState('all');
   const [loading, setLoading] = useState(false);
+  const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
 
   const handleSendBroadcast = async () => {
-    if (!title || !message) {
-      alert('Please fill all fields');
+    if (!title || !body) {
+      setSnackbar({ visible: true, message: 'Please fill all fields' });
       return;
     }
 
     try {
       setLoading(true);
-      await api.post('/admin/broadcast', {
+      const response = await api.post('/admin/notifications/broadcast', {
         title,
-        message,
-        audience,
+        body,
+        target_role: targetRole,
       });
-      alert('Broadcast sent successfully!');
+      const data = response.data?.data || response.data;
+      setSnackbar({ 
+        visible: true, 
+        message: `Notification sent to ${data.recipients_count || 'all'} users!` 
+      });
       setTitle('');
-      setMessage('');
-      navigation.goBack();
+      setBody('');
+      setTimeout(() => navigation.goBack(), 2000);
     } catch (error) {
       console.error('Broadcast failed:', error);
-      alert('Failed to send broadcast');
+      setSnackbar({ 
+        visible: true, 
+        message: error.response?.data?.detail || 'Failed to send broadcast' 
+      });
     } finally {
       setLoading(false);
     }
@@ -39,9 +47,11 @@ export default function BroadcastScreen({ navigation }) {
     <ScrollView style={styles.container}>
       <Card style={styles.card}>
         <Card.Content>
-          <Text style={styles.title}>Send Broadcast Notification</Text>
-          <Text style={styles.subtitle}>
-            Send notifications to users based on audience selection
+          <Text variant="headlineSmall" style={styles.title}>
+            Send Broadcast Notification
+          </Text>
+          <Text variant="bodyMedium" style={styles.subtitle}>
+            Send push notifications to users across the platform
           </Text>
 
           <TextInput
@@ -50,30 +60,34 @@ export default function BroadcastScreen({ navigation }) {
             onChangeText={setTitle}
             style={styles.input}
             mode="outlined"
+            placeholder="Enter a catchy title..."
           />
 
           <TextInput
             label="Message"
-            value={message}
-            onChangeText={setMessage}
+            value={body}
+            onChangeText={setBody}
             multiline
-            numberOfLines={5}
+            numberOfLines={6}
             style={styles.input}
             mode="outlined"
+            placeholder="Type your message here..."
           />
 
-          <Text style={styles.sectionTitle}>Target Audience</Text>
-          <RadioButton.Group onValueChange={setAudience} value={audience}>
+          <Text variant="titleMedium" style={styles.sectionTitle}>
+            Target Audience
+          </Text>
+          <RadioButton.Group onValueChange={setTargetRole} value={targetRole}>
             <View style={styles.radioRow}>
               <RadioButton value="all" />
-              <Text style={styles.radioLabel}>All Users</Text>
+              <Text style={styles.radioLabel}>All Users (Grihastas + Acharyas)</Text>
             </View>
             <View style={styles.radioRow}>
-              <RadioButton value="grihastas" />
+              <RadioButton value="grihasta" />
               <Text style={styles.radioLabel}>Grihastas Only</Text>
             </View>
             <View style={styles.radioRow}>
-              <RadioButton value="acharyas" />
+              <RadioButton value="acharya" />
               <Text style={styles.radioLabel}>Acharyas Only</Text>
             </View>
           </RadioButton.Group>
@@ -82,13 +96,26 @@ export default function BroadcastScreen({ navigation }) {
             mode="contained"
             onPress={handleSendBroadcast}
             loading={loading}
-            disabled={loading || !title || !message}
+            disabled={loading || !title || !body}
             style={styles.button}
+            icon="send"
           >
-            Send Broadcast
+            {loading ? 'Sending...' : 'Send Notification'}
           </Button>
         </Card.Content>
       </Card>
+
+      <Snackbar
+        visible={snackbar.visible}
+        onDismiss={() => setSnackbar({ visible: false, message: '' })}
+        duration={3000}
+        action={{
+          label: 'OK',
+          onPress: () => setSnackbar({ visible: false, message: '' }),
+        }}
+      >
+        {snackbar.message}
+      </Snackbar>
     </ScrollView>
   );
 }

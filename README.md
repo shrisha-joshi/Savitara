@@ -455,26 +455,61 @@ For issues and questions:
 - ✅ Payment integration
 - ✅ Chat functionality
 - ✅ Review system
+- ✅ Hero carousel with wedding ceremony images
+- ✅ Panchanga calendar integration
+- ✅ Acharya verification workflow
 
 ### Phase 2 (Future)
 - ⏳ Real-time WebSocket chat
 - ⏳ Video consultation
-- ⏳ Panchanga integration
 - ⏳ Advanced analytics
 - ⏳ Multi-language support
 - ⏳ Email notifications
 - ⏳ SMS notifications
 - ⏳ Advanced search filters
 
+## 📸 Hero Carousel
+
+Beautiful wedding ceremony carousel on homepage featuring authentic Hindu wedding traditions.
+
+**Documentation:**
+- `CAROUSEL_IMPLEMENTATION.md` - Complete implementation guide
+- `IMAGE_SETUP_GUIDE.md` - Detailed image setup instructions
+- `QUICK_IMAGE_SETUP.md` - 5-minute quick start
+- `CAROUSEL_VISUAL_GUIDE.md` - Visual architecture reference
+
+**Features:**
+- 4 professionally curated wedding ceremony slides
+- Auto-rotation (5-second intervals)
+- Navigation arrows and pagination dots
+- Smooth animations and transitions
+- Responsive design (mobile → desktop)
+- Fallback images for immediate deployment
+- Optimized for performance (<300KB per image)
+
+**Quick Setup:**
+```bash
+# Add images to these locations:
+savitara-web/public/images/carousel/
+savitara-app/assets/images/carousel/
+
+# Required files (exact names):
+- wedding-couple-outdoor.jpg
+- wedding-ceremony.jpg
+- wedding-hands.jpg
+- wedding-entrance.jpg
+```
+
 ## 🎯 Key Metrics
 
 - **API Endpoints:** 44
 - **Mobile Screens:** 25+
 - **Admin Pages:** 6
+- **Carousel Slides:** 4
 - **Database Collections:** 8
 - **Database Indexes:** 30+
 - **Backend Files:** 23
-- **Mobile Components:** 25+
+- **Mobile Components:** 27+
 - **Admin Components:** 9
 
 ---

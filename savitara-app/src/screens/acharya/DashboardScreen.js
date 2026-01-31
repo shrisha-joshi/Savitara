@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Card } from 'react-native-paper';
 import { bookingAPI } from '../../services/api';
+import PanchangaWidget from '../../components/PanchangaWidget';
 
 const DashboardScreen = () => {
   const [stats, setStats] = useState({
@@ -44,6 +45,8 @@ const DashboardScreen = () => {
       <Text variant="headlineMedium" style={styles.title}>
         Dashboard
       </Text>
+
+      <PanchangaWidget />
 
       <View style={styles.statsGrid}>
         <Card style={styles.statCard}>

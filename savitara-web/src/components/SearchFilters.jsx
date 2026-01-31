@@ -126,10 +126,18 @@ const SearchFilters = ({ onFiltersChange, initialFilters = {}, onSearch }) => {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <FilterListIcon sx={{ mr: 1, color: 'primary.main' }} />
-          <Typography variant="h6">
+      <Paper 
+        elevation={3} 
+        sx={{ 
+          p: 4, 
+          mb: 4,
+          borderRadius: 2,
+          background: 'linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%)'
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+          <FilterListIcon sx={{ mr: 1.5, color: 'primary.main', fontSize: 28 }} />
+          <Typography variant="h5" fontWeight="bold">
             Search & Filter Acharyas
             {activeFiltersCount > 0 && (
               <Chip 
@@ -142,18 +150,27 @@ const SearchFilters = ({ onFiltersChange, initialFilters = {}, onSearch }) => {
           </Typography>
         </Box>
 
-        {/* Main Search */}
+        {/* Main Search - Larger and more prominent */}
         <TextField
           fullWidth
           label="Search"
           value={filters.query}
           onChange={(e) => handleFilterChange('query', e.target.value)}
           placeholder="Name, specialization, location..."
-          sx={{ mb: 2 }}
+          sx={{ 
+            mb: 3,
+            '& .MuiInputBase-root': {
+              fontSize: '1.1rem',
+              padding: '8px 0'
+            },
+            '& .MuiInputLabel-root': {
+              fontSize: '1.1rem'
+            }
+          }}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <SearchIcon />
+                <SearchIcon sx={{ fontSize: 28 }} />
               </InputAdornment>
             ),
             endAdornment: filters.query && (
@@ -172,9 +189,9 @@ const SearchFilters = ({ onFiltersChange, initialFilters = {}, onSearch }) => {
         />
 
         {/* Quick Filters */}
-        <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid container spacing={3} sx={{ mb: 3 }}>
           <Grid item xs={12} sm={6} md={3}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size="medium">
               <InputLabel>City</InputLabel>
               <Select
                 value={filters.city}
@@ -189,7 +206,7 @@ const SearchFilters = ({ onFiltersChange, initialFilters = {}, onSearch }) => {
           </Grid>
 
           <Grid item xs={12} sm={6} md={3}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size="medium">
               <InputLabel>Sort By</InputLabel>
               <Select
                 value={filters.sortBy}
@@ -206,27 +223,36 @@ const SearchFilters = ({ onFiltersChange, initialFilters = {}, onSearch }) => {
           </Grid>
 
           <Grid item xs={12} sm={6} md={3}>
-            <Box>
-              <Typography gutterBottom>Minimum Rating</Typography>
+            <Box sx={{ pt: 1 }}>
+              <Typography gutterBottom fontWeight="medium">Minimum Rating</Typography>
               <Rating
                 value={filters.minRating}
                 onChange={(e, value) => handleFilterChange('minRating', value || 0)}
                 precision={0.5}
+                size="large"
               />
             </Box>
           </Grid>
 
           <Grid item xs={12} sm={6} md={3}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={filters.isVerified}
-                  onChange={(e) => handleFilterChange('isVerified', e.target.checked)}
-                  color="primary"
-                />
-              }
-              label="Verified Only"
-            />
+            <Box sx={{ pt: 2 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={filters.isVerified}
+                    onChange={(e) => handleFilterChange('isVerified', e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label="Verified Only"
+                sx={{ 
+                  '& .MuiFormControlLabel-label': { 
+                    fontSize: '1rem',
+                    fontWeight: 'medium'
+                  } 
+                }}
+              />
+            </Box>
           </Grid>
         </Grid>
 

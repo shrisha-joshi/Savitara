@@ -1,14 +1,477 @@
-import { Container, Typography } from '@mui/material'
+import { useState, useEffect } from 'react'
+import {
+  Container,
+  Typography,
+  Box,
+  Card,
+  CardContent,
+  Grid,
+  Chip,
+  Button,
+  Tabs,
+  Tab,
+  TextField,
+  InputAdornment,
+  CircularProgress,
+  Avatar,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert
+} from '@mui/material'
+import {
+  Search,
+  CalendarMonth,
+  AccessTime,
+  LocationOn,
+  VideoCall,
+  Person,
+  Phone,
+  CheckCircle,
+  Cancel,
+  PlayArrow,
+  Schedule
+} from '@mui/icons-material'
 import Layout from '../../components/Layout'
+import api from '../../services/api'
+import { toast } from 'react-toastify'
 
 export default function AcharyaBookings() {
+  const [bookings, setBookings] = useState([])
+  const [filteredBookings, setFilteredBookings] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [selectedTab, setSelectedTab] = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedBooking, setSelectedBooking] = useState(null)
+  const [actionDialog, setActionDialog] = useState({ open: false, type: null })
+
+  useEffect(() => {
+    loadBookings()
+  }, [])
+
+  useEffect(() => {
+    filterBookings()
+  }, [bookings, selectedTab, searchQuery])
+
+  const loadBookings = async () => {
+    try {
+      setLoading(true)
+      const response = await api.get('/bookings/my-bookings')
+      const bookingData = response.data?.data || response.data || []
+      setBookings(bookingData)
+    } catch (error) {
+      console.error('Failed to load bookings:', error)
+      toast.error('Failed to load bookings')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const filterBookings = () => {
+    let filtered = [...bookings]
+
+    // Filter by tab
+    if (selectedTab !== 'all') {
+      filtered = filtered.filter(b => b.status === selectedTab)
+    }
+
+    // Filter by search
+    if (searchQuery) {
+      filtered = filtered.filter(b =>
+        b.grihasta_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        b.pooja_type?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    }
+
+    setFilteredBookings(filtered)
+  }
+
+  const handleAction = async (action) => {
+    try {
+      let endpoint = ''
+      let successMessage = ''
+
+      switch (action) {
+        case 'start':
+          endpoint = `/bookings/${selectedBooking._id}/start`
+          successMessage = 'Booking started successfully'
+          break
+        case 'complete':
+          endpoint = `/bookings/${selectedBooking._id}/complete`
+          successMessage = 'Booking completed successfully'
+          break
+        case 'cancel':
+          endpoint = `/bookings/${selectedBooking._id}/cancel`
+          successMessage = 'Booking cancelled successfully'
+          break
+        default:
+          return
+      }
+
+      await api.put(endpoint)
+      toast.success(successMessage)
+      setActionDialog({ open: false, type: null })
+      setSelectedBooking(null)
+      await loadBookings()
+    } catch (error) {
+      console.error('Action failed:', error)
+      toast.error(error.response?.data?.detail || 'Action failed')
+    }
+  }
+
+  const getStatusColor = (status) => {
+    const colors = {
+      pending: 'warning',
+      confirmed: 'info',
+      in_progress: 'primary',
+      completed: 'success',
+      cancelled: 'error'
+    }
+    return colors[status] || 'default'
+  }
+
+  const getStatusIcon = (status) => {
+    const icons = {
+      pending: <Schedule />,
+      confirmed: <CheckCircle />,
+      in_progress: <PlayArrow />,
+      completed: <CheckCircle />,
+      cancelled: <Cancel />
+    }
+    return icons[status]
+  }
+
+  const tabs = [
+    { value: 'all', label: 'All', count: bookings.length },
+    { value: 'pending', label: 'Pending', count: bookings.filter(b => b.status === 'pending').length },
+    { value: 'confirmed', label: 'Confirmed', count: bookings.filter(b => b.status === 'confirmed').length },
+    { value: 'in_progress', label: 'In Progress', count: bookings.filter(b => b.status === 'in_progress').length },
+    { value: 'completed', label: 'Completed', count: bookings.filter(b => b.status === 'completed').length }
+  ]
+
   return (
     <Layout>
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          My Bookings
-        </Typography>
-        <Typography>No bookings yet...</Typography>
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        {/* Header */}
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="h3" fontWeight={700} color="primary.main" gutterBottom>
+            My Bookings
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Manage all your consultation bookings
+          </Typography>
+        </Box>
+
+        {/* Stats Cards */}
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+              <CardContent>
+                <Typography variant="h4" fontWeight={700}>
+                  {bookings.length}
+                </Typography>
+                <Typography variant="body2">Total Bookings</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
+              <CardContent>
+                <Typography variant="h4" fontWeight={700}>
+                  {bookings.filter(b => b.status === 'pending').length}
+                </Typography>
+                <Typography variant="body2">Pending</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', color: 'white' }}>
+              <CardContent>
+                <Typography variant="h4" fontWeight={700}>
+                  {bookings.filter(b => b.status === 'confirmed').length}
+                </Typography>
+                <Typography variant="body2">Confirmed</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', color: 'white' }}>
+              <CardContent>
+                <Typography variant="h4" fontWeight={700}>
+                  {bookings.filter(b => b.status === 'completed').length}
+                </Typography>
+                <Typography variant="body2">Completed</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+
+        {/* Tabs and Search */}
+        <Card sx={{ mb: 3 }}>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs
+              value={selectedTab}
+              onChange={(e, newValue) => setSelectedTab(newValue)}
+              variant="scrollable"
+              scrollButtons="auto"
+            >
+              {tabs.map(tab => (
+                <Tab
+                  key={tab.value}
+                  value={tab.value}
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {tab.label}
+                      <Chip label={tab.count} size="small" color="primary" />
+                    </Box>
+                  }
+                />
+              ))}
+            </Tabs>
+          </Box>
+          <Box sx={{ p: 2 }}>
+            <TextField
+              fullWidth
+              placeholder="Search by Grihasta name or pooja type..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search />
+                  </InputAdornment>
+                )
+              }}
+            />
+          </Box>
+        </Card>
+
+        {/* Bookings List */}
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+            <CircularProgress size={60} />
+          </Box>
+        ) : filteredBookings.length === 0 ? (
+          <Card>
+            <CardContent>
+              <Box sx={{ textAlign: 'center', py: 8 }}>
+                <CalendarMonth sx={{ fontSize: 80, color: 'text.disabled', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary">
+                  No bookings found
+                </Typography>
+                <Typography variant="body2" color="text.disabled">
+                  {selectedTab !== 'all' ? `No ${selectedTab} bookings` : 'You don\'t have any bookings yet'}
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        ) : (
+          <Grid container spacing={3}>
+            {filteredBookings.map((booking) => (
+              <Grid item xs={12} md={6} lg={4} key={booking._id || booking.id}>
+                <Card
+                  elevation={3}
+                  sx={{
+                    height: '100%',
+                    transition: 'all 0.3s',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: 6
+                    }
+                  }}
+                >
+                  <CardContent>
+                    {/* Status Badge */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                      <Chip
+                        icon={getStatusIcon(booking.status)}
+                        label={booking.status?.replace('_', ' ').toUpperCase()}
+                        color={getStatusColor(booking.status)}
+                        size="small"
+                      />
+                      <Typography variant="h6" fontWeight={700} color="primary.main">
+                        ₹{booking.total_amount || booking.amount}
+                      </Typography>
+                    </Box>
+
+                    {/* Pooja Type */}
+                    <Typography variant="h6" fontWeight={600} gutterBottom>
+                      {booking.pooja_type || 'Consultation'}
+                    </Typography>
+
+                    <Divider sx={{ my: 2 }} />
+
+                    {/* Grihasta Info */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.light' }}>
+                        <Person fontSize="small" />
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">
+                          Grihasta
+                        </Typography>
+                        <Typography variant="body1" fontWeight={500}>
+                          {booking.grihasta_name || 'Unknown'}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    {/* Date & Time */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <CalendarMonth fontSize="small" color="action" />
+                      <Typography variant="body2">
+                        {new Date(booking.scheduled_datetime || booking.booking_date).toLocaleDateString('en-IN', {
+                          weekday: 'short',
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </Typography>
+                    </Box>
+
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <AccessTime fontSize="small" color="action" />
+                      <Typography variant="body2">
+                        {new Date(booking.scheduled_datetime || booking.booking_date).toLocaleTimeString('en-IN', {
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })} ({booking.duration_hours || 1}h)
+                      </Typography>
+                    </Box>
+
+                    {/* Location */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                      {booking.booking_type === 'virtual' || booking.is_virtual ? (
+                        <>
+                          <VideoCall fontSize="small" color="action" />
+                          <Typography variant="body2">Virtual Consultation</Typography>
+                        </>
+                      ) : (
+                        <>
+                          <LocationOn fontSize="small" color="action" />
+                          <Typography variant="body2" noWrap>
+                            {booking.location || 'In Person'}
+                          </Typography>
+                        </>
+                      )}
+                    </Box>
+
+                    {/* Action Buttons */}
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                      {booking.status === 'confirmed' && (
+                        <Button
+                          fullWidth
+                          variant="contained"
+                          startIcon={<PlayArrow />}
+                          onClick={() => {
+                            setSelectedBooking(booking)
+                            setActionDialog({ open: true, type: 'start' })
+                          }}
+                        >
+                          Start Session
+                        </Button>
+                      )}
+
+                      {booking.status === 'in_progress' && (
+                        <Button
+                          fullWidth
+                          variant="contained"
+                          color="success"
+                          startIcon={<CheckCircle />}
+                          onClick={() => {
+                            setSelectedBooking(booking)
+                            setActionDialog({ open: true, type: 'complete' })
+                          }}
+                        >
+                          Mark Complete
+                        </Button>
+                      )}
+
+                      {(booking.status === 'pending' || booking.status === 'confirmed') && (
+                        <Button
+                          fullWidth={booking.status === 'pending'}
+                          variant="outlined"
+                          color="error"
+                          startIcon={<Cancel />}
+                          onClick={() => {
+                            setSelectedBooking(booking)
+                            setActionDialog({ open: true, type: 'cancel' })
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+
+                      {booking.status === 'completed' && (
+                        <Button fullWidth variant="outlined" disabled>
+                          Completed
+                        </Button>
+                      )}
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        )}
+
+        {/* Action Confirmation Dialog */}
+        <Dialog
+          open={actionDialog.open}
+          onClose={() => setActionDialog({ open: false, type: null })}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
+            {actionDialog.type === 'start' && 'Start Booking Session?'}
+            {actionDialog.type === 'complete' && 'Complete Booking?'}
+            {actionDialog.type === 'cancel' && 'Cancel Booking?'}
+          </DialogTitle>
+          <DialogContent>
+            {actionDialog.type === 'start' && (
+              <Alert severity="info">
+                This will mark the booking as "In Progress" and notify the Grihasta that the session has started.
+              </Alert>
+            )}
+            {actionDialog.type === 'complete' && (
+              <Alert severity="success">
+                This will mark the booking as completed. The Grihasta will be able to leave a review.
+              </Alert>
+            )}
+            {actionDialog.type === 'cancel' && (
+              <Alert severity="warning">
+                This will cancel the booking. Any payments will be refunded according to the cancellation policy.
+              </Alert>
+            )}
+            {selectedBooking && (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Booking Details:
+                </Typography>
+                <Typography variant="body1">
+                  <strong>{selectedBooking.pooja_type}</strong> with {selectedBooking.grihasta_name}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {new Date(selectedBooking.scheduled_datetime || selectedBooking.booking_date).toLocaleString()}
+                </Typography>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setActionDialog({ open: false, type: null })}>
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              onClick={() => handleAction(actionDialog.type)}
+              color={actionDialog.type === 'cancel' ? 'error' : 'primary'}
+            >
+              Confirm
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Container>
     </Layout>
   )

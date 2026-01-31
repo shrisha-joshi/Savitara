@@ -391,7 +391,7 @@ async def root():
 
 
 # Include API routers
-from app.api.v1 import auth, users, bookings, chat, reviews, admin, panchanga, wallet, analytics, payments, admin_auth, content
+from app.api.v1 import auth, users, bookings, chat, reviews, admin, panchanga, wallet, analytics, payments, admin_auth, content, calendar
 
 API_V1_PREFIX = "/api/v1"
 app.include_router(auth.router, prefix=API_V1_PREFIX)
@@ -402,6 +402,7 @@ app.include_router(reviews.router, prefix=API_V1_PREFIX)
 app.include_router(admin.router, prefix=API_V1_PREFIX)
 app.include_router(admin_auth.router, prefix=API_V1_PREFIX)  # Admin email/password auth
 app.include_router(panchanga.router, prefix=API_V1_PREFIX)
+app.include_router(calendar.router, prefix=API_V1_PREFIX)  # Calendar and scheduling
 app.include_router(wallet.router, prefix=API_V1_PREFIX)
 app.include_router(payments.router, prefix=API_V1_PREFIX)
 app.include_router(analytics.router, prefix=API_V1_PREFIX)

@@ -50,17 +50,15 @@ const AppContent = () => {
 
 export default function App() {
   // Load typography fonts
-  // Standard: Samarkan (brand), Inter (body), Poppins (headings)
+  // Standard: Inter (body), Poppins (headings)
   const [fontsLoaded] = useFonts({
-    // Samarkan - ONLY for "Savitara" brand name
-    Samarkan: require('./assets/fonts/Samarkan.otf'),
     // Inter - Primary body font (gold standard for UI)
     Inter_300Light,
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
-    // Poppins - Heading font
+    // Poppins - Heading font (can be used for brand name too)
     Poppins_400Regular,
     Poppins_500Medium,
     Poppins_600SemiBold,

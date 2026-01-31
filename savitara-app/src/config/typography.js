@@ -21,8 +21,8 @@
 export const fonts = {
   // Brand font - ONLY for "Savitara" company name
   brand: {
-    fontFamily: 'Samarkan',
-    // Fallback for when custom font isn't loaded
+    fontFamily: 'Poppins_700Bold',
+    // Using Poppins Bold as brand font (Samarkan.otf not available)
     fallback: 'serif',
   },
   

@@ -46,6 +46,10 @@ export default function Profile() {
   const { user, logout, refreshUserData } = useAuth()
   const navigate = useNavigate()
   
+  // Profile data state
+  const [profileData, setProfileData] = useState(null)
+  const [profileLoading, setProfileLoading] = useState(true)
+  
   // Dashboard stats
   const [stats, setStats] = useState({
     totalBookings: 0,
@@ -56,13 +60,7 @@ export default function Profile() {
   
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false)
-  const [editedData, setEditedData] = useState({
-    name: user?.name || '',
-    phone: user?.phone || '',
-    city: user?.city || '',
-    state: user?.state || '',
-    country: user?.country || ''
-  })
+  const [editedData, setEditedData] = useState({})
   const [saving, setSaving] = useState(false)
   
   // Logout confirmation dialog
@@ -73,6 +71,38 @@ export default function Profile() {
   const [deleteDialog2Open, setDeleteDialog2Open] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
+
+  // Fetch profile data
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        setProfileLoading(true)
+        const response = await api.get('/users/profile')
+        const userData = response.data?.data || response.data || {}
+        const profile = userData.profile || {}
+        
+        // Merge base user data with profile data
+        const mergedProfile = {
+          ...userData,
+          ...profile,
+          role: userData.role,
+          email: userData.email,
+          created_at: userData.created_at
+        }
+        
+        setProfileData(mergedProfile)
+      } catch (error) {
+        console.error('Failed to fetch profile:', error)
+        toast.error('Failed to load profile data')
+      } finally {
+        setProfileLoading(false)
+      }
+    }
+    
+    if (user) {
+      fetchProfile()
+    }
+  }, [user])
 
   // Fetch dashboard stats
   useEffect(() => {
@@ -103,32 +133,61 @@ export default function Profile() {
 
   // Handle edit mode toggle
   const handleStartEdit = () => {
-    setEditedData({
-      name: user?.name || '',
-      phone: user?.phone || '',
-      city: user?.city || '',
-      state: user?.state || '',
-      country: user?.country || ''
-    })
+    const profile = profileData || {}
+    const baseData = {
+      name: profile.name || '',
+      phone: profile.phone || '',
+      city: profile.location?.city || '',
+      state: profile.location?.state || '',
+      country: profile.location?.country || '',
+      parampara: profile.parampara || ''
+    }
+    
+    // Add role-specific fields
+    if (profile.role === 'acharya' || user?.role === 'acharya') {
+      setEditedData({
+        ...baseData,
+        gotra: profile.gotra || '',
+        experience_years: profile.experience_years || 0,
+        study_place: profile.study_place || '',
+        specializations: profile.specializations || [],
+        languages: profile.languages || [],
+        bio: profile.bio || ''
+      })
+    } else {
+      setEditedData(baseData)
+    }
     setIsEditing(true)
   }
 
   const handleCancelEdit = () => {
     setIsEditing(false)
-    setEditedData({
-      name: user?.name || '',
-      phone: user?.phone || '',
-      city: user?.city || '',
-      state: user?.state || '',
-      country: user?.country || ''
-    })
+    setEditedData({})
   }
 
   const handleSaveProfile = async () => {
     setSaving(true)
     try {
-      await api.put('/users/me', editedData)
-      await refreshUserData()
+      // Use role-specific endpoints
+      if (user?.role === 'acharya' || profileData?.role === 'acharya') {
+        await api.put('/users/acharya/profile', editedData)
+      } else {
+        await api.put('/users/grihasta/profile', editedData)
+      }
+      
+      // Reload profile data
+      const response = await api.get('/users/profile')
+      const userData = response.data?.data || response.data || {}
+      const profile = userData.profile || {}
+      const mergedProfile = {
+        ...userData,
+        ...profile,
+        role: userData.role,
+        email: userData.email,
+        created_at: userData.created_at
+      }
+      setProfileData(mergedProfile)
+      
       setIsEditing(false)
       toast.success('Profile updated successfully!')
     } catch (error) {
@@ -136,6 +195,48 @@ export default function Profile() {
       toast.error(error.response?.data?.detail || 'Failed to update profile')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Handle location from browser geolocation
+  const handleGetLocation = () => {
+    if ('geolocation' in navigator) {
+      setSaving(true)
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            // Use reverse geocoding API (you can use any geocoding service)
+            const response = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}`
+            )
+            const data = await response.json()
+            
+            setEditedData({
+              ...editedData,
+              city: data.address?.city || data.address?.town || data.address?.village || '',
+              state: data.address?.state || '',
+              country: data.address?.country || '',
+              coordinates: {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude
+              }
+            })
+            toast.success('Location fetched successfully!')
+          } catch (error) {
+            console.error('Failed to fetch location details:', error)
+            toast.error('Failed to fetch location details')
+          } finally {
+            setSaving(false)
+          }
+        },
+        (error) => {
+          console.error('Geolocation error:', error)
+          toast.error('Failed to get location. Please enable location access.')
+          setSaving(false)
+        }
+      )
+    } else {
+      toast.error('Geolocation is not supported by your browser')
     }
   }
 
@@ -183,6 +284,13 @@ export default function Profile() {
   return (
     <Layout>
       <Container maxWidth="md" sx={{ py: 4 }}>
+        {/* Loading State */}
+        {profileLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <>
         {/* Profile Card */}
         <Paper
           elevation={4}
@@ -195,7 +303,7 @@ export default function Profile() {
           {/* Header Section */}
           <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 4 }}>
             <Avatar
-              src={user?.photo}
+              src={profileData?.profile_picture || user?.photo}
               sx={{
                 width: 100,
                 height: 100,
@@ -204,20 +312,20 @@ export default function Profile() {
                 borderColor: 'primary.main'
               }}
             >
-              {user?.name?.charAt(0) || 'U'}
+              {profileData?.name?.charAt(0) || 'U'}
             </Avatar>
             <Box sx={{ flexGrow: 1 }}>
               <Typography variant="h4" fontWeight={700} color="primary.main">
-                {user?.name || 'User'}
+                {profileData?.name || 'User'}
               </Typography>
               <Chip
-                label={user?.role === 'acharya' ? 'Acharya' : 'Grihasta'}
+                label={profileData?.role === 'acharya' || user?.role === 'acharya' ? 'Acharya' : 'Grihasta'}
                 color="primary"
                 size="small"
                 sx={{ mt: 1 }}
               />
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Member since {new Date(user?.created_at || Date.now()).toLocaleDateString()}
+                Member since {new Date(profileData?.created_at || user?.created_at || Date.now()).toLocaleDateString()}
               </Typography>
             </Box>
             {!isEditing ? (
@@ -270,7 +378,7 @@ export default function Profile() {
                   size="small"
                 />
               ) : (
-                <Typography variant="body1">{user?.name || 'Not provided'}</Typography>
+                <Typography variant="body1">{profileData?.name || 'Not provided'}</Typography>
               )}
             </Grid>
 
@@ -280,7 +388,7 @@ export default function Profile() {
                 <Email sx={{ mr: 1, color: 'primary.main' }} />
                 <Typography variant="subtitle2" color="text.secondary">Email</Typography>
               </Box>
-              <Typography variant="body1">{user?.email || 'Not provided'}</Typography>
+              <Typography variant="body1">{profileData?.email || 'Not provided'}</Typography>
             </Grid>
 
             {/* Phone */}
@@ -298,7 +406,7 @@ export default function Profile() {
                   placeholder="+91 XXXXXXXXXX"
                 />
               ) : (
-                <Typography variant="body1">{user?.phone || 'Not provided'}</Typography>
+                <Typography variant="body1">{profileData?.phone || 'Not provided'}</Typography>
               )}
             </Grid>
 
@@ -324,13 +432,181 @@ export default function Profile() {
                     size="small"
                     placeholder="State"
                   />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={handleGetLocation}
+                    startIcon={<LocationOn />}
+                    disabled={saving}
+                  >
+                    {saving ? 'Fetching...' : 'Use Current Location'}
+                  </Button>
                 </Box>
               ) : (
                 <Typography variant="body1">
-                  {[user?.city, user?.state, user?.country].filter(Boolean).join(', ') || 'Not provided'}
+                  {[profileData?.location?.city, profileData?.location?.state, profileData?.location?.country].filter(Boolean).join(', ') || 'Not provided'}
                 </Typography>
               )}
             </Grid>
+
+            {/* Parampara */}
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Person sx={{ mr: 1, color: 'primary.main' }} />
+                <Typography variant="subtitle2" color="text.secondary">Parampara</Typography>
+              </Box>
+              {isEditing ? (
+                <TextField
+                  fullWidth
+                  value={editedData.parampara}
+                  onChange={(e) => setEditedData({ ...editedData, parampara: e.target.value })}
+                  size="small"
+                  placeholder="Your spiritual tradition"
+                />
+              ) : (
+                <Typography variant="body1">{profileData?.parampara || 'Not provided'}</Typography>
+              )}
+            </Grid>
+
+            {/* Acharya-specific fields */}
+            {(profileData?.role === 'acharya' || user?.role === 'acharya') && (
+              <>
+                {/* Gotra */}
+                <Grid item xs={12} sm={6}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Person sx={{ mr: 1, color: 'primary.main' }} />
+                    <Typography variant="subtitle2" color="text.secondary">Gotra</Typography>
+                  </Box>
+                  {isEditing ? (
+                    <TextField
+                      fullWidth
+                      value={editedData.gotra}
+                      onChange={(e) => setEditedData({ ...editedData, gotra: e.target.value })}
+                      size="small"
+                      placeholder="Your gotra"
+                    />
+                  ) : (
+                    <Typography variant="body1">{profileData?.gotra || 'Not provided'}</Typography>
+                  )}
+                </Grid>
+
+                {/* Experience Years */}
+                <Grid item xs={12} sm={6}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Person sx={{ mr: 1, color: 'primary.main' }} />
+                    <Typography variant="subtitle2" color="text.secondary">Experience (Years)</Typography>
+                  </Box>
+                  {isEditing ? (
+                    <TextField
+                      fullWidth
+                      type="number"
+                      value={editedData.experience_years}
+                      onChange={(e) => setEditedData({ ...editedData, experience_years: parseInt(e.target.value) || 0 })}
+                      size="small"
+                      placeholder="Years of experience"
+                    />
+                  ) : (
+                    <Typography variant="body1">{profileData?.experience_years || 'Not provided'} years</Typography>
+                  )}
+                </Grid>
+
+                {/* Study Place */}
+                <Grid item xs={12} sm={6}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Person sx={{ mr: 1, color: 'primary.main' }} />
+                    <Typography variant="subtitle2" color="text.secondary">Place of Study</Typography>
+                  </Box>
+                  {isEditing ? (
+                    <TextField
+                      fullWidth
+                      value={editedData.study_place}
+                      onChange={(e) => setEditedData({ ...editedData, study_place: e.target.value })}
+                      size="small"
+                      placeholder="Where you studied"
+                    />
+                  ) : (
+                    <Typography variant="body1">{profileData?.study_place || 'Not provided'}</Typography>
+                  )}
+                </Grid>
+
+                {/* Languages */}
+                <Grid item xs={12} sm={6}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Person sx={{ mr: 1, color: 'primary.main' }} />
+                    <Typography variant="subtitle2" color="text.secondary">Languages</Typography>
+                  </Box>
+                  {isEditing ? (
+                    <TextField
+                      fullWidth
+                      value={Array.isArray(editedData.languages) ? editedData.languages.join(', ') : ''}
+                      onChange={(e) => setEditedData({ 
+                        ...editedData, 
+                        languages: e.target.value.split(',').map(l => l.trim()).filter(Boolean) 
+                      })}
+                      size="small"
+                      placeholder="Languages (comma-separated)"
+                      helperText="Enter languages separated by commas"
+                    />
+                  ) : (
+                    <Typography variant="body1">
+                      {Array.isArray(profileData?.languages) && profileData?.languages.length > 0 
+                        ? profileData.languages.join(', ') 
+                        : 'Not provided'}
+                    </Typography>
+                  )}
+                </Grid>
+
+                {/* Specializations */}
+                <Grid item xs={12}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Person sx={{ mr: 1, color: 'primary.main' }} />
+                    <Typography variant="subtitle2" color="text.secondary">Specializations</Typography>
+                  </Box>
+                  {isEditing ? (
+                    <TextField
+                      fullWidth
+                      value={Array.isArray(editedData.specializations) ? editedData.specializations.join(', ') : ''}
+                      onChange={(e) => setEditedData({ 
+                        ...editedData, 
+                        specializations: e.target.value.split(',').map(s => s.trim()).filter(Boolean) 
+                      })}
+                      size="small"
+                      placeholder="Specializations (comma-separated)"
+                      helperText="Enter specializations separated by commas"
+                      multiline
+                      rows={2}
+                    />
+                  ) : (
+                    <Typography variant="body1">
+                      {Array.isArray(profileData?.specializations) && profileData?.specializations.length > 0 
+                        ? profileData.specializations.join(', ') 
+                        : 'Not provided'}
+                    </Typography>
+                  )}
+                </Grid>
+
+                {/* Bio */}
+                <Grid item xs={12}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Person sx={{ mr: 1, color: 'primary.main' }} />
+                    <Typography variant="subtitle2" color="text.secondary">Bio</Typography>
+                  </Box>
+                  {isEditing ? (
+                    <TextField
+                      fullWidth
+                      value={editedData.bio}
+                      onChange={(e) => setEditedData({ ...editedData, bio: e.target.value })}
+                      size="small"
+                      placeholder="Tell us about yourself"
+                      multiline
+                      rows={4}
+                    />
+                  ) : (
+                    <Typography variant="body1">{profileData?.bio || 'Not provided'}</Typography>
+                  )}
+                </Grid>
+              </>
+            )}
           </Grid>
 
           <Divider sx={{ my: 4 }} />
@@ -570,6 +846,8 @@ export default function Profile() {
             </Button>
           </DialogActions>
         </Dialog>
+        </>
+        )}
       </Container>
     </Layout>
   )

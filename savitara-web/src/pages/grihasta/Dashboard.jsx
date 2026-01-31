@@ -1,5 +1,6 @@
 import { Container, Typography, Grid, Paper, Box } from '@mui/material'
 import Layout from '../../components/Layout'
+import PanchangaWidget from '../../components/PanchangaWidget'
 import { useAuth } from '../../context/AuthContext'
 
 export default function GrihastaDashboard() {
@@ -11,7 +12,12 @@ export default function GrihastaDashboard() {
         <Typography variant="h4" gutterBottom>
           Welcome, {user?.name}!
         </Typography>
+        
         <Grid container spacing={3}>
+          <Grid item xs={12}>
+            <PanchangaWidget />
+          </Grid>
+          
           <Grid item xs={12} md={4}>
             <Paper sx={{ p: 3 }}>
               <Typography variant="h6">My Bookings</Typography>

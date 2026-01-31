@@ -63,15 +63,6 @@ export default function Navbar() {
           {/* Desktop Navigation */}
           {user && (
             <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: 1 }}>
-              <Button
-                color="inherit"
-                startIcon={<Dashboard />}
-                onClick={() => navigate('/dashboard')}
-                sx={{ borderRadius: 'var(--radius-lg)', textTransform: 'none', fontSize: '1rem' }}
-              >
-                Dashboard
-              </Button>
-
               {user.role === 'grihasta' && (
                 <>
                   <Button 

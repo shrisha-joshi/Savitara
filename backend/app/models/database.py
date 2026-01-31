@@ -316,8 +316,134 @@ class Notification(BaseModel):
     )
 
 
+class PanchangaData(BaseModel):
+    """Detailed Panchanga calculation data"""
+    samvatsara: str = ""  # Hindu year name
+    ayana: str = ""  # Uttarayana/Dakshinayana
+    ritu: str = ""  # Season
+    masa: str = ""  # Month
+    paksha: str = ""  # Fortnight (Shukla/Krishna)
+    tithi: Dict[str, Any] = {}  # {name, end_time}
+    vara: str = ""  # Day of week
+    nakshatra: Dict[str, Any] = {}  # {name, end_time}
+    yoga: Dict[str, Any] = {}  # {name, end_time}
+    karana: Dict[str, Any] = {}  # {name, end_time}
+    rahu_kala: Dict[str, str] = {}  # {start, end}
+    gulika_kala: Dict[str, str] = {}  # {start, end}
+    yama_ghanta: Dict[str, str] = {}  # {start, end}
+    abhijit_muhurta: Dict[str, str] = {}  # {start, end}
+    sunrise: str = ""
+    sunset: str = ""
+    moonrise: str = ""
+    moonset: str = ""
+    special_events: List[str] = []
+    festivals: List[str] = []
+    is_auspicious: bool = True
+
+
+class PanchangaCache(BaseModel):
+    """Cached Panchanga data for quick retrieval"""
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    date: datetime
+    region: str  # IN-KA, IN-TN, etc.
+    latitude: float
+    longitude: float
+    sampradaya: str = "smartha"  # smartha, vaishnava, shaiva, madhva
+    panchanga_data: PanchangaData
+    created_at: datetime = Field(default_factory=utcnow)
+    expires_at: datetime  # Cache expires after 7 days
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
+
+
+class RegionConfig(BaseModel):
+    """Region configuration for Panchanga calculations"""
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    region_code: str  # IN-KA, IN-TN, etc.
+    region_name: str  # Karnataka, Tamil Nadu
+    latitude: float
+    longitude: float
+    timezone: str = "Asia/Kolkata"
+    sampradayas: List[str] = ["smartha"]
+    calculation_method: str = "drik"  # drik or suryasiddhanta
+    language: str = "en"
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=utcnow)
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
+
+
+class ScheduleSlot(BaseModel):
+    """Individual time slot in Acharya's schedule"""
+    start_time: datetime
+    end_time: datetime
+    status: str = "available"  # available, blocked, booked
+    booking_id: Optional[PyObjectId] = None
+    notes: str = ""
+    tithi: str = ""  # Associated Panchanga info
+    is_auspicious: bool = True
+
+
+class AcharyaSchedule(BaseModel):
+    """Acharya's daily schedule with availability"""
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    acharya_id: PyObjectId
+    date: datetime
+    region: str = "IN-KA"
+    slots: List[ScheduleSlot] = []
+    working_hours: Dict[str, str] = {"start": "09:00", "end": "18:00"}
+    is_day_blocked: bool = False
+    blocked_reason: str = ""
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
+
+
+class CalendarEventType(str, Enum):
+    """Calendar event types"""
+    BOOKING = "booking"
+    PERSONAL = "personal"
+    REMINDER = "reminder"
+    FESTIVAL = "festival"
+    RITUAL = "ritual"
+
+
+class GrihastaCalendarEvent(BaseModel):
+    """Grihasta's personal calendar event"""
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    user_id: PyObjectId
+    event_type: CalendarEventType
+    title: str
+    description: str = ""
+    date: datetime
+    start_time: datetime
+    end_time: datetime
+    booking_id: Optional[PyObjectId] = None  # If linked to booking
+    panchanga_info: Dict[str, Any] = {}  # {tithi, nakshatra, is_auspicious}
+    reminder_before: int = 60  # Minutes before event
+    reminder_sent: bool = False
+    color: str = "#F97316"  # Saffron default
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
+
+
 class PanchangaEvent(BaseModel):
-    """Panchanga (Hindu calendar) event model"""
+    """Panchanga (Hindu calendar) event model - Legacy compatibility"""
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     date: str  # YYYY-MM-DD
     tithi: str

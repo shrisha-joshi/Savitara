@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Box, Container, Typography, TextField, Button, Radio, RadioGroup, FormControlLabel, FormControl, FormLabel, Paper, Chip, IconButton, CircularProgress } from '@mui/material'
+import { Box, Container, Typography, TextField, Button, Radio, RadioGroup, FormControlLabel, FormControl, FormLabel, Paper, Chip, IconButton, CircularProgress, Autocomplete, InputAdornment } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import CascadingLocationSelect from '../components/CascadingLocationSelect'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
 import { toast } from 'react-toastify'
@@ -52,6 +53,41 @@ export default function Onboarding() {
       setLanguages([...languages, newLang.trim()])
       setNewLang('')
     }
+  }
+
+  const handleCountryChange = (event, newValue) => {
+    setSelectedCountry(newValue)
+    setSelectedState(null)
+    setSelectedCity(null)
+    setFormData({ 
+      ...formData, 
+      country: newValue?.name || '',
+      state: '',
+      city: '',
+      phone: newValue ? `+${newValue.phonecode}` : ''
+    })
+  }
+
+  const handleStateChange = (event, newValue) => {
+    setSelectedState(newValue)
+    setSelectedCity(null)
+    setFormData({ ...formData, state: newValue?.name || '', city: '' })
+  }
+
+  const handleCityChange = (event, newValue) => {
+    setSelectedCity(newValue)
+    setFormData({ ...formData, city: newValue?.name || '' })
+  }
+
+  const handleLocationChange = (location) => {
+    setFormData({
+      ...formData,
+      ...location
+    })
+  }
+
+  const handlePhoneChange = (phone) => {
+    setFormData({ ...formData, phone })
   }
 
   const handleSubmit = async (e) => {
@@ -149,14 +185,14 @@ export default function Onboarding() {
             sx={{ mb: 2 }}
           />
 
-          <TextField
-            fullWidth
-            label="Phone Number"
-            name="phone"
-            value={formData.phone}
-            onChange={handleChange}
-            placeholder="+919876543210"
-            autoComplete="tel"
+          <CascadingLocationSelect
+            country={formData.country}
+            state={formData.state}
+            city={formData.city}
+            phone={formData.phone}
+            onLocationChange={handleLocationChange}
+            onPhoneChange={handlePhoneChange}
+            required
             sx={{ mb: 2 }}
           />
 
@@ -170,27 +206,6 @@ export default function Onboarding() {
             required
             sx={{ mb: 2 }}
           />
-
-          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-            <TextField
-              fullWidth
-              label="City"
-              name="city"
-              value={formData.city}
-              onChange={handleChange}
-              required
-              autoComplete="address-level2"
-            />
-            <TextField
-              fullWidth
-              label="State"
-              name="state"
-              value={formData.state}
-              onChange={handleChange}
-              required
-              autoComplete="address-level1"
-            />
-          </Box>
 
           <TextField
             fullWidth

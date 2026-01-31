@@ -5,9 +5,9 @@ import {
   Accordion, AccordionSummary, AccordionDetails, Switch,
   FormControlLabel, InputAdornment, IconButton
 } from '@mui/material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { DatePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { TextField as MuiTextField } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
@@ -342,8 +342,10 @@ const SearchFilters = ({ onFiltersChange, initialFilters = {}, onSearch }) => {
                   label="Preferred Date"
                   value={filters.date}
                   onChange={(date) => handleFilterChange('date', date)}
-                  renderInput={(params) => <TextField {...params} fullWidth />}
                   minDate={new Date()}
+                  enableAccessibleFieldDOMStructure={false}
+                  slots={{ textField: MuiTextField }}
+                  slotProps={{ textField: { fullWidth: true } }}
                 />
               </Grid>
 

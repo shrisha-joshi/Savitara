@@ -49,14 +49,14 @@ function App() {
     <Routes>
       {/* Public routes */}
       <Route path="/" element={<Home />} />
-      <Route path="/login" element={user ? <Navigate to={isOnboarded ? "/dashboard" : "/onboarding"} /> : <Login />} />
+      <Route path="/login" element={user ? <Navigate to={isOnboarded ? "/" : "/onboarding"} /> : <Login />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
       
       {/* Onboarding route - accessible when logged in but not onboarded */}
       <Route path="/onboarding" element={
         !user ? <Navigate to="/login" /> :
-        isOnboarded ? <Navigate to="/dashboard" /> :
+        isOnboarded ? <Navigate to="/" /> :
         <Onboarding />
       } />
 
@@ -105,14 +105,8 @@ function App() {
         <Route path="*" element={<Navigate to="/onboarding" />} />
       )}
       
-      {/* Redirect root to appropriate page */}
-       <Route path="/" element={
-        user ? (
-          isOnboarded ? <Navigate to="/dashboard" /> : <Navigate to="/onboarding" />
-        ) : (
-          <Home />
-        )
-      } />
+      {/* Catch-all redirect */}
+      <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   )
 }

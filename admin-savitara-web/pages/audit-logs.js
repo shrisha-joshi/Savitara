@@ -45,7 +45,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import withAuth from '../src/hoc/withAuth';
-import { apiService } from '../src/services/api';
+import api from '../src/services/api';
 
 // Audit action categories
 const AUDIT_ACTIONS = [
@@ -126,7 +126,7 @@ function AuditLogsPage() {
         if (!params[key]) delete params[key];
       });
       
-      const response = await apiService.get('/admin/audit-logs', { params });
+      const response = await api.get('/admin/audit-logs', { params });
       
       if (response.data.success) {
         setAuditLogs(response.data.data.logs || []);
@@ -188,7 +188,7 @@ function AuditLogsPage() {
 
   const handleExportCSV = async () => {
     try {
-      const response = await apiService.get('/admin/audit-logs/export', {
+      const response = await api.get('/admin/audit-logs/export', {
         params: { ...filters, format: 'csv' },
         responseType: 'blob',
       });
@@ -208,7 +208,7 @@ function AuditLogsPage() {
 
   const handleExportJSON = async () => {
     try {
-      const response = await apiService.get('/admin/audit-logs/export', {
+      const response = await api.get('/admin/audit-logs/export', {
         params: { ...filters, format: 'json' },
       });
       

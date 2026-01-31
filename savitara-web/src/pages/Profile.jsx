@@ -1,28 +1,575 @@
-import { Container, Typography, Paper, Box, Avatar, Button } from '@mui/material'
+import { useState, useEffect } from 'react'
+import {
+  Container,
+  Typography,
+  Paper,
+  Box,
+  Avatar,
+  Button,
+  TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Divider,
+  Grid,
+  IconButton,
+  Chip,
+  Card,
+  CardContent,
+  CircularProgress
+} from '@mui/material'
+import {
+  Edit,
+  Logout,
+  DeleteForever,
+  Save,
+  Cancel,
+  Email,
+  Phone,
+  LocationOn,
+  Person,
+  CalendarMonth,
+  CheckCircle,
+  Schedule,
+  Favorite,
+  Warning
+} from '@mui/icons-material'
 import { useAuth } from '../context/AuthContext'
+import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
+import api from '../services/api'
+import { toast } from 'react-toastify'
 
 export default function Profile() {
-  const { user } = useAuth()
+  const { user, logout, refreshUserData } = useAuth()
+  const navigate = useNavigate()
+  
+  // Dashboard stats
+  const [stats, setStats] = useState({
+    totalBookings: 0,
+    completedBookings: 0,
+    upcomingBookings: 0,
+    loading: true
+  })
+  
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false)
+  const [editedData, setEditedData] = useState({
+    name: user?.name || '',
+    phone: user?.phone || '',
+    city: user?.city || '',
+    state: user?.state || '',
+    country: user?.country || ''
+  })
+  const [saving, setSaving] = useState(false)
+  
+  // Logout confirmation dialog
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false)
+  
+  // Delete account dialogs (double confirmation)
+  const [deleteDialog1Open, setDeleteDialog1Open] = useState(false)
+  const [deleteDialog2Open, setDeleteDialog2Open] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deleting, setDeleting] = useState(false)
+
+  // Fetch dashboard stats
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await api.get('/bookings/my-bookings')
+        const bookings = response.data?.data || response.data || []
+        const now = new Date()
+        
+        setStats({
+          totalBookings: bookings.length,
+          completedBookings: bookings.filter(b => b.status === 'completed').length,
+          upcomingBookings: bookings.filter(b => 
+            b.status === 'confirmed' && new Date(b.booking_date) > now
+          ).length,
+          loading: false
+        })
+      } catch (error) {
+        console.error('Failed to fetch stats:', error)
+        setStats(prev => ({ ...prev, loading: false }))
+      }
+    }
+    
+    if (user) {
+      fetchStats()
+    }
+  }, [user])
+
+  // Handle edit mode toggle
+  const handleStartEdit = () => {
+    setEditedData({
+      name: user?.name || '',
+      phone: user?.phone || '',
+      city: user?.city || '',
+      state: user?.state || '',
+      country: user?.country || ''
+    })
+    setIsEditing(true)
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditing(false)
+    setEditedData({
+      name: user?.name || '',
+      phone: user?.phone || '',
+      city: user?.city || '',
+      state: user?.state || '',
+      country: user?.country || ''
+    })
+  }
+
+  const handleSaveProfile = async () => {
+    setSaving(true)
+    try {
+      await api.put('/users/me', editedData)
+      await refreshUserData()
+      setIsEditing(false)
+      toast.success('Profile updated successfully!')
+    } catch (error) {
+      console.error('Failed to update profile:', error)
+      toast.error(error.response?.data?.detail || 'Failed to update profile')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Handle logout
+  const handleLogoutClick = () => {
+    setLogoutDialogOpen(true)
+  }
+
+  const handleLogoutConfirm = async () => {
+    setLogoutDialogOpen(false)
+    await logout()
+  }
+
+  // Handle delete account (double confirmation)
+  const handleDeleteClick = () => {
+    setDeleteDialog1Open(true)
+  }
+
+  const handleDeleteFirst = () => {
+    setDeleteDialog1Open(false)
+    setDeleteDialog2Open(true)
+    setDeleteConfirmText('')
+  }
+
+  const handleDeleteFinal = async () => {
+    if (deleteConfirmText !== 'DELETE') {
+      toast.error('Please type DELETE to confirm')
+      return
+    }
+    
+    setDeleting(true)
+    try {
+      await api.delete('/users/me')
+      setDeleteDialog2Open(false)
+      toast.success('Account deleted successfully. We\'re sad to see you go!')
+      await logout()
+    } catch (error) {
+      console.error('Failed to delete account:', error)
+      toast.error(error.response?.data?.detail || 'Failed to delete account')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <Layout>
       <Container maxWidth="md" sx={{ py: 4 }}>
-        <Paper elevation={3} sx={{ p: 4 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-            <Avatar src={user?.photo} sx={{ width: 80, height: 80, mr: 2 }} />
-            <Box>
-              <Typography variant="h4">{user?.name}</Typography>
-              <Typography variant="body1" color="text.secondary">
-                {user?.email}
+        {/* Profile Card */}
+        <Paper
+          elevation={4}
+          sx={{
+            p: 4,
+            borderRadius: 4,
+            background: 'linear-gradient(180deg, #FFFFFF 0%, #FFF8F0 100%)'
+          }}
+        >
+          {/* Header Section */}
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 4 }}>
+            <Avatar
+              src={user?.photo}
+              sx={{
+                width: 100,
+                height: 100,
+                mr: 3,
+                border: '4px solid',
+                borderColor: 'primary.main'
+              }}
+            >
+              {user?.name?.charAt(0) || 'U'}
+            </Avatar>
+            <Box sx={{ flexGrow: 1 }}>
+              <Typography variant="h4" fontWeight={700} color="primary.main">
+                {user?.name || 'User'}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Role: {user?.role}
+              <Chip
+                label={user?.role === 'acharya' ? 'Acharya' : 'Grihasta'}
+                color="primary"
+                size="small"
+                sx={{ mt: 1 }}
+              />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Member since {new Date(user?.created_at || Date.now()).toLocaleDateString()}
               </Typography>
             </Box>
+            {!isEditing ? (
+              <Button
+                variant="outlined"
+                startIcon={<Edit />}
+                onClick={handleStartEdit}
+                sx={{ borderRadius: 3 }}
+              >
+                Edit Profile
+              </Button>
+            ) : (
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  variant="contained"
+                  startIcon={<Save />}
+                  onClick={handleSaveProfile}
+                  disabled={saving}
+                  sx={{ borderRadius: 3 }}
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<Cancel />}
+                  onClick={handleCancelEdit}
+                  sx={{ borderRadius: 3 }}
+                >
+                  Cancel
+                </Button>
+              </Box>
+            )}
           </Box>
-          <Button variant="outlined">Edit Profile</Button>
+
+          <Divider sx={{ my: 3 }} />
+
+          {/* Profile Details */}
+          <Grid container spacing={3}>
+            {/* Name */}
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Person sx={{ mr: 1, color: 'primary.main' }} />
+                <Typography variant="subtitle2" color="text.secondary">Full Name</Typography>
+              </Box>
+              {isEditing ? (
+                <TextField
+                  fullWidth
+                  value={editedData.name}
+                  onChange={(e) => setEditedData({ ...editedData, name: e.target.value })}
+                  size="small"
+                />
+              ) : (
+                <Typography variant="body1">{user?.name || 'Not provided'}</Typography>
+              )}
+            </Grid>
+
+            {/* Email (read-only) */}
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Email sx={{ mr: 1, color: 'primary.main' }} />
+                <Typography variant="subtitle2" color="text.secondary">Email</Typography>
+              </Box>
+              <Typography variant="body1">{user?.email || 'Not provided'}</Typography>
+            </Grid>
+
+            {/* Phone */}
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Phone sx={{ mr: 1, color: 'primary.main' }} />
+                <Typography variant="subtitle2" color="text.secondary">Phone</Typography>
+              </Box>
+              {isEditing ? (
+                <TextField
+                  fullWidth
+                  value={editedData.phone}
+                  onChange={(e) => setEditedData({ ...editedData, phone: e.target.value })}
+                  size="small"
+                  placeholder="+91 XXXXXXXXXX"
+                />
+              ) : (
+                <Typography variant="body1">{user?.phone || 'Not provided'}</Typography>
+              )}
+            </Grid>
+
+            {/* Location */}
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <LocationOn sx={{ mr: 1, color: 'primary.main' }} />
+                <Typography variant="subtitle2" color="text.secondary">Location</Typography>
+              </Box>
+              {isEditing ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <TextField
+                    fullWidth
+                    value={editedData.city}
+                    onChange={(e) => setEditedData({ ...editedData, city: e.target.value })}
+                    size="small"
+                    placeholder="City"
+                  />
+                  <TextField
+                    fullWidth
+                    value={editedData.state}
+                    onChange={(e) => setEditedData({ ...editedData, state: e.target.value })}
+                    size="small"
+                    placeholder="State"
+                  />
+                </Box>
+              ) : (
+                <Typography variant="body1">
+                  {[user?.city, user?.state, user?.country].filter(Boolean).join(', ') || 'Not provided'}
+                </Typography>
+              )}
+            </Grid>
+          </Grid>
+
+          <Divider sx={{ my: 4 }} />
+
+          {/* Dashboard Stats Section */}
+          <Typography variant="h6" gutterBottom fontWeight={600}>
+            My Activity
+          </Typography>
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={12} sm={4}>
+              <Card
+                sx={{
+                  cursor: 'pointer',
+                  transition: 'all 0.3s',
+                  background: 'linear-gradient(135deg, #E65C00 0%, #FF8533 100%)',
+                  color: 'white',
+                  '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
+                }}
+                onClick={() => navigate('/bookings')}
+              >
+                <CardContent sx={{ textAlign: 'center', py: 3 }}>
+                  <CalendarMonth sx={{ fontSize: 40, mb: 1 }} />
+                  <Typography variant="h3" fontWeight={700}>
+                    {stats.loading ? <CircularProgress size={30} color="inherit" /> : stats.totalBookings}
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>Total Bookings</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <Card
+                sx={{
+                  cursor: 'pointer',
+                  transition: 'all 0.3s',
+                  background: 'linear-gradient(135deg, #34C759 0%, #5DD37E 100%)',
+                  color: 'white',
+                  '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
+                }}
+                onClick={() => navigate('/bookings?status=completed')}
+              >
+                <CardContent sx={{ textAlign: 'center', py: 3 }}>
+                  <CheckCircle sx={{ fontSize: 40, mb: 1 }} />
+                  <Typography variant="h3" fontWeight={700}>
+                    {stats.loading ? <CircularProgress size={30} color="inherit" /> : stats.completedBookings}
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>Completed</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <Card
+                sx={{
+                  cursor: 'pointer',
+                  transition: 'all 0.3s',
+                  background: 'linear-gradient(135deg, #2B3A67 0%, #3D4F8A 100%)',
+                  color: 'white',
+                  '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
+                }}
+                onClick={() => navigate('/bookings?status=upcoming')}
+              >
+                <CardContent sx={{ textAlign: 'center', py: 3 }}>
+                  <Schedule sx={{ fontSize: 40, mb: 1 }} />
+                  <Typography variant="h3" fontWeight={700}>
+                    {stats.loading ? <CircularProgress size={30} color="inherit" /> : stats.upcomingBookings}
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>Upcoming</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+          {/* Quick Links */}
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={6} sm={3}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<CalendarMonth />}
+                onClick={() => navigate('/bookings')}
+                sx={{ py: 1.5, borderRadius: 3 }}
+              >
+                My Bookings
+              </Button>
+            </Grid>
+            <Grid item xs={6} sm={3}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<Favorite />}
+                onClick={() => navigate('/favorites')}
+                sx={{ py: 1.5, borderRadius: 3 }}
+              >
+                Favorites
+              </Button>
+            </Grid>
+          </Grid>
+
+          <Divider sx={{ my: 4 }} />
+
+          {/* Account Actions */}
+          <Typography variant="h6" gutterBottom fontWeight={600} color="text.secondary">
+            Account Actions
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Button
+              variant="outlined"
+              color="warning"
+              startIcon={<Logout />}
+              onClick={handleLogoutClick}
+              sx={{ borderRadius: 3 }}
+            >
+              Logout
+            </Button>
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteForever />}
+              onClick={handleDeleteClick}
+              sx={{ borderRadius: 3 }}
+            >
+              Delete Account
+            </Button>
+          </Box>
         </Paper>
+
+        {/* Logout Confirmation Dialog */}
+        <Dialog
+          open={logoutDialogOpen}
+          onClose={() => setLogoutDialogOpen(false)}
+          PaperProps={{ sx: { borderRadius: 3, p: 1 } }}
+        >
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Logout color="warning" />
+            Confirm Logout
+          </DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              Are you sure you want to logout from your account?
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setLogoutDialogOpen(false)} sx={{ borderRadius: 2 }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleLogoutConfirm}
+              color="warning"
+              variant="contained"
+              sx={{ borderRadius: 2 }}
+            >
+              Yes, Logout
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Delete Account - First Confirmation */}
+        <Dialog
+          open={deleteDialog1Open}
+          onClose={() => setDeleteDialog1Open(false)}
+          PaperProps={{ sx: { borderRadius: 3, p: 1 } }}
+        >
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Warning color="error" />
+            Delete Account
+          </DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              <strong>Warning:</strong> This action is permanent and cannot be undone.
+              <br /><br />
+              Deleting your account will:
+              <ul>
+                <li>Remove all your personal data</li>
+                <li>Cancel all pending bookings</li>
+                <li>Delete your reviews and history</li>
+              </ul>
+              Are you sure you want to proceed?
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setDeleteDialog1Open(false)} sx={{ borderRadius: 2 }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeleteFirst}
+              color="error"
+              variant="contained"
+              sx={{ borderRadius: 2 }}
+            >
+              Yes, I understand
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Delete Account - Final Confirmation */}
+        <Dialog
+          open={deleteDialog2Open}
+          onClose={() => setDeleteDialog2Open(false)}
+          PaperProps={{ sx: { borderRadius: 3, p: 1 } }}
+        >
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'error.main' }}>
+            <DeleteForever color="error" />
+            Final Confirmation
+          </DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ mb: 2 }}>
+              This is your <strong>final warning</strong>. Your account will be permanently deleted.
+              <br /><br />
+              To confirm, please type <strong>DELETE</strong> below:
+            </DialogContentText>
+            <TextField
+              fullWidth
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value.toUpperCase())}
+              placeholder="Type DELETE to confirm"
+              error={deleteConfirmText !== '' && deleteConfirmText !== 'DELETE'}
+              helperText={deleteConfirmText !== '' && deleteConfirmText !== 'DELETE' ? 'Please type DELETE exactly' : ''}
+            />
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              onClick={() => {
+                setDeleteDialog2Open(false)
+                setDeleteConfirmText('')
+              }}
+              sx={{ borderRadius: 2 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeleteFinal}
+              color="error"
+              variant="contained"
+              disabled={deleteConfirmText !== 'DELETE' || deleting}
+              sx={{ borderRadius: 2 }}
+            >
+              {deleting ? 'Deleting...' : 'Delete My Account Forever'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Container>
     </Layout>
   )

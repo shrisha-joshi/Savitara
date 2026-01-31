@@ -5,7 +5,7 @@ import {
   CircularProgress, Select, MenuItem, FormControl,
   InputLabel, Button, Chip, Avatar, IconButton, Tooltip,
   Table, TableBody, TableCell, TableContainer, TableHead,
-  TableRow, LinearProgress, Tab, Tabs
+  TableRow, LinearProgress, Tab, Tabs, alpha
 } from '@mui/material';
 import {
   TrendingUp, TrendingDown, People, Star, Refresh, Download,
@@ -22,10 +22,12 @@ import Layout from '../src/components/Layout';
 import withAuth from '../src/hoc/withAuth';
 import api from '../src/services/api';
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FF6B6B', '#4ECDC4'];
-const SAFFRON = '#FF6B00';
-const GOLD = '#FFD700';
-const PURPLE = '#6B3FA0';
+// Modern Saffron-based color palette
+const CHART_COLORS = ['#F97316', '#FB923C', '#FBBF24', '#22C55E', '#0EA5E9', '#8B5CF6', '#EC4899', '#14B8A6'];
+const SAFFRON = '#F97316';
+const GOLD = '#FBBF24';
+const AMBER = '#D97706';
+const PURPLE = '#8B5CF6';
 
 /**
  * Helper function to determine chip color based on value thresholds
@@ -46,42 +48,116 @@ const getRankChipColor = (index) => {
 };
 
 /**
- * Stat card component for displaying metrics
+ * Modern Stat card component with glassmorphism effect
  */
 const StatCard = ({ title, value, icon, growth, color, subtitle }) => (
-  <Card elevation={2} sx={{ height: '100%' }}>
-    <CardContent>
+  <Card 
+    elevation={0} 
+    sx={{ 
+      height: '100%',
+      position: 'relative',
+      overflow: 'hidden',
+      background: (theme) => theme.palette.mode === 'dark' 
+        ? 'rgba(28, 25, 23, 0.6)'
+        : 'rgba(255, 255, 255, 0.8)',
+      backdropFilter: 'blur(10px)',
+      border: (theme) => `1px solid ${theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}`,
+      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+      '&:hover': {
+        transform: 'translateY(-4px)',
+        boxShadow: (theme) => theme.palette.mode === 'dark'
+          ? `0 20px 40px -10px ${alpha(SAFFRON, 0.2)}`
+          : `0 20px 40px -10px ${alpha(SAFFRON, 0.15)}`,
+      },
+      '&::before': {
+        content: '""',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: '4px',
+        background: `linear-gradient(90deg, ${color || SAFFRON} 0%, ${GOLD} 100%)`,
+      },
+    }}
+  >
+    <CardContent sx={{ p: 3 }}>
       <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-        <Box>
-          <Typography color="textSecondary" gutterBottom variant="body2">
+        <Box sx={{ flex: 1 }}>
+          <Typography 
+            color="textSecondary" 
+            gutterBottom 
+            variant="body2"
+            sx={{ 
+              fontWeight: 500, 
+              letterSpacing: '0.025em',
+              textTransform: 'uppercase',
+              fontSize: '0.7rem',
+            }}
+          >
             {title}
           </Typography>
-          <Typography variant="h4" component="div" fontWeight="bold">
+          <Typography 
+            variant="h3" 
+            component="div" 
+            sx={{ 
+              fontWeight: 700,
+              background: (theme) => theme.palette.mode === 'dark'
+                ? `linear-gradient(135deg, #FAFAF9 0%, #A8A29E 100%)`
+                : `linear-gradient(135deg, #1C1917 0%, #57534E 100%)`,
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              letterSpacing: '-0.02em',
+            }}
+          >
             {value}
           </Typography>
           {subtitle && (
-            <Typography variant="body2" color="textSecondary" mt={0.5}>
+            <Typography variant="body2" color="textSecondary" mt={0.5} sx={{ fontSize: '0.8rem' }}>
               {subtitle}
             </Typography>
           )}
           {growth !== undefined && (
-            <Box display="flex" alignItems="center" mt={1}>
+            <Box 
+              display="flex" 
+              alignItems="center" 
+              mt={1.5}
+              sx={{
+                px: 1.5,
+                py: 0.5,
+                borderRadius: 2,
+                display: 'inline-flex',
+                background: (theme) => growth >= 0 
+                  ? alpha('#22C55E', theme.palette.mode === 'dark' ? 0.15 : 0.1)
+                  : alpha('#EF4444', theme.palette.mode === 'dark' ? 0.15 : 0.1),
+              }}
+            >
               {growth >= 0 ? (
-                <TrendingUp sx={{ color: 'success.main', fontSize: 20, mr: 0.5 }} />
+                <TrendingUp sx={{ color: '#22C55E', fontSize: 18, mr: 0.5 }} />
               ) : (
-                <TrendingDown sx={{ color: 'error.main', fontSize: 20, mr: 0.5 }} />
+                <TrendingDown sx={{ color: '#EF4444', fontSize: 18, mr: 0.5 }} />
               )}
               <Typography
                 variant="body2"
-                color={growth >= 0 ? 'success.main' : 'error.main'}
-                fontWeight="medium"
+                sx={{ 
+                  color: growth >= 0 ? '#22C55E' : '#EF4444',
+                  fontWeight: 600,
+                  fontSize: '0.8rem',
+                }}
               >
                 {Math.abs(growth)}% vs last period
               </Typography>
             </Box>
           )}
         </Box>
-        <Avatar sx={{ bgcolor: color, width: 56, height: 56 }}>
+        <Avatar 
+          sx={{ 
+            width: 60, 
+            height: 60,
+            background: `linear-gradient(135deg, ${color || SAFFRON} 0%, ${AMBER} 100%)`,
+            boxShadow: `0 8px 20px ${alpha(color || SAFFRON, 0.35)}`,
+          }}
+        >
           {icon}
         </Avatar>
       </Box>
@@ -408,7 +484,7 @@ const Dashboard = () => {
                       dataKey="value"
                     >
                       {bookingStatusData.map((entry) => (
-                        <Cell key={`booking-status-${entry.name}`} fill={COLORS[bookingStatusData.indexOf(entry) % COLORS.length]} />
+                        <Cell key={`booking-status-${entry.name}`} fill={CHART_COLORS[bookingStatusData.indexOf(entry) % CHART_COLORS.length]} />
                       ))}
                     </Pie>
                     <RechartsTooltip />
@@ -489,7 +565,7 @@ const Dashboard = () => {
                       <RechartsTooltip formatter={(value) => [value, 'Users']} />
                       <Bar dataKey="users" fill={PURPLE}>
                         {geographicData.slice(0, 10).map((entry) => (
-                          <Cell key={`geo-${entry.location}`} fill={COLORS[geographicData.indexOf(entry) % COLORS.length]} />
+                          <Cell key={`geo-${entry.location}`} fill={CHART_COLORS[geographicData.indexOf(entry) % CHART_COLORS.length]} />
                         ))}
                       </Bar>
                     </BarChart>
@@ -524,7 +600,7 @@ const Dashboard = () => {
                             borderRadius: 2,
                             bgcolor: '#e0e0e0',
                             '& .MuiLinearProgress-bar': {
-                              bgcolor: COLORS[index % COLORS.length]
+                              bgcolor: CHART_COLORS[index % CHART_COLORS.length]
                             }
                           }}
                         />
@@ -718,7 +794,7 @@ const Dashboard = () => {
                         label={({ method, percent }) => `${method}: ${(percent * 100).toFixed(0)}%`}
                       >
                         {paymentMethodsData.map((entry) => (
-                          <Cell key={`payment-${entry.method}`} fill={COLORS[paymentMethodsData.indexOf(entry) % COLORS.length]} />
+                          <Cell key={`payment-${entry.method}`} fill={CHART_COLORS[paymentMethodsData.indexOf(entry) % CHART_COLORS.length]} />
                         ))}
                       </Pie>
                       <RechartsTooltip 
@@ -803,7 +879,7 @@ const Dashboard = () => {
                                       width: 12, 
                                       height: 12, 
                                       borderRadius: '50%', 
-                                      bgcolor: COLORS[index % COLORS.length],
+                                      bgcolor: CHART_COLORS[index % CHART_COLORS.length],
                                       mr: 1 
                                     }} 
                                   />

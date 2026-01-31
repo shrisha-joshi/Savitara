@@ -754,6 +754,19 @@ async def broadcast_notification(
         if notifications:
             await db.notifications.insert_many(notifications)
         
+        # Log notification to history
+        notification_history = {
+            "title": notification_data.title,
+            "body": notification_data.body,
+            "recipient_type": notification_data.target_role or "all",
+            "recipients_count": len(user_ids),
+            "sent_by": current_user.get("id") or current_user.get("email"),
+            "sent_at": datetime.now(timezone.utc),
+            "status": "sent",
+            "data": notification_data.data or {}
+        }
+        await db.notification_history.insert_one(notification_history)
+        
         # Send push notifications via Firebase
         try:
             from app.services.notification_service import NotificationService
@@ -791,6 +804,43 @@ async def broadcast_notification(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to broadcast notification"
+        )
+
+
+@router.get(
+    "/notifications/history",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Notification History",
+    description="Get broadcast notification history"
+)
+async def get_notification_history(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=100),
+    current_user: Dict[str, Any] = Depends(get_current_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get notification history"""
+    try:
+        skip = (page - 1) * limit
+        
+        notifications = await db.notification_history.find().sort("sent_at", -1).skip(skip).limit(limit).to_list(length=limit)
+        
+        for n in notifications:
+            n["_id"] = str(n["_id"])
+        
+        total = await db.notification_history.count_documents({})
+        
+        return StandardResponse(
+            success=True,
+            data=notifications,
+            message=f"Found {len(notifications)} notifications"
+        )
+    except Exception as e:
+        logger.error(f"Get notification history error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch notification history"
         )
 
 
@@ -873,4 +923,91 @@ async def get_all_bookings(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch bookings"
+        )
+
+
+@router.get(
+    "/audit-logs",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Audit Logs",
+    description="Get system audit logs for admin review"
+)
+async def get_audit_logs(
+    action: Optional[str] = Query(None, description="Filter by action type"),
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    start_date: Optional[str] = Query(None, description="Start date filter"),
+    end_date: Optional[str] = Query(None, description="End date filter"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=100),
+    current_user: Dict[str, Any] = Depends(get_current_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get audit logs with filtering"""
+    try:
+        # Build query
+        query = {}
+        if action:
+            query["action"] = {"$regex": action, "$options": "i"}
+        if user_id:
+            query["user_id"] = user_id
+        
+        if start_date:
+            query["timestamp"] = {"$gte": datetime.fromisoformat(start_date)}
+        if end_date:
+            if "timestamp" not in query:
+                query["timestamp"] = {}
+            query["timestamp"]["$lte"] = datetime.fromisoformat(end_date)
+        
+        skip = (page - 1) * limit
+        
+        # Get audit logs
+        logs = await db.audit_logs.find(query).sort("timestamp", -1).skip(skip).limit(limit).to_list(length=limit)
+        
+        # Convert ObjectIds to strings
+        for log in logs:
+            log["_id"] = str(log["_id"])
+            log["id"] = log["_id"]
+        
+        # Get total count
+        total_count = await db.audit_logs.count_documents(query)
+        
+        # Get stats for today
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        stats = {
+            "totalToday": await db.audit_logs.count_documents({"timestamp": {"$gte": today_start}}),
+            "authEvents": await db.audit_logs.count_documents({
+                "action": {"$regex": "auth", "$options": "i"},
+                "timestamp": {"$gte": today_start}
+            }),
+            "adminActions": await db.audit_logs.count_documents({
+                "action": {"$regex": "admin", "$options": "i"},
+                "timestamp": {"$gte": today_start}
+            }),
+            "failedEvents": await db.audit_logs.count_documents({
+                "success": False,
+                "timestamp": {"$gte": today_start}
+            }),
+        }
+        
+        return StandardResponse(
+            success=True,
+            data={
+                "logs": logs,
+                "total": total_count,
+                "stats": stats,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total": total_count,
+                    "pages": (total_count + limit - 1) // limit
+                }
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Get audit logs error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch audit logs"
         )

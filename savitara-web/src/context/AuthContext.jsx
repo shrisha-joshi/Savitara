@@ -59,9 +59,9 @@ export const AuthProvider = ({ children }) => {
       
       setUser(userData)
       
-      // Navigate based on onboarding status
+      // Navigate based on onboarding status - Home after login
       if (userData.onboarded || userData.onboarding_completed) {
-        navigate('/dashboard')
+        navigate('/')
       } else {
         navigate('/onboarding')
       }
@@ -125,10 +125,10 @@ export const AuthProvider = ({ children }) => {
       
       setUser(userData)
       
-      // Check if user needs onboarding
+      // Check if user needs onboarding - Navigate to Home after login
       // New users or users without completed onboarding go to onboarding page
       if (userData.onboarded || userData.onboarding_completed) {
-        navigate('/dashboard')
+        navigate('/')
       } else {
         navigate('/onboarding')
       }

@@ -45,15 +45,26 @@ function Dashboard() {
 
   const loadDashboard = async () => {
     try {
-      const [dashboardRes, userGrowthRes, revenueRes] = await Promise.all([
-        adminAPI.getDashboard(),
-        adminAPI.getUserGrowth({ period: 'month' }),
-        adminAPI.getRevenue({ period: 'month' }),
-      ]);
-
-      setStats(dashboardRes.data);
-      setUserGrowth(userGrowthRes.data.growth_data || []);
-      setRevenueData(revenueRes.data.revenue_data || []);
+      const dashboardRes = await adminAPI.getDashboard();
+      
+      // Extract data from StandardResponse format
+      const data = dashboardRes.data?.data || dashboardRes.data;
+      
+      setStats({
+        total_users: data?.overview?.total_users || 0,
+        total_grihastas: data?.overview?.total_grihastas || 0,
+        total_acharyas: data?.overview?.total_acharyas || 0,
+        verified_acharyas: data?.overview?.active_acharyas || 0,
+        total_bookings: data?.overview?.total_bookings || 0,
+        completed_bookings: data?.overview?.completed_bookings || 0,
+        total_revenue: data?.revenue?.total_revenue || 0,
+        pending_verifications: data?.overview?.pending_verifications || 0,
+        pending_reviews: data?.overview?.pending_reviews || 0,
+      });
+      
+      // Set user growth from the analytics data
+      setUserGrowth(data?.user_growth || []);
+      setRevenueData(data?.revenue_trend || []);
     } catch (error) {
       console.error('Failed to load dashboard:', error);
     } finally {

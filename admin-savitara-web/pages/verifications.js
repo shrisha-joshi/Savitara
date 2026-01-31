@@ -34,7 +34,9 @@ function Verifications() {
   const loadPendingVerifications = async () => {
     try {
       const response = await adminAPI.getPendingVerifications();
-      setPendingVerifications(response.data.acharyas || []);
+      // Extract data from StandardResponse format
+      const data = response.data?.data || response.data;
+      setPendingVerifications(data?.acharyas || []);
     } catch (error) {
       console.error('Failed to load verifications:', error);
     } finally {

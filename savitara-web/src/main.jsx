@@ -2,50 +2,18 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
-import CssBaseline from '@mui/material/CssBaseline'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
+import '@fontsource/poppins/300.css'
+import '@fontsource/poppins/400.css'
+import '@fontsource/poppins/500.css'
+import '@fontsource/poppins/600.css'
+import '@fontsource/poppins/700.css'
+import './styles/global.css'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
+import { ThemeContextProvider } from './context/ThemeContext'
 import ErrorBoundary from './components/ErrorBoundary'
-
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#FF6B35',
-      light: '#FF8C61',
-      dark: '#E64A19',
-    },
-    secondary: {
-      main: '#004E89',
-      light: '#2C7AB5',
-      dark: '#003D6B',
-    },
-    background: {
-      default: '#F5F5F5',
-      paper: '#FFFFFF',
-    },
-  },
-  typography: {
-    fontFamily: 'Roboto, Arial, sans-serif',
-    h1: {
-      fontSize: '2.5rem',
-      fontWeight: 700,
-    },
-    h2: {
-      fontSize: '2rem',
-      fontWeight: 600,
-    },
-    h3: {
-      fontSize: '1.75rem',
-      fontWeight: 600,
-    },
-  },
-  shape: {
-    borderRadius: 8,
-  },
-})
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -56,8 +24,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       }}
     >
       <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
-        <ThemeProvider theme={theme}>
-          <CssBaseline />
+        <ThemeContextProvider>
           <ErrorBoundary>
             <AuthProvider>
               <App />
@@ -71,10 +38,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                 pauseOnFocusLoss
                 draggable
                 pauseOnHover
+                theme="colored"
               />
             </AuthProvider>
           </ErrorBoundary>
-        </ThemeProvider>
+        </ThemeContextProvider>
       </GoogleOAuthProvider>
     </BrowserRouter>
   </React.StrictMode>,

@@ -1,16 +1,20 @@
 import { useState } from 'react'
-import { Container, Box, Card, CardContent, Typography, Button, TextField, Divider, ToggleButton, ToggleButtonGroup, CircularProgress, Backdrop } from '@mui/material'
+import { Container, Box, Card, CardContent, Typography, Button, TextField, Divider, ToggleButton, ToggleButtonGroup, CircularProgress, Backdrop, InputAdornment, IconButton } from '@mui/material'
 import GoogleIcon from '@mui/icons-material/Google'
+import { Visibility, VisibilityOff } from '@mui/icons-material'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
+import { useTheme } from '../context/ThemeContext'
 
 export default function Login() {
   const { loginWithGoogle, loginWithEmail, registerWithEmail } = useAuth()
+  const { colors, isDark } = useTheme()
   const navigate = useNavigate()
   const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [name, setName] = useState('')
   const [role, setRole] = useState('grihasta')
   const [loading, setLoading] = useState(false)
@@ -61,6 +65,7 @@ export default function Login() {
         alignItems: 'center',
         justifyContent: 'center',
         bgcolor: 'background.default',
+        py: 4,
       }}
     >
       <Container maxWidth="sm">
@@ -71,10 +76,39 @@ export default function Login() {
           <CircularProgress color="inherit" />
           <Typography variant="h6">{backdropMessage || 'Please wait...'}</Typography>
         </Backdrop>
-        <Card>
-          <CardContent sx={{ p: 6, textAlign: 'center' }}>
-            <Typography variant="h3" gutterBottom fontWeight={700} color="primary">
-              🕉 Savitara
+        <Card 
+          elevation={isDark ? 4 : 2}
+          sx={{ 
+            borderRadius: 3,
+            overflow: 'hidden',
+            bgcolor: 'background.paper',
+          }}
+        >
+          <CardContent sx={{ p: { xs: 3, sm: 5, md: 6 }, textAlign: 'center' }}>
+            {/* Om Symbol */}
+            <Typography
+              sx={{
+                fontFamily: '"Noto Sans Devanagari", serif',
+                fontSize: '2rem',
+                color: 'var(--saffron-500)',
+                mb: -1,
+              }}
+            >
+              ॐ
+            </Typography>
+            {/* Brand Name in Sanskrit Font */}
+            <Typography 
+              variant="h3" 
+              gutterBottom 
+              sx={{
+                fontFamily: '"Samarkan", "Times New Roman", serif',
+                fontWeight: 400,
+                letterSpacing: '3px',
+                color: 'var(--saffron-500)',
+                textShadow: isDark ? '2px 2px 8px rgba(255,153,51,0.3)' : '2px 2px 4px rgba(0,0,0,0.15)',
+              }}
+            >
+              Savitara
             </Typography>
             <Typography variant="h5" gutterBottom>
               {mode === 'login' ? 'Welcome Back' : 'Create Account'}
@@ -142,11 +176,27 @@ export default function Login() {
               <TextField
                 fullWidth
                 label="Password"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 margin="normal"
                 required
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        onClick={() => setShowPassword(!showPassword)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        edge="end"
+                        size="small"
+                        sx={{ color: colors.text.secondary }}
+                      >
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
               />
               
               <Button

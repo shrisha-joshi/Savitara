@@ -1,27 +1,19 @@
 import { AuthProvider } from '../src/context/AuthContext';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
+import { ThemeContextProvider } from '../src/context/ThemeContext';
 import '../styles/globals.css';
 
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#FF6B35',
-    },
-    secondary: {
-      main: '#004E89',
-    },
-  },
-});
+// Typography Standard:
+// - Brand: Samarkan - ONLY for "Savitara" company name
+// - Headings: Poppins (weights: 500-700)
+// - Body: Inter (gold standard for UI)
 
 function MyApp({ Component, pageProps }) {
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <ThemeContextProvider>
       <AuthProvider>
         <Component {...pageProps} />
       </AuthProvider>
-    </ThemeProvider>
+    </ThemeContextProvider>
   );
 }
 

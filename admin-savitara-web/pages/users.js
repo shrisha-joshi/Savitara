@@ -36,8 +36,10 @@ function Users() {
 
   const loadUsers = async () => {
     try {
-      const response = await adminAPI.searchUsers({ search, limit: 50 });
-      setUsers(response.data.users || []);
+      const response = await adminAPI.searchUsers({ email: search, limit: 50 });
+      // Extract data from StandardResponse format
+      const data = response.data?.data || response.data;
+      setUsers(data?.users || []);
     } catch (error) {
       console.error('Failed to load users:', error);
     } finally {
@@ -109,26 +111,36 @@ function Users() {
                 </TableRow>
               ) : (
                 users.map((user) => (
-                  <TableRow key={user._id}>
-                    <TableCell>{user.full_name}</TableCell>
-                    <TableCell>{user.email}</TableCell>
+                  <TableRow key={user._id || user.id}>
+                    <TableCell>{user.full_name || user.name || '-'}</TableCell>
+                    <TableCell>{user.email || '-'}</TableCell>
                     <TableCell>
-                      <Chip label={user.role} size="small" />
+                      <Chip 
+                        label={user.role} 
+                        size="small" 
+                        color={user.role === 'acharya' ? 'primary' : 'default'}
+                      />
                     </TableCell>
-                    <TableCell>{user.phone_number || '-'}</TableCell>
-                    <TableCell>{user.location || '-'}</TableCell>
+                    <TableCell>{user.phone_number || user.phone || '-'}</TableCell>
                     <TableCell>
-                      {user.is_suspended ? (
+                      {user.location || 
+                       (user.city && user.state ? `${user.city}, ${user.state}` : 
+                        user.city || user.state || '-')}
+                    </TableCell>
+                    <TableCell>
+                      {user.status === 'suspended' || user.is_suspended ? (
                         <Chip label="Suspended" color="error" size="small" />
+                      ) : user.status === 'pending' ? (
+                        <Chip label="Pending" color="warning" size="small" />
                       ) : (
                         <Chip label="Active" color="success" size="small" />
                       )}
                     </TableCell>
                     <TableCell>
-                      {user.is_suspended ? (
+                      {user.status === 'suspended' || user.is_suspended ? (
                         <Button
                           size="small"
-                          onClick={() => handleUnsuspend(user._id)}
+                          onClick={() => handleUnsuspend(user._id || user.id)}
                         >
                           Unsuspend
                         </Button>

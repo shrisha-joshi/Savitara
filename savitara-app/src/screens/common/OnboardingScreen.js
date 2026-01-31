@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { TextInput, Button, RadioButton, Text } from 'react-native-paper';
+import { TextInput, Button, RadioButton, Text, Menu, TouchableRipple, Divider } from 'react-native-paper';
+import CascadingLocationSelect from '../../components/CascadingLocationSelect';
 import { useAuth } from '../../context/AuthContext';
 import { userAPI } from '../../services/api';
 
@@ -26,6 +27,20 @@ const OnboardingScreen = () => {
     study_place: '',
     bio: '',
   });
+
+  const handleLocationChange = (location) => {
+    setFormData({
+      ...formData,
+      location: {
+        ...formData.location,
+        ...location
+      }
+    });
+  };
+
+  const handlePhoneChange = (phone) => {
+    setFormData({ ...formData, phone });
+  };
 
   const handleSubmit = async () => {
     try {
@@ -90,31 +105,14 @@ const OnboardingScreen = () => {
         style={styles.input}
       />
       
-      <TextInput
-        label="Phone Number *"
-        value={formData.phone}
-        onChangeText={(text) => setFormData({ ...formData, phone: text })}
-        style={styles.input}
-        keyboardType="phone-pad"
-      />
-      
-      <TextInput
-        label="City *"
-        value={formData.location.city}
-        onChangeText={(text) => setFormData({ 
-          ...formData, 
-          location: { ...formData.location, city: text } 
-        })}
-        style={styles.input}
-      />
-      
-      <TextInput
-        label="State *"
-        value={formData.location.state}
-        onChangeText={(text) => setFormData({ 
-          ...formData, 
-          location: { ...formData.location, state: text } 
-        })}
+      <CascadingLocationSelect
+        country={formData.location.country}
+        state={formData.location.state}
+        city={formData.location.city}
+        phone={formData.phone}
+        onLocationChange={handleLocationChange}
+        onPhoneChange={handlePhoneChange}
+        required
         style={styles.input}
       />
       
@@ -230,6 +228,10 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 15,
+  },
+  menu: {
+    marginTop: 50,
+    maxWidth: '90%',
   },
   button: {
     marginTop: 20,

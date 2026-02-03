@@ -8,6 +8,7 @@ from typing import Optional
 import logging
 
 from app.core.config import settings
+from app.core.constants import FIELD_LOCATION_CITY
 
 logger = logging.getLogger(__name__)
 
@@ -102,15 +103,15 @@ class DatabaseManager:
         
         # Grihasta profiles indexes
         await cls._create_index_safe(cls.db.grihasta_profiles, "user_id", unique=True)
-        await cls._create_index_safe(cls.db.grihasta_profiles, "location.city")
-        await cls._create_index_safe(cls.db.grihasta_profiles, [("user_id", 1), ("location.city", 1)])
+        await cls._create_index_safe(cls.db.grihasta_profiles, FIELD_LOCATION_CITY)
+        await cls._create_index_safe(cls.db.grihasta_profiles, [("user_id", 1), (FIELD_LOCATION_CITY, 1)])
         
         # Acharya profiles indexes
         await cls._create_index_safe(cls.db.acharya_profiles, "user_id", unique=True)
         await cls._create_index_safe(cls.db.acharya_profiles, "status")
         await cls._create_index_safe(cls.db.acharya_profiles, [("status", 1), ("ratings.average", -1)])
         await cls._create_index_safe(cls.db.acharya_profiles, [("status", 1), ("ratings.count", -1)])
-        await cls._create_index_safe(cls.db.acharya_profiles, "location.city")
+        await cls._create_index_safe(cls.db.acharya_profiles, FIELD_LOCATION_CITY)
         await cls._create_index_safe(cls.db.acharya_profiles, "parampara")
         await cls._create_index_safe(cls.db.acharya_profiles, "specializations")
         await cls._create_index_safe(cls.db.acharya_profiles, "languages")
@@ -118,7 +119,7 @@ class DatabaseManager:
         # Compound index for advanced search
         await cls._create_index_safe(cls.db.acharya_profiles, [
             ("status", 1),
-            ("location.city", 1),
+            (FIELD_LOCATION_CITY, 1),
             ("ratings.average", -1),
             ("hourly_rate", 1)
         ])
@@ -188,6 +189,21 @@ class DatabaseManager:
         # Notifications indexes
         await cls._create_index_safe(cls.db.notifications, [("user_id", 1), ("created_at", -1)])
         await cls._create_index_safe(cls.db.notifications, [("user_id", 1), ("read", 1)])
+        
+        # Services indexes
+        await cls._create_index_safe(cls.db.services, "category_id")
+        await cls._create_index_safe(cls.db.services, [("is_active", 1), ("popularity_score", -1)])
+        
+        # Service Bookings indexes
+        await cls._create_index_safe(cls.db.service_bookings, "service_id")
+        await cls._create_index_safe(cls.db.service_bookings, [("user_id", 1), ("created_at", -1)])
+        await cls._create_index_safe(cls.db.service_bookings, "booking_type")
+        await cls._create_index_safe(cls.db.service_bookings, "status")
+        
+        # Gamification & Wallet indexes
+        await cls._create_index_safe(cls.db.coupons, "code", unique=True)
+        await cls._create_index_safe(cls.db.coupons, [("is_active", 1), ("valid_until", 1)])
+        await cls._create_index_safe(cls.db.wallet_transactions, [("user_id", 1), ("created_at", -1)])
         
         logger.info("Database indexes created successfully")
     

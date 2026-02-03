@@ -40,7 +40,7 @@ class Settings(BaseSettings):
                  import json
                  try:
                      return json.loads(v)
-                 except:
+                 except ValueError:
                      pass
              origins = [origin.strip() for origin in v.split(",") if origin.strip()]
         else:

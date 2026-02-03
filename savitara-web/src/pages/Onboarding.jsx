@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Box, Container, Typography, TextField, Button, Radio, RadioGroup, FormControlLabel, FormControl, FormLabel, Paper, Chip, IconButton, CircularProgress, Autocomplete, InputAdornment } from '@mui/material'
+import { Box, Container, Typography, TextField, Button, Radio, RadioGroup, FormControlLabel, FormControl, FormLabel, Paper, Chip, IconButton, CircularProgress, Autocomplete, InputAdornment, Alert } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import CascadingLocationSelect from '../components/CascadingLocationSelect'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
@@ -36,6 +37,10 @@ export default function Onboarding() {
   const [languages, setLanguages] = useState([])
   const [newSpec, setNewSpec] = useState('')
   const [newLang, setNewLang] = useState('')
+  
+  // KYC documents for Acharya
+  const [kycDocuments, setKycDocuments] = useState([])
+  const [uploadingDocs, setUploadingDocs] = useState(false)
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -52,6 +57,34 @@ export default function Onboarding() {
     if (newLang.trim() && !languages.includes(newLang.trim())) {
       setLanguages([...languages, newLang.trim()])
       setNewLang('')
+    }
+  }
+
+  const handleDocumentUpload = async (e) => {
+    const files = Array.from(e.target.files)
+    if (files.length === 0) return
+    
+    setUploadingDocs(true)
+    const formData = new FormData()
+    
+    files.forEach(file => {
+      formData.append('files', file)
+    })
+    
+    try {
+      const response = await api.post('/upload/documents', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      
+      if (response.data.success) {
+        setKycDocuments([...kycDocuments, ...response.data.data.urls])
+        toast.success('Documents uploaded successfully')
+      }
+    } catch (error) {
+      console.error('Upload error:', error)
+      toast.error('Failed to upload documents')
+    } finally {
+      setUploadingDocs(false)
     }
   }
 
@@ -106,6 +139,7 @@ export default function Onboarding() {
       if (role === 'grihasta') {
         requestBody = {
           name: formData.name,
+          verification_documents: kycDocuments,
           phone: formData.phone || null,
           location: {
             city: formData.city,
@@ -301,6 +335,43 @@ export default function Onboarding() {
                 placeholder="Tell seekers about your background and experience"
                 sx={{ mb: 2 }}
               />
+
+              {/* KYC Document Upload */}
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  KYC Verification Documents *
+                </Typography>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Please upload ID proof (Aadhaar/PAN), educational certificates, 
+                  or any documents verifying your credentials as an Acharya.
+                </Alert>
+                <Button
+                  component="label"
+                  variant="outlined"
+                  startIcon={<CloudUploadIcon />}
+                  disabled={uploadingDocs}
+                  fullWidth
+                >
+                  {uploadingDocs ? 'Uploading...' : 'Upload Documents (PDF, Images)'}
+                  <input
+                    type="file"
+                    hidden
+                    multiple
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={handleDocumentUpload}
+                  />
+                </Button>
+                {kycDocuments.length > 0 && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="body2" color="success.main">
+                      {kycDocuments.length} document(s) uploaded
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Your documents will be reviewed by admin for verification.
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
             </>
           )}
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Animated, StyleSheet } from 'react-native';
+import PropTypes from 'prop-types';
 import { colors, borderRadius } from '../../theme/tokens';
 
 const Skeleton = ({ width, height, style, variant = 'rect' }) => {
@@ -59,5 +60,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 });
+
+Skeleton.propTypes = {
+  width: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  height: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  style: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
+  variant: PropTypes.oneOf(['rect', 'circle']),
+};
 
 export default Skeleton;

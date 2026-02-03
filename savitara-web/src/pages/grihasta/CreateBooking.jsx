@@ -13,7 +13,6 @@ import {
   Step,
   StepLabel,
   CircularProgress,
-  Divider,
   Alert
 } from '@mui/material';
 import { DatePicker, TimePicker, LocalizationProvider } from '@mui/x-date-pickers';
@@ -21,7 +20,8 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format } from 'date-fns';
 import Layout from '../../components/Layout';
 import api from '../../services/api';
-import { FaCalendarAlt, FaOm, FaCheckCircle } from 'react-icons/fa';
+import { FaCheckCircle } from 'react-icons/fa';
+import PricingDisplay from '../../components/PricingDisplay';
 
 const steps = ['Service Details', 'Schedule', 'Confirm'];
 
@@ -226,7 +226,7 @@ export default function CreateBooking() {
                 {activeStep === 2 && (
                   <Box>
                     <Typography variant="h6" gutterBottom>Confirm Booking Details</Typography>
-                    <Paper variant="outlined" sx={{ p: 3 }}>
+                    <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
                       <Grid container spacing={2}>
                         <Grid item xs={6}><Typography color="text.secondary">Acharya:</Typography></Grid>
                         <Grid item xs={6}><Typography fontWeight="bold">{acharya?.name}</Typography></Grid>
@@ -239,13 +239,15 @@ export default function CreateBooking() {
                         
                         <Grid item xs={6}><Typography color="text.secondary">Time:</Typography></Grid>
                         <Grid item xs={6}><Typography fontWeight="bold">{time && format(time, 'p')}</Typography></Grid>
-                        
-                        <Grid item xs={12}><Divider sx={{ my: 1 }} /></Grid>
-                        
-                        <Grid item xs={6}><Typography variant="h6">Total Amount:</Typography></Grid>
-                        <Grid item xs={6}><Typography variant="h6" color="primary">₹{getPoojaDetails()?.base_price}</Typography></Grid>
                       </Grid>
                     </Paper>
+
+                    {/* Gamification Pricing Display */}
+                    <PricingDisplay 
+                      baseAmount={getPoojaDetails()?.base_price || 0}
+                      serviceId={selectedPooja}
+                      onPriceCalculated={() => {}}
+                    />
                   </Box>
                 )}
 

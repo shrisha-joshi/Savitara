@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import PropTypes from 'prop-types';
 import { colors, typography, spacing } from '../../theme/tokens';
 
 // In a real app, require/import the image properly
@@ -48,5 +49,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+EmptyState.propTypes = {
+  message: PropTypes.string,
+  description: PropTypes.string,
+};
 
 export default EmptyState;

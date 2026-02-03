@@ -1,0 +1,323 @@
+/* Gamification Dashboard Styles */
+
+.gamification-dashboard {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.dashboard-title {
+  margin-bottom: 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 800;
+}
+
+.gamification-loading {
+  text-align: center;
+  padding: 64px;
+}
+
+/* Overview Cards */
+.overview-cards {
+  margin-bottom: 32px;
+}
+
+.reward-card {
+  height: 100%;
+  border-radius: 16px;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.reward-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+}
+
+.reward-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.coins-card::before {
+  background: linear-gradient(90deg, #FFD700 0%, #FFA500 100%);
+}
+
+.loyalty-card::before {
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+}
+
+.vouchers-card::before {
+  background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%);
+}
+
+.referral-card::before {
+  background: linear-gradient(90deg, #FF6B6B 0%, #FF4757 100%);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.card-icon {
+  font-size: 2rem;
+  color: #667eea;
+}
+
+.coins-card .card-icon {
+  color: #FFD700;
+}
+
+.loyalty-card .card-icon {
+  color: #764ba2;
+}
+
+.vouchers-card .card-icon {
+  color: #4CAF50;
+}
+
+.referral-card .card-icon {
+  color: #FF6B6B;
+}
+
+.card-value {
+  font-size: 2.5rem;
+  font-weight: 800;
+  margin: 12px 0;
+  color: #333;
+}
+
+.card-subtext {
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.card-earned, .card-benefit, .referral-reward {
+  display: block;
+  margin-top: 8px;
+  color: #888;
+}
+
+.progress-section {
+  margin-top: 12px;
+}
+
+.tier-progress {
+  margin-top: 4px;
+  height: 6px;
+  border-radius: 3px;
+}
+
+.referral-code {
+  font-family: 'Courier New', monospace;
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #FF6B6B;
+  margin: 12px 0;
+  letter-spacing: 2px;
+}
+
+.view-btn, .share-btn, .apply-btn {
+  margin-top: 12px;
+  width: 100%;
+}
+
+.share-btn {
+  background: linear-gradient(135deg, #FF6B6B 0%, #FF4757 100%);
+  color: white;
+}
+
+/* Tabs Section */
+.tabs-section {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.tab-content {
+  padding: 24px 0;
+}
+
+.section-title {
+  margin-bottom: 20px;
+  color: #333;
+  font-weight: 600;
+}
+
+/* Transactions List */
+.transactions-list {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.transaction-item {
+  background: white;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.earn-icon {
+  color: #4CAF50;
+}
+
+.spend-icon {
+  color: #FF6B6B;
+}
+
+.amount-positive {
+  color: #4CAF50;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.amount-negative {
+  color: #FF6B6B;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+/* Voucher Cards */
+.voucher-card, .coupon-card {
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.voucher-card:hover, .coupon-card:hover {
+  border-color: #667eea;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
+}
+
+.voucher-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.voucher-icon {
+  color: #4CAF50;
+  font-size: 2rem;
+}
+
+.voucher-code, .coupon-code {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 1px;
+}
+
+.voucher-details, .coupon-details {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.discount-value {
+  color: #4CAF50;
+  font-weight: 700;
+  font-size: 1.2rem;
+}
+
+/* Milestones List */
+.milestones-list {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.milestone-item {
+  background: white;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  padding: 16px;
+  border-left: 4px solid #FFD700;
+}
+
+.trophy-icon {
+  color: #FFD700;
+  font-size: 2rem;
+}
+
+.milestone-rewards {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reward-chip {
+  background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+  color: white;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .gamification-dashboard {
+    padding: 16px;
+  }
+
+  .dashboard-title {
+    font-size: 1.8rem;
+    margin-bottom: 24px;
+  }
+
+  .card-value {
+    font-size: 2rem;
+  }
+
+  .referral-code {
+    font-size: 1.2rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .card-icon {
+    font-size: 1.5rem;
+  }
+
+  .card-value {
+    font-size: 1.8rem;
+  }
+}
+
+/* Animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reward-card {
+  animation: slideIn 0.5s ease;
+}
+
+.reward-card:nth-child(1) { animation-delay: 0.1s; }
+.reward-card:nth-child(2) { animation-delay: 0.2s; }
+.reward-card:nth-child(3) { animation-delay: 0.3s; }
+.reward-card:nth-child(4) { animation-delay: 0.4s; }

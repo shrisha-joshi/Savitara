@@ -11,11 +11,15 @@ from datetime import datetime, timezone
 from bson import ObjectId
 from app.core.constants import MONGO_REGEX, MONGO_OPTIONS
 
+# Error message constants
+NO_FIELDS_TO_UPDATE = "No fields to update"
+
 from app.schemas.requests import (
     GrihastaOnboardingRequest,
     AcharyaOnboardingRequest,
     ProfileUpdateRequest,
-    StandardResponse
+    StandardResponse,
+    AcharyaSearchParams
 )
 from app.services.cache_service import cache
 from app.core.security import (
@@ -233,7 +237,7 @@ async def acharya_onboarding(
                 await notification_service.send_multicast(
                     tokens=admin_tokens,
                     title="New Acharya Verification Request",
-                    body=f"User submitted profile for verification",
+                    body="User submitted profile for verification",
                     data={"type": "acharya_verification", "acharya_id": str(user_id)}
                 )
         except Exception as e:
@@ -393,7 +397,7 @@ async def update_profile(
         
         if not update_fields:
             raise InvalidInputError(
-                message="No fields to update",
+                message=NO_FIELDS_TO_UPDATE,
                 field="body"
             )
         
@@ -454,7 +458,7 @@ async def update_grihasta_profile(
         
         if not update_fields:
             raise InvalidInputError(
-                message="No fields to update",
+                message=NO_FIELDS_TO_UPDATE,
                 field="body"
             )
         
@@ -507,7 +511,7 @@ async def update_acharya_profile(
         
         if not update_fields:
             raise InvalidInputError(
-                message="No fields to update",
+                message=NO_FIELDS_TO_UPDATE,
                 field="body"
             )
         
@@ -539,6 +543,117 @@ async def update_acharya_profile(
         )
 
 
+# Helper functions for search to reduce cognitive complexity
+async def _search_with_elasticsearch(
+    search_service,
+    params: AcharyaSearchParams
+) -> StandardResponse:
+    """Execute Elasticsearch search and return formatted response"""
+    result = await search_service.search_acharyas(
+        query=params.query or "",
+        filters=params.get_filter_dict(),
+        latitude=params.latitude,
+        longitude=params.longitude,
+        sort_by=params.sort_by,
+        page=params.page,
+        limit=params.limit
+    )
+    
+    return StandardResponse(
+        success=True,
+        data={
+            "acharyas": result["hits"],
+            "pagination": {
+                "page": params.page,
+                "limit": params.limit,
+                "total": result["total"],
+                "pages": (result["total"] + params.limit - 1) // params.limit
+            },
+            "search_metadata": {
+                "query": params.query,
+                "took_ms": result.get("took_ms"),
+                "max_score": result.get("max_score")
+            }
+        }
+    )
+
+
+def _build_mongodb_query_filter(params: AcharyaSearchParams) -> dict:
+    """Build MongoDB query filter from search parameters"""
+    query_filter = {"rating": {"$gte": params.min_rating}}
+    
+    if params.city:
+        query_filter["location.city"] = {MONGO_REGEX: params.city, MONGO_OPTIONS: "i"}
+    if params.state:
+        query_filter["location.state"] = {MONGO_REGEX: params.state, MONGO_OPTIONS: "i"}
+    if params.specialization:
+        query_filter["specializations"] = {MONGO_REGEX: params.specialization, MONGO_OPTIONS: "i"}
+    if params.language:
+        query_filter["languages"] = {MONGO_REGEX: params.language, MONGO_OPTIONS: "i"}
+    
+    return query_filter
+
+
+async def _search_with_mongodb(
+    db: AsyncIOMotorDatabase,
+    params: AcharyaSearchParams
+) -> StandardResponse:
+    """Execute MongoDB search and return formatted response"""
+    query_filter = _build_mongodb_query_filter(params)
+    
+    pipeline = [
+        {"$match": query_filter},
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "user_id",
+                "foreignField": "_id",
+                "as": "user"
+            }
+        },
+        {"$unwind": "$user"},
+        {"$match": {"user.status": UserStatus.ACTIVE.value}},
+        {
+            "$project": {
+                "_id": 1,
+                "user_id": 1,
+                "name": 1,
+                "parampara": 1,
+                "experience_years": 1,
+                "specializations": 1,
+                "languages": 1,
+                "location": 1,
+                "bio": 1,
+                "rating": 1,
+                "total_bookings": 1,
+                "profile_picture": "$user.profile_picture"
+            }
+        },
+        {"$sort": {"rating": -1, "total_bookings": -1}},
+        {"$skip": (params.page - 1) * params.limit},
+        {"$limit": params.limit}
+    ]
+    
+    acharyas = await db.acharya_profiles.aggregate(pipeline).to_list(length=params.limit)
+    
+    # Get total count
+    count_pipeline = pipeline[:4]  # Up to status filter
+    total_count = len(await db.acharya_profiles.aggregate(count_pipeline).to_list(length=None))
+    
+    return StandardResponse(
+        success=True,
+        data={
+            "acharyas": acharyas,
+            "pagination": {
+                "page": params.page,
+                "limit": params.limit,
+                "total": total_count,
+                "pages": (total_count + params.limit - 1) // params.limit
+            }
+        }
+    )
+
+
 @router.get(
     "/acharyas",
     response_model=StandardResponse,
@@ -547,19 +662,7 @@ async def update_acharya_profile(
     description="Search and filter Acharyas by location, specialization, language, etc."
 )
 async def search_acharyas(
-    query: Optional[str] = Query(None, description="Search query text"),
-    city: Optional[str] = Query(None, description="Filter by city"),
-    state: Optional[str] = Query(None, description="Filter by state"),
-    specialization: Optional[str] = Query(None, description="Filter by specialization"),
-    language: Optional[str] = Query(None, description="Filter by language"),
-    min_rating: float = Query(0.0, ge=0.0, le=5.0, description="Minimum rating"),
-    max_price: Optional[float] = Query(None, description="Maximum price"),
-    latitude: Optional[float] = Query(None, description="User latitude for proximity search"),
-    longitude: Optional[float] = Query(None, description="User longitude for proximity search"),
-    use_elasticsearch: bool = Query(True, description="Use Elasticsearch for search"),
-    sort_by: str = Query("relevance", description="Sort by: relevance, rating, price, experience"),
-    page: int = Query(1, ge=1, description="Page number"),
-    limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    params: AcharyaSearchParams = Depends(),
     db: AsyncIOMotorDatabase = Depends(get_db),
     request: Request = None
 ):
@@ -576,141 +679,32 @@ async def search_acharyas(
     """
     try:
         # Try Cache First
-        cache_key = f"search:{query}:{city}:{state}:{specialization}:{language}:{min_rating}:{max_price}:{latitude}:{longitude}:{sort_by}:{page}:{limit}"
+        cache_key = params.get_cache_key()
         cached_result = await cache.get(cache_key)
         if cached_result:
             return cached_result
 
-        # Debugging request type
-        if request is not None:
-             pass # Removed print to clean up logs, logic fix below is key
-        
-        # Use Elasticsearch if enabled and search service is available
-        # Fix: Check request is not None explicitly to avoid PyMongo database bool check error if mis-injected
+        # Check if search service is available
         has_search_service = False
         if request is not None:
-             try:
-                 app_instance = getattr(request, 'app', None)
-                 if app_instance and hasattr(app_instance, 'search_service'):
-                     has_search_service = True
-             except Exception:
-                 pass
+            try:
+                app_instance = getattr(request, 'app', None)
+                if app_instance and hasattr(app_instance, 'search_service'):
+                    has_search_service = True
+            except Exception:
+                pass
 
-        if use_elasticsearch and has_search_service:
+        # Use Elasticsearch if enabled and available
+        if params.use_elasticsearch and has_search_service:
             from app.services.search_service import SearchService
             search_service: SearchService = request.app.search_service
-            
-            filters = {
-                "city": city,
-                "state": state,
-                "specialization": specialization,
-                "language": language,
-                "min_rating": min_rating,
-                "max_price": max_price
-            }
-            
-            result = await search_service.search_acharyas(
-                query=query or "",
-                filters=filters,
-                latitude=latitude,
-                longitude=longitude,
-                sort_by=sort_by,
-                page=page,
-                limit=limit
-            )
-            
-            response = StandardResponse(
-                success=True,
-                data={
-                    "acharyas": result["hits"],
-                    "pagination": {
-                        "page": page,
-                        "limit": limit,
-                        "total": result["total"],
-                        "pages": (result["total"] + limit - 1) // limit
-                    },
-                    "search_metadata": {
-                        "query": query,
-                        "took_ms": result.get("took_ms"),
-                        "max_score": result.get("max_score")
-                    }
-                }
-            )
-            
-            # Cache Result
-            await cache.set(cache_key, response.model_dump(), expire=300)
-            return response
-
-        # Fallback to MongoDB search
-        # Build query filter
-        query_filter = {"rating": {"$gte": min_rating}}
-        
-        if city:
-            query_filter["location.city"] = {MONGO_REGEX: city, MONGO_OPTIONS: "i"}
-        if state:
-            query_filter["location.state"] = {MONGO_REGEX: state, MONGO_OPTIONS: "i"}
-        if specialization:
-            query_filter["specializations"] = {MONGO_REGEX: specialization, MONGO_OPTIONS: "i"}
-        if language:
-            query_filter["languages"] = {MONGO_REGEX: language, MONGO_OPTIONS: "i"}
-        
-        # Get only ACTIVE acharyas
-        # Join with users collection to check status
-        pipeline = [
-            {"$match": query_filter},
-            {
-                "$lookup": {
-                    "from": "users",
-                    "localField": "user_id",
-                    "foreignField": "_id",
-                    "as": "user"
-                }
-            },
-            {"$unwind": "$user"},
-            {"$match": {"user.status": UserStatus.ACTIVE.value}},
-            {
-                "$project": {
-                    "_id": 1,
-                    "user_id": 1,
-                    "name": 1,
-                    "parampara": 1,
-                    "experience_years": 1,
-                    "specializations": 1,
-                    "languages": 1,
-                    "location": 1,
-                    "bio": 1,
-                    "rating": 1,
-                    "total_bookings": 1,
-                    "profile_picture": "$user.profile_picture"
-                }
-            },
-            {"$sort": {"rating": -1, "total_bookings": -1}},
-            {"$skip": (page - 1) * limit},
-            {"$limit": limit}
-        ]
-        
-        acharyas = await db.acharya_profiles.aggregate(pipeline).to_list(length=limit)
-        
-        # Get total count
-        count_pipeline = pipeline[:4]  # Up to status filter
-        total_count = len(await db.acharya_profiles.aggregate(count_pipeline).to_list(length=None))
-        
-        response = StandardResponse(
-            success=True,
-            data={
-                "acharyas": acharyas,
-                "pagination": {
-                    "page": page,
-                    "limit": limit,
-                    "total": total_count,
-                    "pages": (total_count + limit - 1) // limit
-                }
-            }
-        )
+            response = await _search_with_elasticsearch(search_service, params)
+        else:
+            # Fallback to MongoDB search
+            response = await _search_with_mongodb(db, params)
         
         # Cache Result
         await cache.set(cache_key, response.model_dump(), expire=300)
-        
         return response
         
     except Exception as e:
@@ -834,23 +828,7 @@ async def create_acharya_profile_alias(
     include_in_schema=False
 )
 async def search_users_alias(
-    query: Optional[str] = Query(None),
-    city: Optional[str] = Query(None),
-    state: Optional[str] = Query(None),
-    specialization: Optional[str] = Query(None),
-    language: Optional[str] = Query(None),
-    min_rating: float = Query(0.0),
-    max_price: Optional[float] = Query(None),
-    latitude: Optional[float] = Query(None),
-    longitude: Optional[float] = Query(None),
-    use_elasticsearch: bool = Query(True),
-    sort_by: str = Query("relevance"),
-    page: int = Query(1),
-    limit: int = Query(20),
+    params: AcharyaSearchParams = Depends(),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
-    return await search_acharyas(
-        query, city, state, specialization, language, min_rating, 
-        max_price, latitude, longitude, use_elasticsearch, sort_by, 
-        page, limit, db
-    )
+    return await search_acharyas(params=params, db=db)

@@ -1,6 +1,7 @@
 import React from 'react';
+import PropTypes from 'prop-types';
 import { colors, typography, spacing } from '../../theme/tokens';
-import { FiSun } from 'react-icons/fi'; // Fallback icon
+// Fallback icon removed as unused
 
 const EmptyState = ({ message = "No records found.", description = "The Gods are waiting for your action." }) => {
   return (
@@ -43,3 +44,10 @@ const EmptyState = ({ message = "No records found.", description = "The Gods are
 };
 
 export default EmptyState;
+
+
+EmptyState.propTypes = {
+  message: PropTypes.string,
+  description: PropTypes.string
+};
+

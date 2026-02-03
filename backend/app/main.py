@@ -101,6 +101,10 @@ async def lifespan(app: FastAPI):
                 optimizer = QueryOptimizer(db)
                 await optimizer.create_all_indexes()
                 logger.info("Database indexes created")
+                
+                # Initialize services collection with default data
+                from app.db.init_services import initialize_services_collection
+                await initialize_services_collection(db)
         except Exception as e:
             logger.warning(f"Index creation failed: {e}")
         
@@ -397,7 +401,7 @@ async def root():
 
 
 # Include API routers
-from app.api.v1 import auth, users, bookings, chat, reviews, admin, panchanga, wallet, analytics, payments, admin_auth, content, calendar, calls
+from app.api.v1 import auth, users, bookings, chat, reviews, admin, panchanga, wallet, analytics, payments, admin_auth, content, calendar, calls, services, admin_services, upload, gamification
 
 API_V1_PREFIX = "/api/v1"
 app.include_router(auth.router, prefix=API_V1_PREFIX)
@@ -415,6 +419,10 @@ app.include_router(payments.router, prefix=API_V1_PREFIX)
 app.include_router(analytics.router, prefix=API_V1_PREFIX)
 app.include_router(content.router, prefix=API_V1_PREFIX)  # Admin content management
 app.include_router(content.public_router, prefix=API_V1_PREFIX)  # Public content endpoints
+app.include_router(services.router, prefix=API_V1_PREFIX)  # Services catalog
+app.include_router(admin_services.router, prefix=API_V1_PREFIX)  # Admin services management
+app.include_router(upload.router, prefix=API_V1_PREFIX, tags=["Upload"])  # File upload endpoints
+app.include_router(gamification.router, prefix=API_V1_PREFIX, tags=["Gamification"])  # Gamification system
 
 
 # WebSocket endpoint for real-time communication

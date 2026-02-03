@@ -35,26 +35,56 @@ import re
 
 def sanitize_message_content(content: str) -> Tuple[str, bool]:
     """
-    Detect and block contact information in messages
+    Production-grade contact information blocker
+    Blocks: Indian/International phones, emails, obfuscated tricks, social handles, URLs
     Returns (sanitized_content, was_blocked)
     """
-    # Phone number patterns (Indian and general)
-    # Matches patterns like +91-9876543210, 9876543210, 0987-654-3210
-    phone_pattern = r'(\+91[\-\s]?)?[0]?(91)?[6789]\d{9}'
+    # PRODUCTION PATTERNS - NO LOOPHOLES
     
-    # Email pattern
+    # 1. Indian phone numbers (comprehensive)
+    # Matches all variations: +91, 91, spaces, dashes, brackets
+    indian_phone = r'(?<!\d)(?:\+?91[\s\-]?)?[6-9]\d{2}[\s\-]?\d{3}[\s\-]?\d{4}(?!\d)'
+    
+    # 2. Indian phone with spaces (catches "98 7654 3210")
+    indian_phone_spaced = r'(?<!\d)[6-9]\d[\s\-]\d{4}[\s\-]\d{4}(?!\d)'
+    
+    # 3. Indian landlines (optional but recommended)
+    indian_landline = r'0\d{2,4}[\s\-]?\d{6,8}'
+    
+    # 4. International phone numbers (general)
+    intl_phone = r'(?<!\d)\+\d{1,3}[\s\-]?\d{2,4}[\s\-]?\d{2,4}[\s\-]?\d{2,4}(?!\d)'
+    
+    # 5. Email addresses (all TLDs)
     email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
     
-    # WhatsApp/Telegram/Social patterns
-    social_pattern = r'(whatsapp|telegram|signal|wa\.me|t\.me)[\s:]*[\d\w@./]+'
+    # 6. Obfuscated email tricks ("at", "dot")
+    obfuscated_at = r'(?<!\S)(?:at|\[at\]|\(at\)|@)(?!\S)'
+    obfuscated_dot = r'(?<!\S)(?:dot|\[dot\]|\(dot\)|\.)(?!\S)'
     
-    # URL pattern (simple)
-    url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
-
-    combined_pattern = f'({phone_pattern}|{email_pattern}|{social_pattern}|{url_pattern})'
+    # 7. Social handles and platforms
+    # WhatsApp, Telegram, Instagram, Signal, etc.
+    social_handles = r'(whatsapp|telegram|signal|instagram|insta|wa\.me|t\.me|instagr\.am)[\s:@]*[\d\w@./]+'
     
-    if re.search(combined_pattern, content, re.IGNORECASE):
-        return "[Contact information removed - Please use in-app communication]", True
+    # 8. URLs (comprehensive)
+    url_pattern = r'(https?://|www\.|[a-zA-Z0-9-]+\.(com|net|org|in|ai|io|co|biz))'
+    
+    # COMBINED BLOCKING PATTERN
+    block_patterns = [
+        indian_phone,
+        indian_phone_spaced,
+        indian_landline,
+        intl_phone,
+        email_pattern,
+        obfuscated_at,
+        obfuscated_dot,
+        social_handles,
+        url_pattern
+    ]
+    
+    for pattern in block_patterns:
+        if re.search(pattern, content, re.IGNORECASE):
+            logger.warning(f"Contact info blocked - Pattern: {pattern[:30]}...")
+            return "[Contact information removed - Please use in-app communication]", True
     
     return content, False
 
@@ -109,6 +139,64 @@ async def _create_one_to_one_message(db, sender_id: str, receiver_id: str, conte
     return message, conversation_id
 
 
+async def _get_display_name(db, other_user: dict) -> str:
+    """Get display name for a user based on their role"""
+    if not other_user:
+        return "User"
+    
+    user_role = other_user.get("role")
+    user_id = str(other_user["_id"])
+    
+    if user_role == UserRole.ACHARYA.value:
+        profile = await db.acharya_profiles.find_one({"user_id": user_id})
+        return profile.get("name", "Acharya") if profile else "Acharya"
+    
+    if user_role == UserRole.GRIHASTA.value:
+        profile = await db.grihasta_profiles.find_one({"user_id": user_id})
+        return profile.get("name", "User") if profile else "User"
+    
+    return "User"
+
+
+async def _enrich_conversation(db, conv: dict, user_id: str) -> dict:
+    """Enrich a conversation with unread count, other user info, and last message"""
+    conv_id = str(conv["_id"])
+    
+    # Count unread messages
+    unread_count = await db.messages.count_documents({
+        "conversation_id": conv_id,
+        "receiver_id": user_id,
+        "read": False
+    })
+    
+    # Get other participant's info
+    other_user_id = next((p for p in conv["participants"] if p != user_id), None)
+    other_user = await db.users.find_one({"_id": other_user_id}) if other_user_id else None
+    display_name = await _get_display_name(db, other_user)
+    
+    # Get last message
+    last_message = await db.messages.find_one(
+        {"conversation_id": conv_id},
+        sort=[("created_at", -1)]
+    )
+    
+    return {
+        "id": conv_id,
+        "other_user": {
+            "id": str(other_user["_id"]),
+            "name": display_name,
+            "role": other_user["role"],
+            "profile_picture": other_user.get("profile_picture")
+        } if other_user else None,
+        "last_message": {
+            "content": last_message.get("content"),
+            "created_at": last_message.get("created_at")
+        } if last_message else None,
+        "unread_count": unread_count,
+        "last_message_at": conv["last_message_at"]
+    }
+
+
 async def _send_message_notification(db, conversation_doc: dict, current_user: dict, content: str, conversation_id: str):
     """Send push notification to message receiver"""
     if not conversation_doc:
@@ -116,11 +204,10 @@ async def _send_message_notification(db, conversation_doc: dict, current_user: d
     
     try:
         # Find receiver
-        receiver_id = None
-        for participant_id in conversation_doc["participants"]:
-            if participant_id != current_user["id"]:
-                receiver_id = participant_id
-                break
+        receiver_id = next(
+            (pid for pid in conversation_doc["participants"] if pid != current_user["id"]),
+            None
+        )
         
         if not receiver_id:
             return
@@ -140,6 +227,54 @@ async def _send_message_notification(db, conversation_doc: dict, current_user: d
         logger.warning(f"Failed to send message notification: {e}")
 
 
+def _handle_open_chat_message(sender_id: str, sender_role: str, content: str) -> Tuple[Message, str]:
+    """Handle open chat message creation with permission check"""
+    if sender_role != UserRole.ACHARYA.value:
+        raise PermissionDeniedError(
+            action="Post to open chat",
+            details={"message": "Only Acharyas can post to open chat"}
+        )
+    return _create_open_chat_message(sender_id, content)
+
+
+async def _handle_one_to_one_message(
+    db: AsyncIOMotorDatabase,
+    sender_id: str,
+    receiver_id: Optional[str],
+    content: str
+) -> Tuple[Message, str, dict]:
+    """Handle 1-to-1 message creation with validation"""
+    if not receiver_id:
+        raise InvalidInputError(
+            message="receiver_id required for 1-to-1 chat",
+            field="receiver_id"
+        )
+    
+    receiver = await db.users.find_one({"_id": receiver_id})
+    if not receiver:
+        raise ResourceNotFoundError(
+            resource_type="User",
+            resource_id=receiver_id
+        )
+    
+    # Sanitize message content
+    sanitized_content, was_blocked = sanitize_message_content(content)
+    
+    if was_blocked:
+        logger.warning(f"Contact sharing attempt blocked from user {sender_id}")
+        await db.users.update_one(
+            {"_id": ObjectId(sender_id)},
+            {"$inc": {"contact_share_attempts": 1}}
+        )
+
+    message, conversation_id = await _create_one_to_one_message(
+        db, sender_id, receiver_id, sanitized_content
+    )
+    conversation_doc = await db.conversations.find_one({"_id": conversation_id})
+    
+    return message, conversation_id, conversation_doc
+
+
 @router.post(
     "/messages",
     response_model=StandardResponse,
@@ -147,8 +282,7 @@ async def _send_message_notification(db, conversation_doc: dict, current_user: d
     summary="Send Message",
     description="Send a message in 1-to-1 chat or open chat"
 )
-# NOSONAR python:S3776 - Message routing logic requires handling multiple chat types
-async def send_message(  # noqa: C901
+async def send_message(
     message_data: MessageSendRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db)
@@ -166,46 +300,13 @@ async def send_message(  # noqa: C901
         conversation_doc = None
         
         if message_data.is_open_chat:
-            # Open chat - only Acharyas can post
-            if sender_role != UserRole.ACHARYA.value:
-                raise PermissionDeniedError(
-                    action="Post to open chat",
-                    details={"message": "Only Acharyas can post to open chat"}
-                )
-            message, conversation_id = _create_open_chat_message(sender_id, message_data.content)
-        else:
-            # 1-to-1 chat
-            if not message_data.receiver_id:
-                raise InvalidInputError(
-                    message="receiver_id required for 1-to-1 chat",
-                    field="receiver_id"
-                )
-            
-            # Verify receiver exists
-            receiver = await db.users.find_one({"_id": message_data.receiver_id})
-            if not receiver:
-                raise ResourceNotFoundError(
-                    resource_type="User",
-                    resource_id=message_data.receiver_id
-                )
-            
-            # SANITIZE MESSAGE BEFORE SAVING
-            sanitized_content, was_blocked = sanitize_message_content(message_data.content)
-            
-            if was_blocked:
-                # Log the attempt for monitoring
-                logger.warning(f"Contact sharing attempt blocked from user {sender_id}")
-                # Optionally: increment violation counter for user
-                await db.users.update_one(
-                    {"_id": ObjectId(sender_id)},
-                    {"$inc": {"contact_share_attempts": 1}}
-                )
-
-            # Use sanitized content
-            message, conversation_id = await _create_one_to_one_message(
-                db, sender_id, message_data.receiver_id, sanitized_content
+            message, conversation_id = _handle_open_chat_message(
+                sender_id, sender_role, message_data.content
             )
-            conversation_doc = await db.conversations.find_one({"_id": conversation_id})
+        else:
+            message, conversation_id, conversation_doc = await _handle_one_to_one_message(
+                db, sender_id, message_data.receiver_id, message_data.content
+            )
         
         # Save message
         result = await db.messages.insert_one(message.model_dump(by_alias=True))
@@ -221,7 +322,7 @@ async def send_message(  # noqa: C901
             success=True,
             data={
                 "message_id": str(message.id),
-                "conversation_id": conversation_id if not message_data.is_open_chat else "open_chat",
+                "conversation_id": "open_chat" if message_data.is_open_chat else conversation_id,
                 "expires_at": message.expires_at.isoformat() if message.expires_at else None
             },
             message="Message sent successfully"
@@ -272,53 +373,11 @@ async def get_conversations(
             "is_open_chat": False
         }).sort("last_message_at", -1).skip((page - 1) * limit).limit(limit).to_list(length=limit)
         
-        # Get unread count for each conversation
-        result_conversations = []
-        for conv in conversations:
-            conv_id = str(conv["_id"])
-            
-            # Count unread messages
-            unread_count = await db.messages.count_documents({
-                "conversation_id": conv_id,
-                "receiver_id": user_id,
-                "read": False
-            })
-            
-            # Get other participant's info
-            other_user_id = [p for p in conv["participants"] if p != user_id][0]
-            other_user = await db.users.find_one({"_id": other_user_id})
-            
-            # Get display name safely
-            display_name = "User"
-            if other_user:
-                if other_user["role"] == UserRole.ACHARYA.value:
-                    profile = await db.acharya_profiles.find_one({"user_id": str(other_user["_id"])})
-                    display_name = profile.get("name", "Acharya") if profile else "Acharya"
-                elif other_user["role"] == UserRole.GRIHASTA.value:
-                    profile = await db.grihasta_profiles.find_one({"user_id": str(other_user["_id"])})
-                    display_name = profile.get("name", "User") if profile else "User"
-
-            # Get last message
-            last_message = await db.messages.find_one(
-                {"conversation_id": conv_id},
-                sort=[("created_at", -1)]
-            )
-            
-            result_conversations.append({
-                "id": conv_id,
-                "other_user": {
-                    "id": str(other_user["_id"]),
-                    "name": display_name,  # Email removed
-                    "role": other_user["role"],
-                    "profile_picture": other_user.get("profile_picture")
-                } if other_user else None,
-                "last_message": {
-                    "content": last_message.get("content"),
-                    "created_at": last_message.get("created_at")
-                } if last_message else None,
-                "unread_count": unread_count,
-                "last_message_at": conv["last_message_at"]
-            })
+        # Enrich each conversation with metadata
+        result_conversations = [
+            await _enrich_conversation(db, conv, user_id)
+            for conv in conversations
+        ]
         
         # Get total count
         total_count = await db.conversations.count_documents({

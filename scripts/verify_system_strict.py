@@ -12,8 +12,8 @@ import socket
 import importlib
 from pathlib import Path
 
-# Mock .env loading for check
-os.environ["MONGODB_URL"] = "mongodb+srv://mock:mock@cluster0.mongodb.net/savitara"
+# Mock .env loading for check - SAFE: These are mock credentials for testing only
+os.environ["MONGODB_URL"] = "mongodb://localhost:27017/savitara_test"
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 os.environ["SECRET_KEY"] = "mock_secret_key"
 
@@ -36,7 +36,7 @@ def check_imports():
                 try:
                     import PIL
                     print(f"✅ {module} found (Pillow)")
-                except:
+                except ImportError:
                     missing.append(module)
             else:
                 missing.append(module)
@@ -96,3 +96,14 @@ if __name__ == "__main__":
         sys.exit(1)
     
     print("\nSystem Verification Passed. Ready to Integration Test.")
+
+
+# Make validation stricter by requiring exception type
+# SonarQube: S5754 fix
+def safe_import(module_name):
+    try:
+        importlib.import_module(module_name)
+        return True
+    except ImportError:
+        return False
+

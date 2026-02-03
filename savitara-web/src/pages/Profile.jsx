@@ -14,7 +14,6 @@ import {
   DialogActions,
   Divider,
   Grid,
-  IconButton,
   Chip,
   Card,
   CardContent,
@@ -41,9 +40,10 @@ import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import api from '../services/api'
 import { toast } from 'react-toastify'
+import GamificationDashboard from '../components/GamificationDashboard'
 
 export default function Profile() {
-  const { user, logout, refreshUserData } = useAuth()
+  const { user, logout } = useAuth()
   const navigate = useNavigate()
   
   // Profile data state
@@ -328,16 +328,7 @@ export default function Profile() {
                 Member since {new Date(profileData?.created_at || user?.created_at || Date.now()).toLocaleDateString()}
               </Typography>
             </Box>
-            {!isEditing ? (
-              <Button
-                variant="outlined"
-                startIcon={<Edit />}
-                onClick={handleStartEdit}
-                sx={{ borderRadius: 3 }}
-              >
-                Edit Profile
-              </Button>
-            ) : (
+            {isEditing ? (
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <Button
                   variant="contained"
@@ -357,6 +348,15 @@ export default function Profile() {
                   Cancel
                 </Button>
               </Box>
+            ) : (
+              <Button
+                variant="outlined"
+                startIcon={<Edit />}
+                onClick={handleStartEdit}
+                sx={{ borderRadius: 3 }}
+              >
+                Edit Profile
+              </Button>
             )}
           </Box>
 
@@ -501,7 +501,7 @@ export default function Profile() {
                       fullWidth
                       type="number"
                       value={editedData.experience_years}
-                      onChange={(e) => setEditedData({ ...editedData, experience_years: parseInt(e.target.value) || 0 })}
+                      onChange={(e) => setEditedData({ ...editedData, experience_years: Number.parseInt(e.target.value) || 0 })}
                       size="small"
                       placeholder="Years of experience"
                     />
@@ -847,6 +847,13 @@ export default function Profile() {
           </DialogActions>
         </Dialog>
         </>
+        )}
+
+        {/* Gamification Dashboard Section */}
+        {user && (
+          <Box sx={{ mt: 4 }}>
+            <GamificationDashboard />
+          </Box>
         )}
       </Container>
     </Layout>

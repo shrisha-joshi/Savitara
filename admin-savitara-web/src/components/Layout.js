@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import PropTypes from 'prop-types';
 import { useRouter } from 'next/router';
 import {
   Drawer,
@@ -49,7 +50,9 @@ export default function Layout({ children }) {
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
     { text: 'Users', icon: <PeopleIcon />, path: '/users' },
+    { text: 'Services', icon: <ContentIcon />, path: '/services' },
     { text: 'Verifications', icon: <VerifiedIcon />, path: '/verifications' },
+    { text: 'KYC Verification', icon: <VerifiedIcon />, path: '/kyc-verification' },
     { text: 'Reviews', icon: <ReviewIcon />, path: '/reviews' },
     { text: 'Broadcast', icon: <NotificationsIcon />, path: '/broadcast' },
     { text: 'Content', icon: <ContentIcon />, path: '/content-management' },
@@ -412,3 +415,7 @@ export default function Layout({ children }) {
     </Box>
   );
 }
+
+Layout.propTypes = {
+  children: PropTypes.node.isRequired,
+};

@@ -63,12 +63,11 @@ class CacheService:
             expire = self.default_ttl
 
         # 1. Check L1 Cache (Hot Key Protection)
-        if use_l1_cache:
-            if key in self.l1_cache:
-                value, timestamp = self.l1_cache[key]
-                if time.time() - timestamp < l1_expire:
-                    return value
-                del self.l1_cache[key]
+        if use_l1_cache and key in self.l1_cache:
+            value, timestamp = self.l1_cache[key]
+            if time.time() - timestamp < l1_expire:
+                return value
+            del self.l1_cache[key]
 
         # 2. Check Redis Cache
         value = await self.get(key)
@@ -78,6 +77,9 @@ class CacheService:
              return value
 
         # 3. Compute with Locking (Thundering Herd Protection)
+        return await self._compute_with_lock(key, compute_func, expire, use_l1_cache)
+
+    async def _compute_with_lock(self, key, compute_func, expire, use_l1_cache):
         lock_key = f"lock:{key}"
         if not self.redis:
              return await compute_func()
@@ -287,7 +289,7 @@ cache = CacheService()
 
 
 # Dependency for FastAPI
-async def get_cache() -> CacheService:
+def get_cache() -> CacheService:
     """Get cache service instance"""
     return cache
 

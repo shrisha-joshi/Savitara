@@ -1,0 +1,505 @@
+"""
+Hindu Spiritual Services - Complete Service Catalog
+Research-based comprehensive list with authentic details
+"""
+
+# Constants
+SHUKLA_PAKSHA = "Shukla Paksha"
+PUJA_SAMAGRI = "Puja samagri"
+
+HINDU_SERVICES_CATALOG = [
+    # ========== LIFE CEREMONIES (SANSKARS) ==========
+    {
+        "name_english": "Namkaran Sanskar",
+        "name_sanskrit": "नामकरण संस्कार",
+        "category": "life_ceremonies",
+        "short_description": "Sacred naming ceremony for newborns, performed on the 11th, 12th, or 101st day after birth to bless the child with identity and divine protection.",
+        "full_description": "Namkaran Sanskar is one of the 16 Sanskars in Hindu tradition. This sacred ceremony marks the formal naming of a newborn child. The name is chosen based on the child's birth nakshatra, planetary positions, and family traditions. An Acharya performs Vedic mantras to invoke blessings from deities, ancestors, and cosmic forces for the child's prosperous and healthy life.",
+        "importance": "In Hindu philosophy, a name (Naam) carries vibrations and energy. The right name, chosen according to astrological calculations, can influence the child's destiny, personality, and life path. This ceremony also introduces the child to family, society, and the divine realm.",
+        "benefits": [
+            "Establishes child's spiritual identity",
+            "Attracts positive cosmic energies",
+            "Receives blessings from ancestors and deities",
+            "Protects child from evil eye and negative influences",
+            "Strengthens family bonds through collective celebration"
+        ],
+        "requirements": [
+            "Baby should be bathed and dressed in new clothes",
+            "Father or grandfather writes the name on rice or turmeric plate",
+            "Honey, ghee, dates for the child's first taste (if applicable)",
+            "Fresh flowers, fruits, and sweets for offerings",
+            "Silver or gold pen for writing (optional but auspicious)"
+        ],
+        "duration_minutes": 90,
+        "muhurta_required": "mandatory",
+        "best_tithis": ["Shukla Paksha (waxing moon)", "Panchami", "Ashtami", "Ekadashi"],
+        "best_nakshatras": ["Rohini", "Mrigashira", "Pushya", "Hasta", "Anuradha"],
+        "avoid_days": ["Amavasya", "Rikta Tithis", "Inauspicious Nakshatras"],
+        "muhurta_consultation_price": 199.0,
+        "full_service_base_price": 3100.0,
+        "custom_acharya_base_price": 2500.0,
+        "platform_provides": ["Puja samagri kit", "Sacred thread", "Red cloth", "Kalash", "Experienced Acharya"],
+        "customer_provides": ["Baby's new clothes", "Family heirloom jewelry (if any)", "Sweets for distribution"],
+        "acharya_experience_required": "5+ years in Sanskar ceremonies",
+        "icon": "baby"
+    },
+    
+    {
+        "name_english": "Griha Pravesh",
+        "name_sanskrit": "गृह प्रवेश",
+        "category": "special_occasions",
+        "short_description": "Sacred house warming ceremony to purify and energize a new home before entering. Invites positive energies, prosperity, and divine blessings.",
+        "full_description": "Griha Pravesh (house entrance ceremony) is performed before moving into a new residence. The ritual involves Vastu Puja, Ganesh Puja, Navagraha worship, and Agnihotra (sacred fire ceremony) to remove Vastu doshas, negative energies, and inauspicious influences. The ceremony sanctifies the home, making it a sacred dwelling for the family.",
+        "importance": "According to Vastu Shastra and Vedic tradition, a new home accumulates energies from construction, land history, and surrounding environment. Griha Pravesh cleanses these influences and establishes divine presence. It's believed that entering without this ceremony can invite obstacles, health issues, and financial problems.",
+        "benefits": [
+            "Removes Vastu doshas and negative energies",
+            "Attracts wealth, health, and prosperity",
+            "Establishes positive vibrations in every room",
+            "Protects family from accidents and misfortunes",
+            "Creates harmony among family members",
+            "Invokes blessings of Vastu Purusha and deities"
+        ],
+        "requirements": [
+            "Home should be cleaned thoroughly",
+            "Main door decorated with mango leaves and flowers",
+            "Kalash (water pot) with coconut",
+            "New broom for symbolic sweeping",
+            "Cow/milk for first entry (traditional)",
+            "Boil milk and let it overflow (prosperity symbol)"
+        ],
+        "duration_minutes": 180,
+        "muhurta_required": "mandatory",
+        "best_tithis": [SHUKLA_PAKSHA, "Dwitiya", "Tritiya", "Panchami", "Ekadashi"],
+        "best_nakshatras": ["Rohini", "Mrigashira", "Pushya", "Uttara", "Hasta", "Swati", "Anuradha"],
+        "avoid_days": ["Amavasya", "Krishna Paksha Ashtami", "Saturdays (debatable)", "Solar/Lunar eclipse days"],
+        "muhurta_consultation_price": 299.0,
+        "full_service_base_price": 5100.0,
+        "custom_acharya_base_price": 4000.0,
+        "platform_provides": ["Complete Vastu Puja kit", "Navagraha materials", "Yagna samagri", "Kalash with accessories", "Expert Vastu-trained Acharya"],
+        "customer_provides": ["New broom", "Milk for boiling", "Fruits and sweets", "Cow (if following traditional method)"],
+        "acharya_experience_required": "10+ years, Vastu expertise required",
+        "icon": "home"
+    },
+    
+    {
+        "name_english": "Vivaha (Wedding Ceremony)",
+        "name_sanskrit": "विवाह संस्कार",
+        "category": "life_ceremonies",
+        "short_description": "Sacred Hindu wedding rituals uniting two souls in matrimony with divine blessings. One of the most important Sanskars in life.",
+        "full_description": "Vivaha Sanskar is the sacred bond of marriage performed with Vedic mantras and rituals. It includes Kanyadaan (giving away the bride), Saptapadi (seven sacred steps around the fire), and Sindoor Daan. The ceremony binds the couple for seven lifetimes according to Hindu belief, creating a partnership for spiritual, emotional, and material growth.",
+        "importance": "Marriage in Hinduism is not just a social contract but a sacred Samskara that unites two souls for spiritual evolution. The rituals performed during Vivaha create karmic bonds, invoke divine blessings, and establish the foundation for a dharmic household. Each mantra and ritual has deep cosmic significance.",
+        "benefits": [
+            "Divine blessings for lifelong partnership",
+            "Spiritual growth through companionship",
+            "Creation of a sacred household (Grihastha Ashram)",
+            "Karmic bonding for mutual evolution",
+            "Ancestral blessings for progeny",
+            "Social and family harmony"
+        ],
+        "requirements": [
+            "Mandap decorated with flowers and fabric",
+            "Sacred fire pit (Havan Kund)",
+            "Wedding attire for bride and groom",
+            "Mangalsutra, sindoor, wedding rings",
+            "Coconut, rice, flowers for rituals",
+            "Garlands for Varmala ceremony"
+        ],
+        "duration_minutes": 240,
+        "muhurta_required": "mandatory",
+        "best_tithis": ["Shukla Paksha only", "Dwitiya to Dashami (avoid Ekadashi)"],
+        "best_nakshatras": ["Rohini", "Mrigashira", "Uttara Phalguni", "Hasta", "Swati", "Anuradha", "Uttara Ashadha", "Uttara Bhadrapada", "Revati"],
+        "avoid_days": ["Amavasya", "Krishna Paksha", "Malamas (inauspicious month)", "Kharmas", "Eclipse days"],
+        "muhurta_consultation_price": 499.0,
+        "full_service_base_price": 11000.0,
+        "custom_acharya_base_price": 8000.0,
+        "platform_provides": ["Complete wedding puja kit", "Mandap setup assistance", "Vedic Acharya with wedding expertise", "Printed wedding mantras booklet"],
+        "customer_provides": ["Venue", "Mandap decoration", "Wedding attire", "Gold/jewelry for rituals", "Feast arrangements"],
+        "acharya_experience_required": "15+ years, Wedding specialist",
+        "icon": "rings"
+    },
+    
+    {
+        "name_english": "Upanayana (Sacred Thread)",
+        "name_sanskrit": "उपनयन संस्कार",
+        "category": "life_ceremonies",
+        "short_description": "Initiation ceremony for young boys entering the Brahmacharya stage. Marks the beginning of Vedic education and spiritual journey.",
+        "full_description": "Upanayana (Yagnopavita Sanskar) is the sacred thread ceremony where a boy is initiated into Vedic knowledge. The Acharya invests the child with a sacred thread (Yagnopavita) and teaches the Gayatri Mantra. This ceremony marks the transition from childhood to disciplined spiritual studentship, making the child 'twice-born' (Dvija) in spiritual terms.",
+        "importance": "Upanayana is considered the spiritual birth of a child. The sacred thread represents the three debts (Rishi Rin, Pitru Rin, Deva Rin) and the three gunas. This ceremony connects the child to an unbroken lineage of Vedic tradition stretching back thousands of years. Without Upanayana, one cannot perform certain Vedic rituals or read sacred texts.",
+        "benefits": [
+            "Spiritual awakening and divine connection",
+            "Right to study Vedas and perform Sandhyavandana",
+            "Protection from negative karmic influences",
+            "Development of self-discipline and devotion",
+            "Ancestral blessings for knowledge and wisdom",
+            "Entry into the sacred Brahmacharya Ashram"
+        ],
+        "requirements": [
+            "Boy should be clean-shaven (traditional)",
+            "White dhoti and sacred thread",
+            "Wooden staff (Danda) and deer skin (optional)",
+            "Yagnopavita (sacred thread) - 3 or 5 strand",
+            "Materials for Homa (fire ceremony)",
+            "Guru Dakshina for the Acharya"
+        ],
+        "duration_minutes": 180,
+        "muhurta_required": "mandatory",
+        "best_tithis": [SHUKLA_PAKSHA, "Panchami to Dashami"],
+        "best_nakshatras": ["Rohini", "Mrigashira", "Pushya", "Hasta", "Chitra", "Anuradha"],
+        "avoid_days": ["Amavasya", "Purnima", "Krishna Paksha", "Rahu Kaal"],
+        "muhurta_consultation_price": 299.0,
+        "full_service_base_price": 5500.0,
+        "custom_acharya_base_price": 4500.0,
+        "platform_provides": ["Sacred thread (Yagnopavita)", PUJA_SAMAGRI, "Homa materials", "Brahmin Acharya with Vedic knowledge"],
+        "customer_provides": ["Boy's white dhoti", "Wooden staff (Danda)", "Sweets for guests", "Guru Dakshina"],
+        "acharya_experience_required": "Vedic scholar with 10+ years experience",
+        "icon": "thread"
+    },
+    
+    # ========== WORSHIP & PUJAS ==========
+    {
+        "name_english": "Satyanarayan Puja",
+        "name_sanskrit": "सत्यनारायण पूजा",
+        "category": "worship",
+        "short_description": "Popular Hindu puja dedicated to Lord Vishnu (Satyanarayan). Performed for prosperity, success, and fulfillment of wishes.",
+        "full_description": "Satyanarayan Puja is a Hindu religious worship dedicated to Lord Vishnu in his Satyanarayan form (embodiment of truth). The puja includes recitation of the Satyanarayan Katha (story), offerings of panchamrit, fruits, and flowers. It's performed on full moon days, special occasions, or after significant life events like purchasing property, starting a business, or celebrating success.",
+        "importance": "Lord Satyanarayan represents absolute truth and righteousness. This puja brings divine grace, removes obstacles, and fulfills legitimate desires. It's believed that regular performance of this puja brings family harmony, financial stability, and protection from evil influences. The Katha narrates stories of devotees who benefited from this worship.",
+        "benefits": [
+            "Removes obstacles and difficulties",
+            "Brings prosperity and abundance",
+            "Fulfills heartfelt wishes",
+            "Protects from negative energies",
+            "Strengthens family bonds",
+            "Brings peace and contentment"
+        ],
+        "requirements": [
+            "Silver or copper kalash",
+            "Banana as mandap (4-6 banana leaves)",
+            "Fruits (especially banana)",
+            "Panchamrit (milk, curd, honey, ghee, sugar)",
+            "Tulsi leaves",
+            "Incense, lamp, camphor"
+        ],
+        "duration_minutes": 120,
+        "muhurta_required": "recommended",
+        "best_tithis": ["Purnima (Full Moon)", "Ekadashi", "Any auspicious day"],
+        "best_nakshatras": ["Any auspicious Nakshatra"],
+        "avoid_days": ["Amavasya (can be done but Purnima is best)"],
+        "muhurta_consultation_price": 99.0,
+        "full_service_base_price": 2500.0,
+        "custom_acharya_base_price": 2000.0,
+        "platform_provides": ["Complete puja kit", "Prasad ingredients", "Katha booklet", "Experienced Acharya"],
+        "customer_provides": ["Fresh fruits", "Sweets for prasad", "Silver/copper kalash (if available)"],
+        "acharya_experience_required": "5+ years in puja rituals",
+        "icon": "lotus"
+    },
+    
+    {
+        "name_english": "Ganesh Puja",
+        "name_sanskrit": "गणेश पूजा",
+        "category": "worship",
+        "short_description": "Worship of Lord Ganesha, remover of obstacles and lord of beginnings. Essential before starting any new venture or auspicious work.",
+        "full_description": "Ganesh Puja is the worship of Lord Ganesha, the elephant-headed deity revered as the remover of obstacles (Vighnaharta) and the god of wisdom and prosperity. This puja is performed at the beginning of any new endeavor, business, education, or ceremony. The ritual includes offering modaks (sweet dumplings), durva grass, red flowers, and reciting Ganesh mantras and stotras.",
+        "importance": "In Hindu tradition, no auspicious work begins without invoking Lord Ganesha. He is the first deity to be worshipped in any ceremony. Ganesh Puja removes obstacles (Vignas), bestows wisdom (Buddhi), and ensures success (Siddhi). His blessings are essential for smooth execution of any task, whether material or spiritual.",
+        "benefits": [
+            "Removes all obstacles from life path",
+            "Brings success in new ventures",
+            "Enhances intelligence and wisdom",
+            "Attracts prosperity and good fortune",
+            "Protects from evil eye and negativity",
+            "Grants harmony in relationships"
+        ],
+        "requirements": [
+            "Ganesh idol or picture",
+            "21 or 108 Modaks (sweet dumplings)",
+            "Durva grass (special offering to Ganesha)",
+            "Red flowers (hibiscus preferred)",
+            "Sindoor (vermillion)",
+            "Coconut, fruits, and sweets"
+        ],
+        "duration_minutes": 60,
+        "muhurta_required": "recommended",
+        "best_tithis": ["Chaturthi (4th day)", "Ganesh Chaturthi", "Any Wednesday"],
+        "best_nakshatras": ["Pushya", "Hasta", "Swati"],
+        "avoid_days": ["None specifically, but auspicious days preferred"],
+        "muhurta_consultation_price": 99.0,
+        "full_service_base_price": 1800.0,
+        "custom_acharya_base_price": 1500.0,
+        "platform_provides": ["Ganesh idol (clay/reusable)", PUJA_SAMAGRI, "Modak preparation guidance", "Acharya with Ganesh Upasana knowledge"],
+        "customer_provides": ["Fresh flowers", "Fruits", "Homemade modaks (optional)"],
+        "acharya_experience_required": "3+ years",
+        "icon": "ganesh"
+    },
+    
+    {
+        "name_english": "Lakshmi Puja",
+        "name_sanskrit": "लक्ष्मी पूजा",
+        "category": "worship",
+        "short_description": "Worship of Goddess Lakshmi for wealth, prosperity, and abundance. Especially performed on Diwali and Fridays.",
+        "full_description": "Lakshmi Puja is the worship of Goddess Lakshmi, the deity of wealth, fortune, and prosperity. This puja is performed to invite material and spiritual abundance into one's life. The ritual includes cleaning the home, decorating with rangoli, lighting oil lamps (diyas), offering lotus flowers, coins, and reciting Lakshmi mantras. It's most auspicious on Diwali night but can be performed any Friday.",
+        "importance": "Goddess Lakshmi represents not just material wealth but also spiritual prosperity, good fortune, and beauty. Her blessings are essential for financial stability, business success, and overall well-being. Regular Lakshmi Puja creates positive vibrations that attract abundance while removing financial obstacles and debts.",
+        "benefits": [
+            "Attracts wealth and financial prosperity",
+            "Removes poverty and debt",
+            "Brings success in business and career",
+            "Enhances beauty and grace",
+            "Creates harmony in family",
+            "Improves luck and fortune"
+        ],
+        "requirements": [
+            "Clean and decorated altar",
+            "Silver or copper Lakshmi idol/picture",
+            "Red or pink flowers (lotus preferred)",
+            "Gold or silver coins for offerings",
+            "Kumkum, turmeric, rice",
+            "Oil lamps (ghee diyas)",
+            "Sweets and dry fruits"
+        ],
+        "duration_minutes": 90,
+        "muhurta_required": "recommended",
+        "best_tithis": ["Purnima", "Friday", "Diwali Amavasya", "Sharad Purnima"],
+        "best_nakshatras": ["Rohini", "Pushya", "Uttara", "Shravana"],
+        "avoid_days": ["None, but Fridays and Diwali most auspicious"],
+        "muhurta_consultation_price": 149.0,
+        "full_service_base_price": 2200.0,
+        "custom_acharya_base_price": 1800.0,
+        "platform_provides": ["Lakshmi puja kit", "Oil lamps (diyas)", PUJA_SAMAGRI, "Acharya experienced in Lakshmi Upasana"],
+        "customer_provides": ["Fresh flowers", "Sweets and dry fruits", "Gold/silver coins for offering"],
+        "acharya_experience_required": "5+ years",
+        "icon": "lotus-coin"
+    },
+    
+    # ========== REMEDIAL SERVICES ==========
+    {
+        "name_english": "Navagraha Puja",
+        "name_sanskrit": "नवग्रह पूजा",
+        "category": "remedial",
+        "short_description": "Worship of nine celestial bodies (planets) to remove astrological doshas and planetary afflictions. Powerful remedy for horoscope issues.",
+        "full_description": "Navagraha Puja is the worship of nine planetary deities: Surya (Sun), Chandra (Moon), Mangal (Mars), Budha (Mercury), Guru (Jupiter), Shukra (Venus), Shani (Saturn), Rahu, and Ketu. This powerful puja is performed to pacify malefic planets, strengthen beneficial planets, and remove astrological doshas (defects) from one's horoscope. Each planet is offered specific items and mantras.",
+        "importance": "According to Vedic astrology, planetary positions at birth influence our destiny, health, career, and relationships. When planets are afflicted or in malefic positions, they create obstacles and suffering. Navagraha Puja appeases these cosmic forces, reduces their negative effects, and enhances positive influences. It's one of the most effective remedies in Vedic tradition.",
+        "benefits": [
+            "Removes planetary doshas (Mangal Dosha, Sade Sati, etc.)",
+            "Improves health and longevity",
+            "Brings success in career and education",
+            "Resolves marriage and relationship issues",
+            "Protects from accidents and misfortunes",
+            "Enhances overall luck and prosperity",
+            "Reduces anxiety and mental stress"
+        ],
+        "requirements": [
+            "Nine colored clothes for each planet",
+            "Specific grains for each planet (rice, wheat, etc.)",
+            "Nine gemstones or rudraksha (optional)",
+            "Til oil lamps for Shani",
+            "White flowers for Chandra, red for Mangal, etc.",
+            "Horoscope/birth chart for personalized puja"
+        ],
+        "duration_minutes": 150,
+        "muhurta_required": "mandatory",
+        "best_tithis": [SHUKLA_PAKSHA, "Sunday for Sun, Monday for Moon, etc."],
+        "best_nakshatras": ["Based on birth chart analysis"],
+        "avoid_days": ["Amavasya (except for specific remedies)", "Eclipses"],
+        "muhurta_consultation_price": 299.0,
+        "full_service_base_price": 4500.0,
+        "custom_acharya_base_price": 3500.0,
+        "platform_provides": ["Complete Navagraha kit", "Nine-colored items", "Japa mala", "Astrologer + Acharya (combined expertise)"],
+        "customer_provides": ["Birth chart/horoscope", "Any family-specific mantras"],
+        "acharya_experience_required": "Vedic astrology knowledge + 10+ years ritual experience",
+        "icon": "planets"
+    },
+    
+    {
+        "name_english": "Vastu Shanti Puja",
+        "name_sanskrit": "वास्तु शांति पूजा",
+        "category": "remedial",
+        "short_description": "Ritual to correct Vastu doshas (architectural/directional faults) in home or office. Brings peace, prosperity, and positive energy.",
+        "full_description": "Vastu Shanti Puja is performed to remove Vastu doshas (defects) in buildings according to Vastu Shastra principles. The ceremony involves worshipping the Vastu Purusha (deity of the built environment), Vastu deity of each direction, and performing Homa to purify the space. It's essential when experiencing persistent problems, health issues, or financial losses despite efforts.",
+        "importance": "Vastu Shastra is the ancient science of architecture harmonizing living spaces with cosmic energies. When a building violates Vastu principles (wrong entrance, kitchen in wrong direction, etc.), it creates energy imbalances causing health, wealth, and relationship problems. Vastu Shanti Puja corrects these energies when structural changes aren't possible.",
+        "benefits": [
+            "Removes Vastu doshas and negative energies",
+            "Brings peace and harmony to residents",
+            "Improves health and well-being",
+            "Attracts wealth and prosperity",
+            "Reduces conflicts and arguments",
+            "Protects from accidents and calamities",
+            "Enhances career and business success"
+        ],
+        "requirements": [
+            "Detailed Vastu analysis of property",
+            "Materials for Homa (sacred fire)",
+            "64 types of grains and herbs",
+            "Coconuts for each direction",
+            "Kalash with sacred water",
+            "Floor plan of the building"
+        ],
+        "duration_minutes": 180,
+        "muhurta_required": "mandatory",
+        "best_tithis": [SHUKLA_PAKSHA, "Panchami", "Dashami"],
+        "best_nakshatras": ["Pushya", "Uttara", "Hasta", "Anuradha"],
+        "avoid_days": ["Amavasya", "Inauspicious transits"],
+        "muhurta_consultation_price": 499.0,
+        "full_service_base_price": 6500.0,
+        "custom_acharya_base_price": 5000.0,
+        "platform_provides": ["Vastu consultant + Acharya", "Complete puja materials", "Vastu report", "Remedial recommendations"],
+        "customer_provides": ["Building floor plan", "Access to all rooms", "Cleaning before ceremony"],
+        "acharya_experience_required": "Vastu expert with 15+ years experience",
+        "icon": "compass"
+    },
+    
+    {
+        "name_english": "Rudrabhishek",
+        "name_sanskrit": "रुद्राभिषेक",
+        "category": "worship",
+        "short_description": "Sacred bathing ritual (Abhishek) of Lord Shiva with milk, honey, and water. Powerful for removing sins and fulfilling desires.",
+        "full_description": "Rudrabhishek is one of the most sacred rituals for Lord Shiva worship. 'Rudra' is a fierce form of Lord Shiva, and 'Abhishek' means ceremonial bathing. The Shiva Linga is bathed with milk, yogurt, honey, ghee, sugar (Panchamrit), water from sacred rivers, and bilva leaves while chanting Rudram (Sri Rudram) mantras from Yajurveda. This powerful ritual destroys sins, removes karma, and grants spiritual and material wishes.",
+        "importance": "Lord Shiva as Rudra represents the destructive aspect of the divine that destroys negativity, ego, and evil. Rudrabhishek directly connects devotees with this transformative power. The Rudram mantras are considered among the most potent in Vedic tradition. Regular performance brings divine grace, removes obstacles, cures diseases, and grants moksha (liberation).",
+        "benefits": [
+            "Destroys negative karma and sins",
+            "Removes chronic health problems",
+            "Grants mental peace and spiritual clarity",
+            "Protects from enemies and evil forces",
+            "Fulfills righteous desires",
+            "Brings prosperity and success",
+            "Aids in spiritual awakening"
+        ],
+        "requirements": [
+            "Shiva Linga (can be provided)",
+            "Milk, curd, honey, ghee, sugar for Panchamrit",
+            "Bilva leaves (essential for Shiva)",
+            "Sacred water (Ganga jal preferred)",
+            "Dhatura flowers (offered from distance)",
+            "Rudraksha mala for chanting"
+        ],
+        "duration_minutes": 120,
+        "muhurta_required": "recommended",
+        "best_tithis": ["Pradosh (13th day)", "Monday", "Maha Shivratri", "Shravan month"],
+        "best_nakshatras": ["Rohini", "Ardra", "Pushya"],
+        "avoid_days": ["None specifically, Mondays most auspicious"],
+        "muhurta_consultation_price": 149.0,
+        "full_service_base_price": 3500.0,
+        "custom_acharya_base_price": 2800.0,
+        "platform_provides": ["Shiva Linga", "Abhishek materials", "Bilva leaves", "Rudram chanting Acharya"],
+        "customer_provides": ["Fresh milk", "Flowers", "Fruits for offering"],
+        "acharya_experience_required": "Vedic scholar, Rudram expert, 10+ years",
+        "icon": "shiva"
+    },
+    
+    # ========== ANCESTRAL RITES ==========
+    {
+        "name_english": "Shradh (Pitru Paksha)",
+        "name_sanskrit": "श्राद्ध / पितृ पक्ष",
+        "category": "ancestral",
+        "short_description": "Sacred rituals to honor deceased ancestors, offering food and prayers for their peace. Essential Hindu duty for family welfare.",
+        "full_description": "Shradh is the sacred ritual performed to honor deceased ancestors (Pitrus) and offer them food, water, and prayers. Performed especially during Pitru Paksha (15-day period in Ashwin month), Shradh ensures the ancestors' souls attain peace and blessings. The ritual includes Tarpan (water offerings), Pind Daan (rice ball offerings), and feeding Brahmins or crows representing ancestors.",
+        "importance": "In Hindu philosophy, we carry three debts (Rinas): to gods (Deva Rina), sages (Rishi Rina), and ancestors (Pitru Rina). Shradh repays the debt to ancestors. Neglecting Shradh can cause Pitru Dosha, leading to family problems, childlessness, financial losses, and health issues. Satisfied ancestors become guardian angels, blessing the family with prosperity, progeny, and protection.",
+        "benefits": [
+            "Removes Pitru Dosha from horoscope",
+            "Brings ancestral blessings and protection",
+            "Resolves childlessness issues",
+            "Improves family harmony and wealth",
+            "Helps ancestors attain higher realms",
+            "Protects family from curses and obstacles",
+            "Ensures peace for departed souls"
+        ],
+        "requirements": [
+            "Exact death date (Tithi) of ancestors",
+            "Black til (sesame seeds) for Tarpan",
+            "Rice balls (Pind) preparation materials",
+            "Darbha grass (sacred grass)",
+            "Food for Brahmin or charity",
+            "Crows feeding (traditional)",
+            "Kusha grass and silver vessel"
+        ],
+        "duration_minutes": 120,
+        "muhurta_required": "mandatory",
+        "best_tithis": ["Tithi of ancestor's death", "Pitru Paksha (Ashwin Krishna Paksha)", "Mahalaya Amavasya"],
+        "best_nakshatras": ["Death Nakshatra of ancestor preferred"],
+        "avoid_days": ["Shukla Paksha generally not recommended"],
+        "muhurta_consultation_price": 199.0,
+        "full_service_base_price": 3500.0,
+        "custom_acharya_base_price": 2800.0,
+        "platform_provides": ["Shradh samagri kit", "Darbha grass", "Pind ingredients", "Brahmin Acharya experienced in Pitru karma"],
+        "customer_provides": ["Ancestor's details (name, tithi)", "Food for feeding", "Donation (Dakshina)"],
+        "acharya_experience_required": "Brahmin with Pitru karma expertise, 10+ years",
+        "icon": "ancestor"
+    },
+    
+    # ========== SPECIAL OCCASIONS ==========
+    {
+        "name_english": "Mundan Sanskar (First Haircut)",
+        "name_sanskrit": "मुंडन संस्कार / चूडाकर्म",
+        "category": "life_ceremonies",
+        "short_description": "Sacred first haircut ceremony for infants, removing birth hair and negativity. Performed in 1st or 3rd year of child's life.",
+        "full_description": "Mundan Sanskar (Chudakaran), the sacred tonsure ceremony, is performed to remove the baby's birth hair. According to Hindu belief, birth hair carries negative energies from past lives. Shaving the head promotes hair growth, brain development, and removes impurities. The ritual includes worship of family deities, shaving by a professional, and offering the hair to sacred rivers or deities.",
+        "importance": "This Sanskar purifies the child's head, the seat of intelligence and consciousness. It's believed to enhance memory, intellect, and spiritual receptivity. Many families perform Mundan at sacred temples like Tirupati to seek divine blessings. The act of surrendering hair symbolizes ego dissolution and divine surrender.",
+        "benefits": [
+            "Removes negative karmas from past lives",
+            "Promotes healthy hair growth",
+            "Enhances brain development and intelligence",
+            "Cools the head and improves blood circulation",
+            "Brings divine blessings for child's future",
+            "Strengthens spiritual connection"
+        ],
+        "requirements": [
+            "Professional barber or priest for shaving",
+            "New clothes for the child after ceremony",
+            "Tilak materials (kumkum, turmeric)",
+            "Coconut and sweets for offerings",
+            "Container for collecting hair",
+            "Arrangements for immersing hair in holy river (optional)"
+        ],
+        "duration_minutes": 60,
+        "muhurta_required": "recommended",
+        "best_tithis": [SHUKLA_PAKSHA, "Specific months: Chaitra, Vaishakha, Jyeshtha"],
+        "best_nakshatras": ["Rohini", "Mrigashira", "Pushya", "Hasta"],
+        "avoid_days": ["Amavasya", "Sankranti", "Eclipse days"],
+        "muhurta_consultation_price": 149.0,
+        "full_service_base_price": 2200.0,
+        "custom_acharya_base_price": 1800.0,
+        "platform_provides": [PUJA_SAMAGRI, "Acharya for rituals", "Muhurta calculation"],
+        "customer_provides": ["Professional barber", "Child's new clothes", "Sweets for distribution"],
+        "acharya_experience_required": "5+ years in Sanskar ceremonies",
+        "icon": "scissors"
+    },
+    
+    {
+        "name_english": "Annaprashan (First Food Ceremony)",
+        "name_sanskrit": "अन्नप्राशन संस्कार",
+        "category": "life_ceremonies",
+        "short_description": "Sacred ceremony marking baby's first solid food intake. Performed at 6-7 months with prayers for health and prosperity.",
+        "full_description": "Annaprashan Sanskar marks the auspicious occasion when a baby consumes solid food (Anna) for the first time. The ceremony involves worshipping deities, especially Goddess Annapurna (goddess of food and nourishment), and feeding the baby rice pudding (kheer) or sweetened rice with honey and ghee. Family elders bless the child, and various items are placed before the baby to predict their future inclination.",
+        "importance": "This Sanskar transitions the child from mother's milk to solid food, a crucial developmental milestone. The ritual seeks divine blessings for healthy digestion, proper nutrition, and physical growth. Feeding the first morsel with sacred mantras energizes the food and makes it spiritually beneficial. This ceremony also predicts the child's future tendencies and career path through symbolic objects.",
+        "benefits": [
+            "Ensures healthy digestion and nutrition",
+            "Invokes blessings of Goddess Annapurna",
+            "Promotes physical and mental development",
+            "Protects child from food-related ailments",
+            "Strengthens immunity",
+            "Provides insights into child's future interests"
+        ],
+        "requirements": [
+            "Freshly cooked rice pudding (kheer) or sweet rice",
+            "Pure honey and ghee",
+            "Silver bowl and spoon (traditional)",
+            "Various symbolic objects (book, pen, money, etc.) for child to choose",
+            "Fresh flowers and fruits",
+            "Baby's new clothes"
+        ],
+        "duration_minutes": 60,
+        "muhurta_required": "recommended",
+        "best_tithis": [SHUKLA_PAKSHA, "Even months for boys, odd for girls (traditional)"],
+        "best_nakshatras": ["Rohini", "Mrigashira", "Pushya", "Hasta", "Swati"],
+        "avoid_days": ["Amavasya", "Inauspicious Nakshatras"],
+        "muhurta_consultation_price": 149.0,
+        "full_service_base_price": 2200.0,
+        "custom_acharya_base_price": 1800.0,
+        "platform_provides": [PUJA_SAMAGRI, "Guidance for ceremony", "Acharya for rituals"],
+        "customer_provides": ["Kheer preparation", "Symbolic objects", "Baby's outfit", "Sweets for guests"],
+        "acharya_experience_required": "3+ years in Sanskar ceremonies",
+        "icon": "bowl"
+    }
+]
+
+
+def get_services_seed_data():
+    """Return services catalog for database seeding"""
+    return HINDU_SERVICES_CATALOG

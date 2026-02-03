@@ -1,5 +1,5 @@
 import React from 'react';
-import { colors, spacing, shadows, mediaQueries } from '../../theme/tokens';
+import { colors, shadows, mediaQueries } from '../../theme/tokens';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FiHome, FiCalendar, FiMessageSquare, FiUser } from 'react-icons/fi'; // Assuming react-icons is installed, if not we'll use SVGs or text
 
@@ -36,6 +36,9 @@ const MobileNavigation = () => {
         cursor: 'pointer',
         fontSize: '12px',
         fontWeight: isActive ? '600' : '400',
+        background: 'none',
+        border: 'none',
+        padding: 0,
     });
 
     const activeRoute = (path) => location.pathname === path;
@@ -56,25 +59,37 @@ const MobileNavigation = () => {
                 `}
             </style>
 
-            <div style={itemStyle(activeRoute('/'))} onClick={() => navigate('/')}>
+            <button 
+                style={itemStyle(activeRoute('/'))} 
+                onClick={() => navigate('/')}
+            >
                 <FiHome size={24} />
                 <span style={{ marginTop: '2px' }}>Home</span>
-            </div>
+            </button>
             
-            <div style={itemStyle(activeRoute('/bookings'))} onClick={() => navigate('/bookings')}>
+            <button 
+                style={itemStyle(activeRoute('/bookings'))} 
+                onClick={() => navigate('/bookings')}
+            >
                 <FiCalendar size={24} />
                 <span style={{ marginTop: '2px' }}>Bookings</span>
-            </div>
+            </button>
 
-            <div style={itemStyle(activeRoute('/chat'))} onClick={() => navigate('/chat')}>
+            <button 
+                style={itemStyle(activeRoute('/chat'))} 
+                onClick={() => navigate('/chat')}
+            >
                 <FiMessageSquare size={24} />
                 <span style={{ marginTop: '2px' }}>Chat</span>
-            </div>
+            </button>
 
-            <div style={itemStyle(activeRoute('/profile'))} onClick={() => navigate('/profile')}>
+            <button 
+                style={itemStyle(activeRoute('/profile'))} 
+                onClick={() => navigate('/profile')}
+            >
                 <FiUser size={24} />
                 <span style={{ marginTop: '2px' }}>Profile</span>
-            </div>
+            </button>
         </div>
     );
 };

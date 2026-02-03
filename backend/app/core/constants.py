@@ -18,14 +18,18 @@ MONGO_EQ = "$eq"
 MONGO_REGEX = "$regex"
 MONGO_OPTIONS = "$options"
 MONGO_PROJECT = "$project"
+MONGO_STATUS = "$status"
+MONGO_IN = "$in"
 
 # Field Names
 FIELD_RATING = "$rating"
+FIELD_LOCATION_CITY = "location.city"
 
 # Error Messages
 ERROR_CONFIRM_ATTENDANCE = "Confirm attendance"
 ERROR_VIEW_BOOKING = "View booking"
 ERROR_FETCH_REVIEWS = "Failed to fetch reviews"
+ERROR_ADMIN_REQUIRED = "Admin access required"
 
 # Regex Patterns
 PHONE_REGEX = r'^\+?[1-9]\d{1,14}$'

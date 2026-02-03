@@ -1,0 +1,304 @@
+/* Pricing Display Styles */
+
+.pricing-container {
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.pricing-container:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+}
+
+.pricing-container.loading {
+  text-align: center;
+  padding: 32px;
+}
+
+/* Badges Section */
+.badges-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.badge-chip {
+  font-weight: 600;
+  font-size: 0.75rem;
+  animation: fadeIn 0.3s ease;
+}
+
+.badge-chip.discount-badge {
+  background: linear-gradient(135deg, #FF6B6B, #FF4757) !important;
+  color: white !important;
+  animation: pulse 2s infinite;
+}
+
+.badge-chip.loyalty-badge {
+  background: linear-gradient(135deg, #FFD700, #FFA500) !important;
+  color: #000 !important;
+}
+
+.badge-chip.coupon-badge {
+  background: linear-gradient(135deg, #4CAF50, #45a049) !important;
+  color: white !important;
+}
+
+.badge-chip.coins-badge {
+  background: linear-gradient(135deg, #9C27B0, #7B1FA2) !important;
+  color: white !important;
+}
+
+/* Main Price Display */
+.price-main {
+  text-align: center;
+  margin: 20px 0;
+}
+
+.price-original {
+  margin-bottom: 8px;
+}
+
+.original-price {
+  text-decoration: line-through;
+  color: #999;
+  font-size: 1.2rem;
+  display: inline-block;
+  margin-right: 8px;
+}
+
+.original-label {
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.price-final {
+  margin: 12px 0;
+}
+
+.final-price {
+  font-size: 3rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #2ECC71, #27AE60);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: priceAppear 0.5s ease;
+}
+
+.savings-badge {
+  background: linear-gradient(135deg, #FFF3CD, #FFE69C);
+  border: 2px solid #FFC107;
+  border-radius: 8px;
+  padding: 12px 24px;
+  display: inline-block;
+  margin-top: 8px;
+}
+
+.savings-text {
+  color: #E65100;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.savings-percentage {
+  color: #E65100;
+  font-weight: 600;
+}
+
+/* Price Breakdown */
+.price-breakdown {
+  background: #F5F5F5;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 20px;
+}
+
+.breakdown-title {
+  color: #333;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.breakdown-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.breakdown-item.discount {
+  color: #27AE60;
+}
+
+.discount-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #27AE60;
+}
+
+.discount-amount {
+  color: #27AE60;
+  font-weight: 600;
+}
+
+.breakdown-divider {
+  height: 1px;
+  background: #ddd;
+  margin: 12px 0;
+}
+
+.breakdown-item.total {
+  padding-top: 12px;
+  border-top: 2px solid #333;
+}
+
+.total-amount {
+  color: #2ECC71;
+  font-size: 1.5rem;
+}
+
+/* Urgency Section */
+.urgency-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 12px;
+  background: linear-gradient(135deg, #FFF8E1, #FFECB3);
+  border-left: 4px solid #FFA726;
+  border-radius: 4px;
+}
+
+.urgency-chip {
+  background: linear-gradient(135deg, #FF9800, #F57C00) !important;
+  color: white !important;
+  font-weight: 600;
+  animation: pulse 2s infinite;
+}
+
+.urgency-text {
+  color: #E65100;
+  font-weight: 500;
+}
+
+/* Applied Offers */
+.applied-offers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  background: #E8F5E9;
+  border-radius: 8px;
+}
+
+.offers-title {
+  color: #2E7D32;
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.offer-chip {
+  background: #4CAF50 !important;
+  color: white !important;
+}
+
+.coins-chip {
+  background: #9C27B0 !important;
+  color: white !important;
+}
+
+/* Social Proof */
+.social-proof {
+  text-align: center;
+  margin-top: 16px;
+  padding: 8px;
+  background: #E3F2FD;
+  border-radius: 4px;
+}
+
+.proof-text {
+  color: #1976D2;
+  font-weight: 500;
+}
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes priceAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .pricing-container {
+    padding: 16px;
+  }
+
+  .final-price {
+    font-size: 2.5rem;
+  }
+
+  .badges-section {
+    gap: 6px;
+  }
+
+  .savings-badge {
+    padding: 8px 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .final-price {
+    font-size: 2rem;
+  }
+
+  .original-price {
+    font-size: 1rem;
+  }
+
+  .savings-text {
+    font-size: 0.9rem;
+  }
+
+  .urgency-section {
+    flex-direction: column;
+    text-align: center;
+  }
+}

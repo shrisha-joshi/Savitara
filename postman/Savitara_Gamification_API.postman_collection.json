@@ -1,0 +1,507 @@
+{
+  "info": {
+    "name": "Savitara Gamification API",
+    "description": "Complete API collection for testing gamification system",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Coins",
+      "item": [
+        {
+          "name": "Get Coin Balance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/coins/balance",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coins", "balance"]
+            }
+          }
+        },
+        {
+          "name": "Award Coins",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"complete_booking\",\n  \"reference_id\": \"booking_123\",\n  \"custom_amount\": 100,\n  \"description\": \"Test coin award\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/coins/award",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coins", "award"]
+            }
+          }
+        },
+        {
+          "name": "Redeem Coins",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100,\n  \"booking_id\": \"booking_123\",\n  \"booking_amount\": 1000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/coins/redeem",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coins", "redeem"]
+            }
+          }
+        },
+        {
+          "name": "Get Coin Transactions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/coins/transactions?limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coins", "transactions"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Loyalty & Points",
+      "item": [
+        {
+          "name": "Get Loyalty Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/loyalty/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "loyalty", "status"]
+            }
+          }
+        },
+        {
+          "name": "Award Points",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100,\n  \"action\": \"complete_booking\",\n  \"reference_id\": \"booking_123\",\n  \"description\": \"Test points award\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/points/award",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "points", "award"]
+            }
+          }
+        },
+        {
+          "name": "Get All Loyalty Tiers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/loyalty/tiers",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "loyalty", "tiers"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vouchers",
+      "item": [
+        {
+          "name": "Get My Vouchers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/vouchers/my",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "vouchers", "my"]
+            }
+          }
+        },
+        {
+          "name": "Claim Voucher",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/vouchers/NEXT20/claim?earned_via=manual_claim",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "vouchers", "NEXT20", "claim"],
+              "query": [
+                {
+                  "key": "earned_via",
+                  "value": "manual_claim"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Coupons",
+      "item": [
+        {
+          "name": "Get Available Coupons",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/coupons/available",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coupons", "available"]
+            }
+          }
+        },
+        {
+          "name": "Validate Coupon",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"FIRST50\",\n  \"booking_amount\": 1000,\n  \"service_id\": \"service_123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/coupons/validate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coupons", "validate"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pricing",
+      "item": [
+        {
+          "name": "Calculate Price",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"base_amount\": 1000,\n  \"service_id\": \"service_123\",\n  \"coupon_code\": \"FIRST50\",\n  \"use_coins\": 250\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/pricing/calculate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pricing", "calculate"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Referrals",
+      "item": [
+        {
+          "name": "Get My Referral Code",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/referral/my-code",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "referral", "my-code"]
+            }
+          }
+        },
+        {
+          "name": "Create Referral",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referral_code\": \"ABC12345\",\n  \"referee_role\": \"grihasta\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/referral/create",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "referral", "create"]
+            }
+          }
+        },
+        {
+          "name": "Get Referral Leaderboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/referral/leaderboard?month=2026-02",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "referral", "leaderboard"],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "2026-02"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Milestones",
+      "item": [
+        {
+          "name": "Get My Milestones",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/milestones/my",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "milestones", "my"]
+            }
+          }
+        },
+        {
+          "name": "Get Available Milestones",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/milestones/available",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "milestones", "available"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Statistics",
+      "item": [
+        {
+          "name": "Get Gamification Overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/stats/overview",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "stats", "overview"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Create Voucher (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"NEXT20\",\n  \"name\": \"20% Off Next Booking\",\n  \"description\": \"Get 20% discount on your next booking\",\n  \"category\": \"booking_discount\",\n  \"discount_type\": \"percentage\",\n  \"discount_value\": 20,\n  \"max_discount\": 200,\n  \"min_booking_amount\": 500,\n  \"valid_from\": \"2026-02-04T00:00:00Z\",\n  \"valid_until\": \"2026-12-31T23:59:59Z\",\n  \"total_quantity\": 1000,\n  \"per_user_limit\": 1,\n  \"applicable_for\": [\"grihasta\"],\n  \"applicable_services\": [\"all\"],\n  \"is_active\": true,\n  \"terms_conditions\": [\"Valid for one use only\", \"Cannot be combined with other offers\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/vouchers/create",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "vouchers", "create"]
+            }
+          }
+        },
+        {
+          "name": "Create Coupon (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"FIRST50\",\n  \"name\": \"50% Off First Booking\",\n  \"description\": \"Get 50% discount on your first booking\",\n  \"discount_type\": \"percentage\",\n  \"discount_value\": 50,\n  \"max_discount\": 200,\n  \"min_booking_amount\": 100,\n  \"valid_from\": \"2026-02-04T00:00:00Z\",\n  \"valid_until\": \"2026-12-31T23:59:59Z\",\n  \"usage_limit\": null,\n  \"per_user_limit\": 1,\n  \"applicable_for\": [\"all\"],\n  \"applicable_services\": [\"all\"],\n  \"first_booking_only\": true,\n  \"can_combine_offers\": false,\n  \"is_active\": true,\n  \"terms_conditions\": [\"Valid for first booking only\", \"Maximum discount ₹200\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/coupons/create",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "coupons", "create"]
+            }
+          }
+        },
+        {
+          "name": "Get Gamification Analytics (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/analytics",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "analytics"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "auth_token",
+      "value": "your_user_token_here"
+    },
+    {
+      "key": "admin_token",
+      "value": "your_admin_token_here"
+    }
+  ]
+}

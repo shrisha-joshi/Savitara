@@ -4,10 +4,17 @@ import { useAuth } from './context/AuthContext'
 // Common pages
 import Home from './pages/Home'
 import Login from './pages/Login'
+import LanguageSelector from './pages/LanguageSelector'
 import Onboarding from './pages/Onboarding'
 import Profile from './pages/Profile'
+import Wallet from './pages/Wallet'
+import Calendar from './pages/Calendar'
 import Privacy from './pages/Privacy'
 import Terms from './pages/Terms'
+
+// Services pages
+import Services from './pages/Services'
+import ServiceDetail from './pages/ServiceDetail'
 
 // Grihasta pages
 import GrihastaDashboard from './pages/grihasta/Dashboard'
@@ -31,8 +38,6 @@ import Settings from './pages/acharya/Settings'
 import Conversations from './pages/chat/Conversations'
 import Chat from './pages/chat/Chat'
 
-import MobileNavigation from './components/navigation/MobileNavigation'
-
 function App() {
   const { user, loading } = useAuth()
 
@@ -48,7 +53,6 @@ function App() {
   const isOnboarded = user?.onboarded || user?.onboarding_completed
 
   return (
-    <>
       <Routes>
         {/* Public routes */}
       <Route path="/" element={<Home />} />
@@ -56,11 +60,14 @@ function App() {
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
       
+      {/* Language Selection - after login/signup, before onboarding */}
+      <Route path="/language-select" element={
+        user ? <LanguageSelector /> : <Navigate to="/login" />
+      } />
+      
       {/* Onboarding route - accessible when logged in but not onboarded */}
       <Route path="/onboarding" element={
-        !user ? <Navigate to="/login" /> :
-        isOnboarded ? <Navigate to="/" /> :
-        <Onboarding />
+        user ? (isOnboarded ? <Navigate to="/" /> : <Onboarding />) : <Navigate to="/login" />
       } />
 
       {/* Protected routes */}
@@ -70,6 +77,11 @@ function App() {
       {user && isOnboarded && (
         <>
           <Route path="/profile" element={<Profile />} />
+          <Route path="/wallet" element={<Wallet />} />
+          
+          {/* Services routes (accessible to all logged in users) */}
+          <Route path="/services" element={<Services />} />
+          <Route path="/services/:serviceId" element={<ServiceDetail />} />
           
           {/* Grihasta routes */}
           {user.role === 'grihasta' && (
@@ -91,6 +103,7 @@ function App() {
               <Route path="/dashboard" element={<AcharyaDashboard />} />
               <Route path="/bookings" element={<AcharyaBookings />} />
               <Route path="/booking/:bookingId/start" element={<StartService />} />
+              <Route path="/calendar" element={<Calendar />} />
               <Route path="/earnings" element={<Earnings />} />
               <Route path="/reviews" element={<Reviews />} />
               <Route path="/settings" element={<Settings />} />
@@ -111,7 +124,6 @@ function App() {
       {/* Catch-all redirect */}
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
-    {user && isOnboarded && <MobileNavigation />}
     </>
   )
 }

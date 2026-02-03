@@ -1,0 +1,86 @@
+.day-card {
+  padding: 16px;
+  border-radius: 12px;
+  border: 2px solid #E0E0E0;
+  transition: all 0.3s;
+}
+
+.day-card:hover {
+  border-color: #FF6B35;
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.1);
+}
+
+.day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #F5F5F5;
+}
+
+.no-slots {
+  padding: 32px;
+  text-align: center;
+  background: #F9F9F9;
+  border-radius: 8px;
+}
+
+.slots-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.slot-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #F9F9F9;
+  border-radius: 8px;
+  border-left: 4px solid #FF6B35;
+  transition: background 0.2s;
+}
+
+.slot-item:hover {
+  background: #F0F0F0;
+}
+
+.slot-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #333;
+  min-width: 150px;
+}
+
+.slot-details {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.slot-actions {
+  display: flex;
+  gap: 4px;
+}
+
+@media (max-width: 768px) {
+  .slot-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .slot-time {
+    width: 100%;
+  }
+
+  .slot-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

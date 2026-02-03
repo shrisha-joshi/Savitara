@@ -1,0 +1,133 @@
+.language-selector-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #FFF9F5 0%, #F5F5F5 100%);
+  padding: 20px;
+}
+
+.language-container {
+  width: 100%;
+  max-width: 600px;
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+  padding: 40px;
+}
+
+.language-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.language-header h1 {
+  font-size: 2rem;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+.subtitle {
+  font-size: 1rem;
+  color: #666;
+  line-height: 1.6;
+}
+
+.language-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 30px;
+}
+
+.language-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px;
+  border: 2px solid #E0E0E0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.language-item:hover {
+  border-color: #FF6B35;
+  background: #FFF9F5;
+}
+
+.language-item.selected {
+  border-color: #FF6B35;
+  background: #FFF9F5;
+}
+
+.language-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.flag {
+  font-size: 40px;
+}
+
+.language-name {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.language-item.selected .language-name {
+  color: #FF6B35;
+}
+
+.native-name {
+  font-size: 1rem;
+  color: #666;
+}
+
+.language-item.selected .native-name {
+  color: #d65a2d;
+}
+
+.checkmark {
+  font-size: 28px;
+  color: #d65a2d;
+  font-weight: bold;
+}
+
+.continue-btn {
+  width: 100%;
+  padding: 16px;
+  background: #d65a2d;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.continue-btn:hover {
+  background: #FF5722;
+}
+
+@media (max-width: 768px) {
+  .language-container {
+    padding: 24px;
+  }
+
+  .language-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .subtitle {
+    font-size: 0.9rem;
+  }
+
+  .flag {
+    font-size: 32px;
+  }
+}

@@ -342,6 +342,44 @@ class AvailabilitySlotRequest(BaseModel):
     )
 
 
+# ============= Search Schemas =============
+
+class AcharyaSearchParams(BaseModel):
+    """Parameters for searching Acharyas - groups related search params together"""
+    query: Optional[str] = Field(None, description="Search query text")
+    city: Optional[str] = Field(None, description="Filter by city")
+    state: Optional[str] = Field(None, description="Filter by state")
+    specialization: Optional[str] = Field(None, description="Filter by specialization")
+    language: Optional[str] = Field(None, description="Filter by language")
+    min_rating: float = Field(0.0, ge=0.0, le=5.0, description="Minimum rating")
+    max_price: Optional[float] = Field(None, description="Maximum price")
+    latitude: Optional[float] = Field(None, description="User latitude for proximity search")
+    longitude: Optional[float] = Field(None, description="User longitude for proximity search")
+    use_elasticsearch: bool = Field(True, description="Use Elasticsearch for search")
+    sort_by: str = Field("relevance", description="Sort by: relevance, rating, price, experience")
+    page: int = Field(1, ge=1, description="Page number")
+    limit: int = Field(20, ge=1, le=100, description="Items per page")
+
+    def get_cache_key(self) -> str:
+        """Generate cache key from search parameters"""
+        return (
+            f"search:{self.query}:{self.city}:{self.state}:{self.specialization}:"
+            f"{self.language}:{self.min_rating}:{self.max_price}:{self.latitude}:"
+            f"{self.longitude}:{self.sort_by}:{self.page}:{self.limit}"
+        )
+
+    def get_filter_dict(self) -> dict:
+        """Get filters as dictionary for search service"""
+        return {
+            "city": self.city,
+            "state": self.state,
+            "specialization": self.specialization,
+            "language": self.language,
+            "min_rating": self.min_rating,
+            "max_price": self.max_price
+        }
+
+
 # ============= Standard Response Wrapper =============
 
 class StandardResponse(BaseModel):

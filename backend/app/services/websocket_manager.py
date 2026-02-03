@@ -41,16 +41,40 @@ class ConnectionManager:
         
     async def connect_redis(self):
         """Initialize Redis connection for Pub/Sub"""
-        if not self.redis_client:
+        if self.redis_client:
+            return  # Already connected
+            
+        try:
+            self.redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+            self.pubsub = self.redis_client.pubsub()
+            
+            # Subscribe to a default channel to ensure pubsub is initialized (async operation)
+            await self.pubsub.subscribe("system:heartbeat")
+            
+            # Start the listener loop in background
+            self.listener_task = asyncio.create_task(self._redis_listener())
+            logger.info("WebSocket Manager connected to Redis")
+        except Exception as e:
+            logger.error(f"Failed to connect WebSocket Manager to Redis: {e}")
+
+    async def _handle_user_message(self, channel: str, data: dict) -> None:
+        """Handle a message for a specific user channel"""
+        user_id = channel.split(":", 1)[1]
+        websocket = self.active_connections.get(user_id)
+        
+        if websocket:
             try:
-                self.redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
-                self.pubsub = self.redis_client.pubsub()
-                
-                # Start the listener loop in background
-                self.listener_task = asyncio.create_task(self._redis_listener())
-                logger.info("WebSocket Manager connected to Redis")
+                await websocket.send_json(data)
             except Exception as e:
-                logger.error(f"Failed to connect WebSocket Manager to Redis: {e}")
+                logger.error(f"Error sending to {user_id}: {e}")
+
+    def _parse_message_data(self, data_str: str) -> Optional[dict]:
+        """Parse JSON message data, return None on failure"""
+        try:
+            return json.loads(data_str)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to decode Redis message: {data_str}")
+            return None
 
     async def _redis_listener(self):
         """Continuously listen for Redis messages and dispatch to local websockets"""
@@ -59,25 +83,17 @@ class ConnectionManager:
             
         try:
             async for message in self.pubsub.listen():
-                if message['type'] == 'message':
-                    channel = message['channel']
-                    data_str = message['data']
+                if message['type'] != 'message':
+                    continue
                     
-                    try:
-                        data = json.loads(data_str)
-                    except json.JSONDecodeError:
-                        logger.error(f"Failed to decode Redis message: {data_str}")
-                        continue
+                data = self._parse_message_data(message['data'])
+                if not data:
+                    continue
 
-                    # Direct Message Logic: channel "user:{id}"
-                    if channel.startswith("user:"):
-                        user_id = channel.split(":", 1)[1]
-                        if user_id in self.active_connections:
-                            try:
-                                await self.active_connections[user_id].send_json(data)
-                            except Exception as e:
-                                logger.error(f"Error sending to {user_id}: {e}")
-                                
+                channel = message['channel']
+                if channel.startswith("user:"):
+                    await self._handle_user_message(channel, data)
+                        
         except Exception as e:
             logger.error(f"Redis listener error: {e}")
             
@@ -183,14 +199,14 @@ class ConnectionManager:
         for user_id in disconnected:
             self.disconnect(user_id)
     
-    async def join_room(self, user_id: str, room_id: str):
+    def join_room(self, user_id: str, room_id: str):
         """Add user to a room"""
         if room_id not in self.rooms:
             self.rooms[room_id] = set()
         self.rooms[room_id].add(user_id)
         logger.info(f"User {user_id} joined room {room_id}")
     
-    async def leave_room(self, user_id: str, room_id: str):
+    def leave_room(self, user_id: str, room_id: str):
         """Remove user from a room"""
         if room_id in self.rooms:
             self.rooms[room_id].discard(user_id)

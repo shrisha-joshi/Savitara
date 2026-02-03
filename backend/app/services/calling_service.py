@@ -37,7 +37,7 @@ class CallingService:
         4. Neither party sees the other's real number
         """
         if not self.enabled:
-            raise Exception("Calling service is not configured")
+            raise RuntimeError("Calling service is not configured")
 
         # Get phone numbers from profiles (stored securely, never exposed)
         # Assuming caller is Grihasta and callee is Acharya for this example

@@ -80,10 +80,10 @@ const ConversationScreen = ({ route }) => {
     <View style={styles.container}>
       {/* Watermark Overlay */}
       <View style={styles.watermarkContainer} pointerEvents="none">
-        {Array(10).fill(0).map((_, i) => (
-          <View key={i} style={styles.watermarkRow}>
-            {Array(3).fill(0).map((_, j) => (
-              <Text key={`${i}-${j}`} style={styles.watermarkText}>
+        {new Array(10).fill(0).map((_, i) => (
+          <View key={`wm-row-${i}`} style={styles.watermarkRow}>
+            {new Array(3).fill(0).map((_, j) => (
+              <Text key={`wm-cell-${i}-${j}`} style={styles.watermarkText}>
                 {user._id}
               </Text>
             ))}

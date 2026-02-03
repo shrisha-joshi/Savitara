@@ -1,5 +1,5 @@
 import React from 'react';
-import { colors, borderRadius } from '../../theme/tokens';
+import PropTypes from 'prop-types';
 
 const Skeleton = ({ width, height, variant = 'rect', className = '' }) => {
   
@@ -31,3 +31,12 @@ const Skeleton = ({ width, height, variant = 'rect', className = '' }) => {
 };
 
 export default Skeleton;
+
+
+Skeleton.propTypes = {
+  width: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  height: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  variant: PropTypes.string,
+  className: PropTypes.string
+};
+

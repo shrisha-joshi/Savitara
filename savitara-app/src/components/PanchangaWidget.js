@@ -139,7 +139,7 @@ export default function PanchangaWidget() {
                 <View style={styles.festivalsContainer}>
                   {panchanga.festivals.map((festival, idx) => (
                     <Chip
-                      key={idx}
+                      key={`festival-${festival}-${idx}`}
                       mode="flat"
                       style={styles.festivalChip}
                       textStyle={styles.chipText}

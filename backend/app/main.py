@@ -80,6 +80,12 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Redis cache connection failed: {e}")
         
+        # Connect WebSocket Redis (Pub/Sub)
+        try:
+            await manager.connect_redis()
+        except Exception as e:
+            logger.warning(f"WebSocket Redis connection failed: {e}")
+
         # Initialize search service (Elasticsearch)
         try:
             await search_service.create_index()
@@ -391,13 +397,14 @@ async def root():
 
 
 # Include API routers
-from app.api.v1 import auth, users, bookings, chat, reviews, admin, panchanga, wallet, analytics, payments, admin_auth, content, calendar
+from app.api.v1 import auth, users, bookings, chat, reviews, admin, panchanga, wallet, analytics, payments, admin_auth, content, calendar, calls
 
 API_V1_PREFIX = "/api/v1"
 app.include_router(auth.router, prefix=API_V1_PREFIX)
 app.include_router(users.router, prefix=API_V1_PREFIX)
 app.include_router(bookings.router, prefix=API_V1_PREFIX)
 app.include_router(chat.router, prefix=API_V1_PREFIX)
+app.include_router(calls.router, prefix=API_V1_PREFIX)  # Added Calls Router
 app.include_router(reviews.router, prefix=API_V1_PREFIX)
 app.include_router(admin.router, prefix=API_V1_PREFIX)
 app.include_router(admin_auth.router, prefix=API_V1_PREFIX)  # Admin email/password auth

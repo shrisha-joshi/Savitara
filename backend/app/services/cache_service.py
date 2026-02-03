@@ -3,7 +3,9 @@ Redis Caching Service
 """
 import redis.asyncio as redis
 import json
-from typing import Optional, Any, List
+import asyncio
+import time
+from typing import Optional, Any, List, Callable, Awaitable
 from datetime import timedelta
 from app.core.config import settings
 import logging
@@ -23,6 +25,7 @@ class CacheService:
     def __init__(self):
         self.redis: Optional[redis.Redis] = None
         self.default_ttl = settings.CACHE_TTL
+        self.l1_cache: dict = {}  # {key: (value, timestamp)}
     
     async def connect(self):
         """Initialize Redis connection"""
@@ -43,6 +46,70 @@ class CacheService:
         if self.redis:
             await self.redis.close()
             logger.info("Redis connection closed")
+            
+    async def get_or_compute(
+        self, 
+        key: str, 
+        compute_func: Callable[[], Awaitable[Any]], 
+        expire: Optional[int] = None, 
+        use_l1_cache: bool = False, 
+        l1_expire: int = 5
+    ) -> Any:
+        """
+        Get from cache or compute safely (Thundering Herd Protection).
+        Includes L1 RAM cache support for Hot Keys.
+        """
+        if expire is None:
+            expire = self.default_ttl
+
+        # 1. Check L1 Cache (Hot Key Protection)
+        if use_l1_cache:
+            if key in self.l1_cache:
+                value, timestamp = self.l1_cache[key]
+                if time.time() - timestamp < l1_expire:
+                    return value
+                del self.l1_cache[key]
+
+        # 2. Check Redis Cache
+        value = await self.get(key)
+        if value is not None:
+             if use_l1_cache:
+                  self.l1_cache[key] = (value, time.time())
+             return value
+
+        # 3. Compute with Locking (Thundering Herd Protection)
+        lock_key = f"lock:{key}"
+        if not self.redis:
+             return await compute_func()
+        
+        try:
+             # Try to acquire lock
+             acquired = await self.redis.set(lock_key, "1", nx=True, ex=10) # 10s lock timeout
+             
+             if acquired:
+                  try:
+                       result = await compute_func()
+                       await self.set(key, result, expire)
+                       if use_l1_cache:
+                            self.l1_cache[key] = (result, time.time())
+                       return result
+                  finally:
+                       await self.redis.delete(lock_key)
+             else:
+                  # Lock busy, wait and retry
+                  for _ in range(20): # Try for 2 seconds (20 * 0.1s)
+                       await asyncio.sleep(0.1)
+                       value = await self.get(key)
+                       if value is not None:
+                            if use_l1_cache:
+                                 self.l1_cache[key] = (value, time.time())
+                            return value
+                  
+                  # If still no value, fallback to compute
+                  return await compute_func()
+        except Exception as e:
+             logger.error(f"Error in get_or_compute: {e}")
+             return await compute_func()
     
     async def get(self, key: str) -> Optional[Any]:
         """Get value from cache"""

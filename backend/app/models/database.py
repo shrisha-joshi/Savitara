@@ -150,6 +150,7 @@ class AcharyaProfile(BaseModel):
     location: Location
     availability: List[AvailabilitySlot] = []
     verification_documents: List[str] = []  # URLs to documents
+    kyc_status: str = "pending" # pending, verified, rejected
     referred_by: Optional[str] = None  # Changed to str
     referral_code: Optional[str] = None
     ratings: Dict[str, float] = {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Text } from 'react-native';
 import { GiftedChat } from 'react-native-gifted-chat';
+import * as ScreenCapture from 'expo-screen-capture';
 import { chatAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
@@ -9,6 +10,18 @@ const ConversationScreen = ({ route }) => {
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Prevent screen capture on mount, allow on unmount
+  useEffect(() => {
+    const activateProtection = async () => {
+      await ScreenCapture.preventScreenCaptureAsync();
+    };
+    activateProtection();
+    
+    return () => {
+      ScreenCapture.allowScreenCaptureAsync();
+    };
+  }, []);
 
   useEffect(() => {
     loadMessages();
@@ -64,22 +77,56 @@ const ConversationScreen = ({ route }) => {
   }, [conversationId]);
 
   return (
-    <GiftedChat
-      messages={messages}
-      onSend={(messages) => onSend(messages)}
-      user={{
-        _id: user._id,
-        name: user.full_name,
-      }}
-      renderUsernameOnMessage
-      showUserAvatar
-    />
+    <View style={styles.container}>
+      {/* Watermark Overlay */}
+      <View style={styles.watermarkContainer} pointerEvents="none">
+        {Array(10).fill(0).map((_, i) => (
+          <View key={i} style={styles.watermarkRow}>
+            {Array(3).fill(0).map((_, j) => (
+              <Text key={`${i}-${j}`} style={styles.watermarkText}>
+                {user._id}
+              </Text>
+            ))}
+          </View>
+        ))}
+      </View>
+
+      <GiftedChat
+        messages={messages}
+        onSend={(messages) => onSend(messages)}
+        user={{
+          _id: user._id,
+          name: user.full_name,
+        }}
+        renderUsernameOnMessage
+        showUserAvatar
+      />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#fff',
+  },
+  watermarkContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'space-between',
+    padding: 20,
+    opacity: 0.05, // Very faint
+    zIndex: 1000,
+    overflow: 'hidden',
+  },
+  watermarkRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    transform: [{ rotate: '-45deg' }],
+  },
+  watermarkText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000',
   },
 });
 

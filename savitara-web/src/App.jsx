@@ -31,6 +31,8 @@ import Settings from './pages/acharya/Settings'
 import Conversations from './pages/chat/Conversations'
 import Chat from './pages/chat/Chat'
 
+import MobileNavigation from './components/navigation/MobileNavigation'
+
 function App() {
   const { user, loading } = useAuth()
 
@@ -46,8 +48,9 @@ function App() {
   const isOnboarded = user?.onboarded || user?.onboarding_completed
 
   return (
-    <Routes>
-      {/* Public routes */}
+    <>
+      <Routes>
+        {/* Public routes */}
       <Route path="/" element={<Home />} />
       <Route path="/login" element={user ? <Navigate to={isOnboarded ? "/" : "/onboarding"} /> : <Login />} />
       <Route path="/privacy" element={<Privacy />} />
@@ -108,7 +111,10 @@ function App() {
       {/* Catch-all redirect */}
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
+    {user && isOnboarded && <MobileNavigation />}
+    </>
   )
 }
+export default App
 
 export default App

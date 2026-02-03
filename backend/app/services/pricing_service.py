@@ -8,7 +8,7 @@ from enum import Enum
 
 class PricingMultiplier(float, Enum):
     """Pricing multipliers for different scenarios"""
-    WEEKEND = 1.3
+    WEEKEND = 1.5         # Dynamic Pricing: 1.5x on weekends
     URGENT_BOOKING = 1.5  # < 24 hours notice
     PEAK_HOURS = 1.2      # 5 PM - 10 PM
     FESTIVAL = 1.3        # Special occasions

@@ -24,9 +24,39 @@ from app.core.exceptions import (
 )
 from app.db.connection import get_db
 from app.models.database import Message, Conversation, UserRole
+from slowapi.errors import RateLimitExceeded
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["Chat"])
+
+import re
+
+def sanitize_message_content(content: str) -> Tuple[str, bool]:
+    """
+    Detect and block contact information in messages
+    Returns (sanitized_content, was_blocked)
+    """
+    # Phone number patterns (Indian and general)
+    # Matches patterns like +91-9876543210, 9876543210, 0987-654-3210
+    phone_pattern = r'(\+91[\-\s]?)?[0]?(91)?[6789]\d{9}'
+    
+    # Email pattern
+    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    
+    # WhatsApp/Telegram/Social patterns
+    social_pattern = r'(whatsapp|telegram|signal|wa\.me|t\.me)[\s:]*[\d\w@./]+'
+    
+    # URL pattern (simple)
+    url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+
+    combined_pattern = f'({phone_pattern}|{email_pattern}|{social_pattern}|{url_pattern})'
+    
+    if re.search(combined_pattern, content, re.IGNORECASE):
+        return "[Contact information removed - Please use in-app communication]", True
+    
+    return content, False
 
 
 def _create_open_chat_message(sender_id: str, content: str) -> Tuple[Message, str]:
@@ -159,8 +189,21 @@ async def send_message(  # noqa: C901
                     resource_id=message_data.receiver_id
                 )
             
+            # SANITIZE MESSAGE BEFORE SAVING
+            sanitized_content, was_blocked = sanitize_message_content(message_data.content)
+            
+            if was_blocked:
+                # Log the attempt for monitoring
+                logger.warning(f"Contact sharing attempt blocked from user {sender_id}")
+                # Optionally: increment violation counter for user
+                await db.users.update_one(
+                    {"_id": ObjectId(sender_id)},
+                    {"$inc": {"contact_share_attempts": 1}}
+                )
+
+            # Use sanitized content
             message, conversation_id = await _create_one_to_one_message(
-                db, sender_id, message_data.receiver_id, message_data.content
+                db, sender_id, message_data.receiver_id, sanitized_content
             )
             conversation_doc = await db.conversations.find_one({"_id": conversation_id})
         
@@ -186,8 +229,20 @@ async def send_message(  # noqa: C901
         
     except (InvalidInputError, PermissionDeniedError, ResourceNotFoundError):
         raise
+    except RateLimitExceeded:
+        logger.warning(f"Rate limit exceeded for user {current_user.get('id', 'unknown')}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Message rate limit exceeded. Please wait a moment."
+        )
+    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+        logger.error(f"Database connection error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service momentarily unavailable. Please retry."
+        )
     except Exception as e:
-        logger.error(f"Send message error: {e}", exc_info=True)
+        logger.error(f"Send message critical error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to send message"
@@ -233,6 +288,16 @@ async def get_conversations(
             other_user_id = [p for p in conv["participants"] if p != user_id][0]
             other_user = await db.users.find_one({"_id": other_user_id})
             
+            # Get display name safely
+            display_name = "User"
+            if other_user:
+                if other_user["role"] == UserRole.ACHARYA.value:
+                    profile = await db.acharya_profiles.find_one({"user_id": str(other_user["_id"])})
+                    display_name = profile.get("name", "Acharya") if profile else "Acharya"
+                elif other_user["role"] == UserRole.GRIHASTA.value:
+                    profile = await db.grihasta_profiles.find_one({"user_id": str(other_user["_id"])})
+                    display_name = profile.get("name", "User") if profile else "User"
+
             # Get last message
             last_message = await db.messages.find_one(
                 {"conversation_id": conv_id},
@@ -243,7 +308,7 @@ async def get_conversations(
                 "id": conv_id,
                 "other_user": {
                     "id": str(other_user["_id"]),
-                    "email": other_user["email"],
+                    "name": display_name,  # Email removed
                     "role": other_user["role"],
                     "profile_picture": other_user.get("profile_picture")
                 } if other_user else None,

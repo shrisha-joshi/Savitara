@@ -1,36 +1,98 @@
 """
 WebSocket Connection Manager for Real-time Communication
 """
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Optional
 from fastapi import WebSocket, WebSocketDisconnect
 from datetime import datetime
 import json
 import logging
+import asyncio
+import redis.asyncio as redis
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 class ConnectionManager:
     """
-    Manages WebSocket connections for real-time features:
-    - Chat messages
-    - Booking updates
-    - Notifications
-    - Live status updates
+    Manages WebSocket connections for real-time features using Redis Pub/Sub.
+    
+    Architecture:
+    - Persistence: MongoDB (handled by services)
+    - Real-time: Redis Pub/Sub
+    - Offline Queue: Redis Lists
     """
     
     def __init__(self):
-        # User ID -> WebSocket mapping
+        # User ID -> WebSocket mapping (Local to this instance)
         self.active_connections: Dict[str, WebSocket] = {}
         
         # Room-based connections (for group features)
         self.rooms: Dict[str, Set[str]] = {}
-    
+        
+        # Redis Client for publishing
+        self.redis_client: Optional[redis.Redis] = None
+        
+        # Redis PubSub for subscribing
+        self.pubsub: Optional[redis.client.PubSub] = None
+        
+        # Background task for listening to Redis
+        self.listener_task: Optional[asyncio.Task] = None
+        
+    async def connect_redis(self):
+        """Initialize Redis connection for Pub/Sub"""
+        if not self.redis_client:
+            try:
+                self.redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+                self.pubsub = self.redis_client.pubsub()
+                
+                # Start the listener loop in background
+                self.listener_task = asyncio.create_task(self._redis_listener())
+                logger.info("WebSocket Manager connected to Redis")
+            except Exception as e:
+                logger.error(f"Failed to connect WebSocket Manager to Redis: {e}")
+
+    async def _redis_listener(self):
+        """Continuously listen for Redis messages and dispatch to local websockets"""
+        if not self.pubsub:
+            return
+            
+        try:
+            async for message in self.pubsub.listen():
+                if message['type'] == 'message':
+                    channel = message['channel']
+                    data_str = message['data']
+                    
+                    try:
+                        data = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        logger.error(f"Failed to decode Redis message: {data_str}")
+                        continue
+
+                    # Direct Message Logic: channel "user:{id}"
+                    if channel.startswith("user:"):
+                        user_id = channel.split(":", 1)[1]
+                        if user_id in self.active_connections:
+                            try:
+                                await self.active_connections[user_id].send_json(data)
+                            except Exception as e:
+                                logger.error(f"Error sending to {user_id}: {e}")
+                                
+        except Exception as e:
+            logger.error(f"Redis listener error: {e}")
+            
     async def connect(self, user_id: str, websocket: WebSocket):
         """Accept new WebSocket connection"""
         await websocket.accept()
         self.active_connections[user_id] = websocket
-        logger.info(f"User {user_id} connected. Total connections: {len(self.active_connections)}")
+        
+        if self.pubsub:
+            # Subscribe to this user's channel on Redis
+            await self.pubsub.subscribe(f"user:{user_id}")
+            # Check Offline Queue
+            await self.check_offline_queue(user_id)
+        
+        logger.info(f"User {user_id} connected. Total local connections: {len(self.active_connections)}")
         
         # Send connection confirmation
         await self.send_personal_message(user_id, {
@@ -39,31 +101,77 @@ class ConnectionManager:
             "timestamp": datetime.now().isoformat()
         })
     
+    async def check_offline_queue(self, user_id: str):
+        """Deliver messages stored while user was offline"""
+        queue_key = f"offline_queue:{user_id}"
+        if not self.redis_client:
+            return
+
+        messages = await self.redis_client.lrange(queue_key, 0, -1)
+        if messages:
+            for msg_str in messages:
+                try:
+                    msg = json.loads(msg_str)
+                    if user_id in self.active_connections:
+                        await self.active_connections[user_id].send_json(msg)
+                except Exception as e:
+                    logger.error(f"Error checking offline queue for {user_id}: {e}")
+            
+            await self.redis_client.delete(queue_key)
+            logger.info(f"Delivered {len(messages)} offline messages to {user_id}")
+
     def disconnect(self, user_id: str):
         """Remove WebSocket connection"""
         if user_id in self.active_connections:
             del self.active_connections[user_id]
-            logger.info(f"User {user_id} disconnected. Total connections: {len(self.active_connections)}")
-        
-        # Remove from all rooms
+            logger.info(f"User {user_id} disconnected.")
+            
+        if self.pubsub:
+            # Unsubscribe in background
+            try:
+                loop = asyncio.get_event_loop()
+                loop.create_task(self.pubsub.unsubscribe(f"user:{user_id}"))
+            except Exception:
+                pass
+
         for room_users in self.rooms.values():
             room_users.discard(user_id)
     
     async def send_personal_message(self, user_id: str, message: dict):
-        """Send message to specific user"""
-        if user_id in self.active_connections:
-            try:
-                await self.active_connections[user_id].send_json(message)
-                logger.debug(f"Sent message to {user_id}: {message.get('type')}")
-            except Exception as e:
-                logger.error(f"Failed to send message to {user_id}: {e}")
-                self.disconnect(user_id)
+        """Send message to specific user via Redis Pub/Sub"""
+        if not self.redis_client:
+            if user_id in self.active_connections:
+                try:
+                    await self.active_connections[user_id].send_json(message)
+                except Exception as e:
+                    logger.error(f"Failed to send local message: {e}")
+                    self.disconnect(user_id)
+            return
+
+        channel = f"user:{user_id}"
+        message_str = json.dumps(message)
+        
+        try:
+            # Publish returns number of clients subscribed
+            subscriber_count = await self.redis_client.publish(channel, message_str)
+            
+            if subscriber_count == 0:
+                # User offline
+                await self.redis_client.rpush(f"offline_queue:{user_id}", message_str)
+                await self.redis_client.expire(f"offline_queue:{user_id}", 86400 * 7) # 7 days
+                
+        except Exception as e:
+            logger.error(f"Redis publish error: {e}")
+            # Fallback local check
+            if user_id in self.active_connections:
+                 await self.active_connections[user_id].send_json(message)
     
     async def broadcast(self, message: dict, exclude: List[str] = None):
-        """Broadcast message to all connected users"""
+        """Broadcast message to all connected users (Local Implementation for Phase 2)"""
         exclude = exclude or []
         disconnected = []
         
+        # Ideally: Publish to 'broadcast' channel
         for user_id, connection in self.active_connections.items():
             if user_id not in exclude:
                 try:
@@ -72,12 +180,11 @@ class ConnectionManager:
                     logger.error(f"Failed to broadcast to {user_id}: {e}")
                     disconnected.append(user_id)
         
-        # Clean up disconnected users
         for user_id in disconnected:
             self.disconnect(user_id)
     
     async def join_room(self, user_id: str, room_id: str):
-        """Add user to a room (e.g., conversation room)"""
+        """Add user to a room"""
         if room_id not in self.rooms:
             self.rooms[room_id] = set()
         self.rooms[room_id].add(user_id)
@@ -102,15 +209,15 @@ class ConnectionManager:
                 await self.send_personal_message(user_id, message)
     
     def is_user_online(self, user_id: str) -> bool:
-        """Check if user is currently connected"""
+        """Check if user is currently connected (Local)"""
         return user_id in self.active_connections
     
     def get_online_users(self) -> List[str]:
-        """Get list of all online users"""
+        """Get list of all online users (Local)"""
         return list(self.active_connections.keys())
     
     def get_room_users(self, room_id: str) -> List[str]:
-        """Get list of users in a room"""
+        """Get list of users in a room (Local)"""
         return list(self.rooms.get(room_id, set()))
 
 

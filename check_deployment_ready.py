@@ -9,6 +9,9 @@ import sys
 import json
 from pathlib import Path
 
+# Constants
+BACKEND_ENV_FILE = "backend/.env"
+
 class Colors:
     GREEN = '\033[92m'
     RED = '\033[91m'
@@ -123,7 +126,7 @@ def main():
     # Check 5: Environment Variables Template
     print_header("5. Environment Configuration")
     
-    if os.path.exists("backend/.env"):
+    if os.path.exists(BACKEND_ENV_FILE):
         print(f"{Colors.YELLOW}⚠{Colors.END}  .env file exists (should not be committed!)")
         
         # Check .gitignore
@@ -145,8 +148,8 @@ def main():
     
     # Check 7: Database Configuration
     print_header("7. Database & Services")
-    if os.path.exists("backend/.env"):
-        with open("backend/.env", "r") as f:
+    if os.path.exists(BACKEND_ENV_FILE):
+        with open(BACKEND_ENV_FILE, "r") as f:
             env_content = f.read()
         
         checks = [

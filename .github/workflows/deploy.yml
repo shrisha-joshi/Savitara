@@ -150,7 +150,7 @@ jobs:
   deploy-to-kubernetes:
     needs: [build-and-push-backend]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/production'
+    if: github.ref == 'refs/heads/production' && github.event.repository.private == false
     
     steps:
     - uses: actions/checkout@v4
@@ -159,15 +159,15 @@ jobs:
       uses: azure/setup-kubectl@v4
       with:
         version: 'latest'
+      continue-on-error: true
     
     - name: Configure kubectl
-      if: secrets.KUBECONFIG != ''
       run: |
         echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig.yaml
         echo "KUBECONFIG=$(pwd)/kubeconfig.yaml" >> $GITHUB_ENV
+      continue-on-error: true
     
     - name: Deploy to Kubernetes
-      if: secrets.KUBECONFIG != ''
       run: |
         kubectl apply -f k8s/backend-deployment.yaml
         kubectl apply -f k8s/web-deployment.yaml
@@ -175,7 +175,6 @@ jobs:
       continue-on-error: true
     
     - name: Verify deployment
-      if: secrets.KUBECONFIG != ''
       run: |
         kubectl get pods -n default
         kubectl get services -n default
@@ -184,7 +183,7 @@ jobs:
   build-mobile-app:
     needs: [test-mobile]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/production'
+    if: github.ref == 'refs/heads/production' && github.event.repository.private == false
     
     steps:
     - uses: actions/checkout@v4
@@ -203,9 +202,9 @@ jobs:
     
     - name: Install Expo CLI
       run: npm install -g expo-cli eas-cli
+      continue-on-error: true
     
     - name: Build Android APK
-      if: secrets.EXPO_TOKEN != ''
       run: |
         cd savitara-app
         eas build --platform android --profile production --non-interactive
@@ -214,7 +213,6 @@ jobs:
       continue-on-error: true
     
     - name: Build iOS IPA
-      if: secrets.EXPO_TOKEN != ''
       run: |
         cd savitara-app
         eas build --platform ios --profile production --non-interactive
@@ -229,7 +227,6 @@ jobs:
     
     steps:
     - name: Send Slack notification
-      if: secrets.SLACK_WEBHOOK != ''
       uses: 8398a7/action-slack@v3
       with:
         status: ${{ job.status }}

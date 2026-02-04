@@ -6,7 +6,9 @@
     "start": "expo start --clear",
     "android": "expo start --android --clear",
     "ios": "expo start --ios --clear",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "echo 'No tests configured yet' && exit 0",
+    "lint": "echo 'No linting configured yet' && exit 0"
   },
   "overrides": {
     "react-native-worklets": "0.5.1"

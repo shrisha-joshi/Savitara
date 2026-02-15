@@ -23,9 +23,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         v7_relativeSplatPath: true,
       }}
     >
-      <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
-        <ThemeContextProvider>
-          <ErrorBoundary>
+      <ErrorBoundary>
+        <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
+          <ThemeContextProvider>
             <AuthProvider>
               <App />
               <ToastContainer
@@ -41,9 +41,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                 theme="colored"
               />
             </AuthProvider>
-          </ErrorBoundary>
-        </ThemeContextProvider>
-      </GoogleOAuthProvider>
+          </ThemeContextProvider>
+        </GoogleOAuthProvider>
+      </ErrorBoundary>
     </BrowserRouter>
   </React.StrictMode>,
 )

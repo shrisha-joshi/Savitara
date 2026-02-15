@@ -22,11 +22,21 @@ export const AuthProvider = ({ children }) => {
   const location = useLocation()
 
   useEffect(() => {
-    // Check for redirect result first (for Google OAuth)
-    handleRedirectResult().then(() => {
-      // Then check regular auth
-      checkAuth()
-    })
+    const initAuth = async () => {
+      try {
+        // Check for redirect result first (for Google OAuth)
+        // Catch errors here to ensure we always proceed to checkAuth
+        await handleRedirectResult().catch(e => console.warn('Redirect check failed:', e))
+      } catch (error) {
+        console.error('Auth init error:', error)
+      } finally {
+        // Always run checkAuth to ensure loading completes
+        // checkAuth guarantees setLoading(false) in its finally block
+        await checkAuth()
+      }
+    }
+
+    initAuth()
   }, [])
 
   const handleRedirectResult = async () => {
@@ -79,23 +89,26 @@ export const AuthProvider = ({ children }) => {
   }
 
   const checkAuth = async () => {
-    const accessToken = localStorage.getItem('accessToken')
-    const refreshToken = localStorage.getItem('refreshToken')
-
-    if (!accessToken || !refreshToken) {
-      setLoading(false)
-      return
-    }
-
     try {
+      const accessToken = localStorage.getItem('accessToken')
+      const refreshToken = localStorage.getItem('refreshToken')
+
+      if (!accessToken || !refreshToken) {
+        return
+      }
+
       const response = await api.get('/auth/me')
       // Extract user data from StandardResponse format
       const userData = response.data.data || response.data
       setUser(userData)
     } catch (error) {
       console.error('Auth check failed:', error)
-      localStorage.removeItem('accessToken')
-      localStorage.removeItem('refreshToken')
+      try {
+        localStorage.removeItem('accessToken')
+        localStorage.removeItem('refreshToken')
+      } catch (e) {
+        // Ignore storage errors
+      }
       setUser(null)
     } finally {
       setLoading(false)

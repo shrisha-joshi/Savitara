@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../../services/api'
-import MobileNavigation from '../../components/navigation/MobileNavigation'
+import api from '../services/api'
+import MobileNavigation from '../components/navigation/MobileNavigation'
 import './Services.css'
 
 const Services = () => {
@@ -91,7 +91,7 @@ const Services = () => {
 
         <div className="category-filters">
           <button 
-            className={!selectedCategory ? 'active' : ''}
+            className={selectedCategory ? '' : 'active'}
             onClick={() => handleCategoryChange(null)}
           >
             All Services
@@ -121,13 +121,10 @@ const Services = () => {
             </div>
           ) : (
             services.map((service) => (
-              <div 
+              <button 
                 key={service._id} 
                 className="service-card"
                 onClick={() => navigate(`/services/${service._id}`)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => e.key === 'Enter' && navigate(`/services/${service._id}`)}
               >
                 <div className="service-icon">{service.icon}</div>
                 <h3>{service.name_english}</h3>
@@ -154,8 +151,8 @@ const Services = () => {
                   </div>
                 </div>
 
-                <button className="view-details-btn">View Details</button>
-              </div>
+                <span className="view-details-btn">View Details</span>
+              </button>
             ))
           )}
         </div>

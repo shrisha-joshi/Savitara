@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-class FirebaseService:
+class NotificationService:
     """Firebase Cloud Messaging service"""
     
     def __init__(self):
@@ -63,7 +63,7 @@ class FirebaseService:
     
     def send_notification(
         self,
-        fcm_token: str,
+        token: str,
         title: str,
         body: str,
         data: Optional[Dict[str, str]] = None,
@@ -73,7 +73,7 @@ class FirebaseService:
         Send push notification to a single device
         
         Args:
-            fcm_token: FCM registration token
+            token: FCM registration token
             title: Notification title
             body: Notification body
             data: Additional data payload
@@ -105,7 +105,7 @@ class FirebaseService:
             message = messaging.Message(
                 notification=notification,
                 data=data or {},
-                token=fcm_token,
+                token=token,
                 android=messaging.AndroidConfig(
                     priority='high',
                     notification=messaging.AndroidNotification(
@@ -130,7 +130,7 @@ class FirebaseService:
             return response
             
         except messaging.UnregisteredError:
-            logger.warning(f"FCM token is invalid or unregistered: {fcm_token[:20]}...")
+            logger.warning(f"FCM token is invalid or unregistered: {token[:20]}...")
             raise ExternalServiceError(
                 service_name="Firebase",
                 details={"error": "Invalid or expired FCM token"}
@@ -144,7 +144,7 @@ class FirebaseService:
     
     def send_multicast(
         self,
-        fcm_tokens: List[str],
+        tokens: List[str],
         title: str,
         body: str,
         data: Optional[Dict[str, str]] = None,
@@ -154,7 +154,7 @@ class FirebaseService:
         Send push notification to multiple devices
         
         Args:
-            fcm_tokens: List of FCM registration tokens (max 500)
+            tokens: List of FCM registration tokens (max 500)
             title: Notification title
             body: Notification body
             data: Additional data payload
@@ -172,7 +172,7 @@ class FirebaseService:
             )
             
         try:
-            if len(fcm_tokens) > 500:
+            if len(tokens) > 500:
                 raise ValueError("Maximum 500 tokens allowed per multicast")
             
             # Build notification
@@ -186,7 +186,7 @@ class FirebaseService:
             message = messaging.MulticastMessage(
                 notification=notification,
                 data=data or {},
-                tokens=fcm_tokens,
+                tokens=tokens,
                 android=messaging.AndroidConfig(
                     priority='high',
                     notification=messaging.AndroidNotification(
@@ -209,13 +209,13 @@ class FirebaseService:
             
             logger.info(
                 f"Multicast notification sent: {response.success_count} successful, "
-                f"{response.failure_count} failed out of {len(fcm_tokens)} tokens"
+                f"{response.failure_count} failed out of {len(tokens)} tokens"
             )
             
             # Log failed tokens
             if response.failure_count > 0:
                 failed_tokens = [
-                    fcm_tokens[idx] for idx, resp in enumerate(response.responses)
+                    tokens[idx] for idx, resp in enumerate(response.responses)
                     if not resp.success
                 ]
                 logger.warning(f"Failed tokens: {failed_tokens}")
@@ -223,9 +223,9 @@ class FirebaseService:
             return {
                 "success_count": response.success_count,
                 "failure_count": response.failure_count,
-                "total": len(fcm_tokens),
+                "total": len(tokens),
                 "failed_tokens": [
-                    fcm_tokens[idx] for idx, resp in enumerate(response.responses)
+                    tokens[idx] for idx, resp in enumerate(response.responses)
                     if not resp.success
                 ]
             }
@@ -305,21 +305,21 @@ class FirebaseService:
     
     def subscribe_to_topic(
         self,
-        fcm_tokens: List[str],
+        tokens: List[str],
         topic: str
     ) -> Dict[str, Any]:
         """
         Subscribe devices to a topic
         
         Args:
-            fcm_tokens: List of FCM tokens
+            tokens: List of FCM tokens
             topic: Topic name
             
         Returns:
             Subscription results
         """
         try:
-            response = messaging.subscribe_to_topic(fcm_tokens, topic)
+            response = messaging.subscribe_to_topic(tokens, topic)
             
             logger.info(
                 f"Topic subscription '{topic}': {response.success_count} successful, "
@@ -341,21 +341,21 @@ class FirebaseService:
     
     def unsubscribe_from_topic(
         self,
-        fcm_tokens: List[str],
+        tokens: List[str],
         topic: str
     ) -> Dict[str, Any]:
         """
         Unsubscribe devices from a topic
         
         Args:
-            fcm_tokens: List of FCM tokens
+            tokens: List of FCM tokens
             topic: Topic name
             
         Returns:
             Unsubscription results
         """
         try:
-            response = messaging.unsubscribe_from_topic(fcm_tokens, topic)
+            response = messaging.unsubscribe_from_topic(tokens, topic)
             
             logger.info(
                 f"Topic unsubscription '{topic}': {response.success_count} successful, "
@@ -377,7 +377,7 @@ class FirebaseService:
     
     def send_data_message(
         self,
-        fcm_token: str,
+        token: str,
         data: Dict[str, str]
     ) -> str:
         """
@@ -386,7 +386,7 @@ class FirebaseService:
         Useful for silent data sync, background updates
         
         Args:
-            fcm_token: FCM registration token
+            token: FCM registration token
             data: Data payload
             
         Returns:
@@ -395,7 +395,7 @@ class FirebaseService:
         try:
             message = messaging.Message(
                 data=data,
-                token=fcm_token,
+                token=token,
                 android=messaging.AndroidConfig(
                     priority='high'
                 ),
@@ -421,12 +421,12 @@ class FirebaseService:
 
 
 # Singleton instance
-_firebase_service: Optional[FirebaseService] = None
+_notification_service: Optional[NotificationService] = None
 
 
-def get_firebase_service() -> FirebaseService:
-    """Get Firebase service singleton instance"""
-    global _firebase_service
-    if _firebase_service is None:
-        _firebase_service = FirebaseService()
-    return _firebase_service
+def get_notification_service() -> NotificationService:
+    """Get Notification service singleton instance"""
+    global _notification_service
+    if _notification_service is None:
+        _notification_service = NotificationService()
+    return _notification_service

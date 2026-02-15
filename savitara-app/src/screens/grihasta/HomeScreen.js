@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { View, StyleSheet, ScrollView, Image } from 'react-native';
 import { Text, Card, Button, Chip, Searchbar } from 'react-native-paper';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -6,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { userAPI } from '../../services/api';
 import Skeleton from '../../components/common/Skeleton';
 import PanchangaWidget from '../../components/PanchangaWidget';
-import HeroCarousel from '../../components/HeroCarousel';
+import HeroSection from '../../components/HeroSection';
 
 const HomeScreen = ({ navigation }) => {
   const { user } = useAuth();
@@ -34,7 +35,7 @@ const HomeScreen = ({ navigation }) => {
 
   return (
     <ScrollView style={styles.container}>
-      <HeroCarousel navigation={navigation} />
+      <HeroSection onFindAcharya={() => navigation.navigate('Search')} />
 
       <View style={styles.content}>
         <View style={styles.header}>
@@ -194,5 +195,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF6B35',
   },
 });
+
+HomeScreen.propTypes = {
+  navigation: PropTypes.object.isRequired,
+};
 
 export default HomeScreen;

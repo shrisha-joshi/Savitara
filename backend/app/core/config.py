@@ -24,31 +24,26 @@ class Settings(BaseSettings):
     SECRET_KEY: str = secrets.token_urlsafe(32)
     JWT_SECRET_KEY: str = secrets.token_urlsafe(32)
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     # CORS - SonarQube: Validate origins
-    ALLOWED_ORIGINS: Union[List[str], str] = ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"]
+    ALLOWED_ORIGINS: Union[List[str], str] = ["http://localhost:3000"]
     
-    @field_validator("ALLOWED_ORIGINS", mode="after")
+    @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
     def validate_origins(cls, v: Union[str, List[str]], info: ValidationInfo) -> List[str]:
         """Validate CORS origins"""
         if isinstance(v, str):
-            # Try JSON first? No, just split comma
-             if v.startswith("["):
-                 import json
-                 try:
-                     return json.loads(v)
-                 except ValueError:
-                     pass
-             origins = [origin.strip() for origin in v.split(",") if origin.strip()]
-        else:
-             origins = v
-        
-        if "*" in origins and info.data.get("APP_ENV") == "production":
-             raise ValueError("Wildcard CORS not allowed in production")
-        return origins
+            # Try JSON first
+            if v.strip().startswith("["):
+                import json
+                try:
+                    return json.loads(v)
+                except ValueError:
+                    pass
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
 
 
     @field_validator("DEBUG", mode="before")

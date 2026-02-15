@@ -23,9 +23,31 @@ class LoginRequest(BaseModel):
 class RegisterRequest(BaseModel):
     """User registration request"""
     email: EmailStr
-    password: str
-    name: str
+    password: str = Field(..., min_length=8, max_length=128)
+    name: str = Field(..., min_length=2, max_length=100)
     role: UserRole
+
+    @field_validator('password')
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        """Validate password has minimum complexity"""
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters')
+        if not any(c.isupper() for c in v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not any(c.islower() for c in v):
+            raise ValueError('Password must contain at least one lowercase letter')
+        if not any(c.isdigit() for c in v):
+            raise ValueError('Password must contain at least one digit')
+        return v
+
+    @field_validator('role')
+    @classmethod
+    def restrict_admin_role(cls, v: UserRole) -> UserRole:
+        """Prevent self-assignment of admin role during registration"""
+        if v == UserRole.ADMIN:
+            raise ValueError('Admin role cannot be self-assigned')
+        return v
 
 class GoogleAuthRequest(BaseModel):
     """Google OAuth authentication request"""
@@ -150,6 +172,8 @@ class BookingCreateRequest(BaseModel):
     acharya_id: str
     pooja_id: str
     booking_type: str = Field(..., pattern="^(only|with_samagri)$")
+    booking_mode: str = Field("instant", pattern="^(instant|request)$")
+    requirements: Optional[str] = Field(None, max_length=1000)
     date: str = Field(..., description="Date in YYYY-MM-DD format")
     time: str = Field(..., description="Time in HH:MM format")
     location: Optional[Location] = None
@@ -213,7 +237,10 @@ class BookingResponse(BaseModel):
 
 class BookingStatusUpdateRequest(BaseModel):
     """Update booking status"""
-    action: str = Field(..., pattern="^(confirm|reject|cancel|start|complete)$")
+    status: str
+    amount: Optional[float] = None
+    notes: Optional[str] = None
+    # action: str = Field(..., pattern="^(confirm|reject|cancel|start|complete)$") # Old field seemingly incorrect or unused for status update
     otp: Optional[str] = None  # Required for 'start' action
     notes: Optional[str] = None
 

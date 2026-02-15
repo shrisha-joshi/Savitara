@@ -16,13 +16,15 @@ import {
   Alert,
   Rating
 } from '@mui/material'
+import MessageIcon from '@mui/icons-material/Message';
 import { 
   FaStar, 
   FaMapMarkerAlt, 
   FaLanguage, 
   FaGraduationCap, 
   FaUserClock,
-  FaCheckCircle 
+  FaCheckCircle,
+  FaComment
 } from 'react-icons/fa'
 import Layout from '../../components/Layout'
 import api from '../../services/api'
@@ -59,6 +61,13 @@ export default function AcharyaProfile() {
   const [poojas, setPoojas] = useState([])
   const [reviews, setReviews] = useState([])
   const [tabValue, setTabValue] = useState(0)
+
+
+  const formatLocation = (loc) => {
+    if (!loc) return 'Location not available';
+    if (typeof loc === 'string') return loc;
+    return `${loc.city || ''}, ${loc.state || ''}`.replace(/^, |, $/g, '');
+  };
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -166,7 +175,7 @@ export default function AcharyaProfile() {
                   <Typography color="rgba(255,255,255,0.7)">•</Typography>
                   <Box display="flex" alignItems="center" gap={0.5}>
                     <FaMapMarkerAlt size={14} color="rgba(255,255,255,0.7)" />
-                    <Typography>{profile.location?.city || 'India'}, {profile.location?.state}</Typography>
+                    <Typography>{formatLocation(profile.location)}</Typography>
                   </Box>
                 </Box>
 
@@ -182,6 +191,18 @@ export default function AcharyaProfile() {
                       }} 
                     />
                   ))}
+                </Box>
+                
+                <Box mt={3}>
+                  <Button 
+                    variant="contained" 
+                    color="secondary" 
+                    startIcon={<FaComment />}
+                    onClick={() => navigate(`/chat/u/${id}`)}
+                    sx={{ borderRadius: 20, px: 4 }}
+                  >
+                    Chat with Acharya
+                  </Button>
                 </Box>
               </Grid>
             </Grid>
@@ -328,15 +349,28 @@ export default function AcharyaProfile() {
                     Select a pooja from the services list or request a general consultation.
                   </Typography>
                   
-                  <Button 
-                    variant="contained" 
-                    fullWidth 
-                    size="large"
-                    sx={{ mb: 2, bgcolor: 'var(--saffron-main)' }}
-                    onClick={() => navigate(`/booking/create/${id}`)}
-                  >
-                    Book General Session
-                  </Button>
+                  <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                    <Button 
+                      variant="contained" 
+                      fullWidth 
+                      size="large"
+                      sx={{ bgcolor: 'var(--saffron-main)' }}
+                      onClick={() => navigate(`/booking/create/${id}`)}
+                    >
+                      Book Session
+                    </Button>
+
+                    <Button 
+                      variant="outlined" 
+                      color="primary"
+                      fullWidth 
+                      size="large"
+                      startIcon={<MessageIcon />}
+                      onClick={() => navigate(`/chat/u/${id}`)}
+                    >
+                      Message
+                    </Button>
+                  </Box>
                   
                   <Button 
                     variant="outlined" 

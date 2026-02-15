@@ -1,8 +1,8 @@
 import { createContext, useState, useContext, useEffect, useMemo } from 'react'
 import PropTypes from 'prop-types'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
-import { signInWithGoogle as firebaseGoogleSignIn, firebaseSignOut } from '../services/firebase'
+import { signInWithGoogle as firebaseGoogleSignIn, firebaseSignOut, checkRedirectResult } from '../services/firebase'
 import { toast } from 'react-toastify'
 
 const AuthContext = createContext({})
@@ -19,10 +19,64 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
-    checkAuth()
+    // Check for redirect result first (for Google OAuth)
+    handleRedirectResult().then(() => {
+      // Then check regular auth
+      checkAuth()
+    })
   }, [])
+
+  const handleRedirectResult = async () => {
+    try {
+      const result = await checkRedirectResult()
+      if (result?.idToken) {
+        console.log('Processing Google redirect result...')
+        toast.info('Completing Google sign-in...')
+        
+        // Send token to backend
+        const response = await api.post('/auth/google', {
+          id_token: result.idToken,
+          role: 'grihasta'
+        })
+
+        const { data } = response.data
+        const { access_token, refresh_token, user: userData } = data
+        
+        localStorage.setItem('accessToken', access_token)
+        localStorage.setItem('refreshToken', refresh_token)
+        
+        setUser(userData)
+        
+        // Navigate based on onboarding status
+        if (userData.onboarded || userData.onboarding_completed) {
+          navigate('/')
+        } else {
+          navigate('/onboarding')
+        }
+
+        toast.success('Login successful!')
+      }
+    } catch (error) {
+      console.error('Redirect result error:', error)
+      
+      let errorMessage = 'Google login failed'
+      
+      if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+        errorMessage = 'Cannot connect to server. Please check if the backend is running.'
+      } else if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+      
+      toast.error(errorMessage)
+    }
+  }
 
   const checkAuth = async () => {
     const accessToken = localStorage.getItem('accessToken')
@@ -61,16 +115,29 @@ export const AuthProvider = ({ children }) => {
       
       // Navigate based on onboarding status - Home after login
       if (userData.onboarded || userData.onboarding_completed) {
-        navigate('/')
+        const from = location.state?.from?.pathname || '/'
+        const search = location.state?.from?.search || ''
+        navigate(`${from}${search}`, { replace: true })
       } else {
-        navigate('/onboarding')
+        navigate('/onboarding', { replace: true })
       }
 
       toast.success('Login successful!')
     } catch (error) {
       console.error('Login failed:', error)
-      // Show specific error message from backend
-      const errorMessage = error.response?.data?.detail || 'Login failed'
+      // Show specific error message from backend or network error
+      let errorMessage = 'Login failed'
+      
+      if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+        errorMessage = 'Cannot connect to server. Please check if the backend is running.'
+      } else if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+      
       toast.error(errorMessage)
       throw error
     }
@@ -91,53 +158,70 @@ export const AuthProvider = ({ children }) => {
       toast.success('Registration successful! Please complete your profile.')
     } catch (error) {
       console.error('Registration failed:', error)
-      const errorMessage = error.response?.data?.detail || 'Registration failed'
+      
+      let errorMessage = 'Registration failed'
+      
+      if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+        errorMessage = 'Cannot connect to server. Please check if the backend is running.'
+      } else if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+      
       toast.error(errorMessage)
       throw error
     }
   }
 
-  // Updated to use Firebase Google Sign-In
+  // Updated to use Firebase Google Sign-In with Popup
   const loginWithGoogle = async (legacyCredential = null) => {
     try {
-      let idToken
-
-      // If called with a credential (legacy @react-oauth/google), use it
+      let idToken = null;
       if (legacyCredential) {
-        idToken = legacyCredential
+        idToken = legacyCredential;
       } else {
-        // Use Firebase Google Sign-In
-        const result = await firebaseGoogleSignIn()
-        idToken = result.idToken
+        const result = await firebaseGoogleSignIn();
+        idToken = result?.idToken;
       }
-
-      // Send token to backend with correct field name and role
+      if (!idToken) {
+        toast.error('No ID token received from Google.');
+        setLoading(false);
+        return;
+      }
       const response = await api.post('/auth/google', {
-        id_token: idToken,  // Backend expects 'id_token', not 'token'
-        role: 'grihasta'    // Default role for user app
-      })
-
-      const { data } = response.data // Backend returns StandardResponse with data field
-      const { access_token, refresh_token, user: userData } = data
-      
-      localStorage.setItem('accessToken', access_token)
-      localStorage.setItem('refreshToken', refresh_token)
-      
-      setUser(userData)
-      
-      // Check if user needs onboarding - Navigate to Home after login
-      // New users or users without completed onboarding go to onboarding page
+        id_token: idToken,
+        role: 'grihasta'
+      });
+      const { data } = response.data;
+      const { access_token, refresh_token, user: userData } = data;
+      localStorage.setItem('accessToken', access_token);
+      localStorage.setItem('refreshToken', refresh_token);
+      setUser(userData);
       if (userData.onboarded || userData.onboarding_completed) {
-        navigate('/')
+        const from = location.state?.from?.pathname || '/';
+        const search = location.state?.from?.search || '';
+        navigate(`${from}${search}`, { replace: true });
       } else {
-        navigate('/onboarding')
+        navigate('/onboarding', { replace: true });
       }
-
-      toast.success('Login successful!')
+      toast.success('Login successful!');
     } catch (error) {
-      console.error('Login failed:', error)
-      toast.error(error.response?.data?.detail || error.response?.data?.message || 'Login failed')
-      throw error
+      console.error('Google login failed:', error);
+      let errorMessage = 'Google login failed';
+      if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+        errorMessage = 'Cannot connect to server. Please check if the backend is running.';
+      } else if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      toast.error(errorMessage);
+      throw error;
     }
   }
 

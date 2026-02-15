@@ -114,7 +114,7 @@ async def create_review(
             admin_users = await db.users.find({"role": UserRole.ADMIN.value}).to_list(None)
             admin_tokens = [u.get("fcm_token") for u in admin_users if u.get("fcm_token")]
             if admin_tokens:
-                await notification_service.send_multicast(
+                notification_service.send_multicast(
                     tokens=admin_tokens,
                     title="New Review for Moderation",
                     body=f"New {review_data.review_type} review submitted",

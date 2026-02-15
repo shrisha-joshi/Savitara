@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box } from '@mui/material';
+import PropTypes from 'prop-types';
 
 // Wedding ceremony slideshow images
 const slideshowImages = [
@@ -36,7 +37,7 @@ const HeroCarousel = ({
     >
       {slideshowImages.map((image, index) => (
         <Box
-          key={index}
+          key={image}
           component="img"
           src={image}
           alt={`Slide ${index + 1}`}
@@ -66,9 +67,9 @@ const HeroCarousel = ({
           zIndex: 10,
         }}
       >
-        {slideshowImages.map((_, index) => (
+        {slideshowImages.map((image, index) => (
           <Box
-            key={index}
+            key={image}
             onClick={() => setCurrentIndex(index)}
             sx={{
               width: 12,
@@ -84,11 +85,25 @@ const HeroCarousel = ({
                 transform: 'scale(1.2)',
               },
             }}
+
           />
         ))}
       </Box>
     </Box>
   );
+};
+
+import PropTypes from 'prop-types';
+HeroCarousel.propTypes = {
+  interval: PropTypes.number,
+  height: PropTypes.string,
+  // Add other props as needed
+};
+
+HeroCarousel.propTypes = {
+  interval: PropTypes.number,
+  height: PropTypes.string,
+  // Add other props as needed
 };
 
 export default HeroCarousel;

@@ -27,6 +27,7 @@ from app.models.database import Message, Conversation, UserRole
 from slowapi.errors import RateLimitExceeded
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from app.core.config import settings
+from app.services.websocket_manager import manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -217,7 +218,7 @@ async def _send_message_notification(db, conversation_doc: dict, current_user: d
         receiver = await db.users.find_one({"_id": ObjectId(receiver_id)})
         
         if receiver and receiver.get("fcm_token"):
-            await notification_service.send_notification(
+            notification_service.send_notification(
                 token=receiver["fcm_token"],
                 title=f"Message from {current_user['full_name']}",
                 body=content[:100],
@@ -312,6 +313,33 @@ async def send_message(
         result = await db.messages.insert_one(message.model_dump(by_alias=True))
         message.id = str(result.inserted_id)
         
+        # Broadcast real-time message via WebSocket
+        try:
+            ws_message = {
+                "type": "new_message",
+                "conversation_id": "open_chat" if message_data.is_open_chat else conversation_id,
+                "sender_id": sender_id,
+                "content": message_data.content,
+                "timestamp": message.created_at.isoformat() if message.created_at else datetime.now().isoformat(),
+                "id": str(message.id)
+            }
+            
+            if message_data.is_open_chat:
+                # For open chat, better to have a specific room/channel, 
+                # but for now we rely on the specific open-chat pulling or global broadcast if envisioned.
+                # Since open chat is high volume, we might skip global broadcast here 
+                # unless a "room" concept is fully implemented.
+                pass 
+            else:
+                # 1-to-1: Send to receiver
+                await manager.send_personal_message(message_data.receiver_id, ws_message)
+                
+                # 1-to-1: Send to sender (so their other devices update)
+                await manager.send_personal_message(sender_id, ws_message)
+                
+        except Exception as e:
+            logger.error(f"Failed to broadcast real-time message: {e}") 
+        
         # Send push notification for 1-to-1 messages
         if not message_data.is_open_chat:
             await _send_message_notification(db, conversation_doc, current_user, message_data.content, conversation_id)
@@ -347,6 +375,58 @@ async def send_message(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to send message"
+        )
+
+
+from pydantic import BaseModel
+
+class ConversationVerifyRequest(BaseModel):
+    recipient_id: str
+
+@router.post(
+    "/verify-conversation",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Verify or Create Conversation",
+    description="Get existing conversation ID or create new one with recipient"
+)
+async def verify_conversation(
+    request: ConversationVerifyRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get or create conversation with specific user"""
+    try:
+        sender_id = current_user["id"]
+        receiver_id = request.recipient_id
+        
+        if sender_id == receiver_id:
+                raise InvalidInputError(
+                message="Cannot chat with yourself",
+                field="recipient_id"
+            )
+
+        # Check if receiver exists
+        receiver = await db.users.find_one({"_id": ObjectId(receiver_id)})
+        if not receiver:
+            raise ResourceNotFoundError(
+                resource_type="User",
+                resource_id=receiver_id
+            )
+
+        conversation_id = await _get_or_create_conversation(db, sender_id, receiver_id)
+        
+        return StandardResponse(
+            success=True,
+            data={"conversation_id": conversation_id}
+        )
+    except (InvalidInputError, ResourceNotFoundError):
+        raise
+    except Exception as e:
+        logger.error(f"Verify conversation error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to verify conversation"
         )
 
 

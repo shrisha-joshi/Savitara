@@ -123,13 +123,8 @@ class SecurityManager:
     
     @staticmethod
     def hash_password(password: str) -> str:
-        """Hash password using bcrypt - SonarQube compliant"""
-        return pwd_context.hash(password)
-    
-    @staticmethod
-    def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """Verify password against hash"""
-        return pwd_context.verify(plain_password, hashed_password)
+        """Hash password using bcrypt - SonarQube compliant (delegates to get_password_hash)"""
+        return SecurityManager.get_password_hash(password)
     
     @staticmethod
     def generate_secure_token(length: int = 32) -> str:
@@ -199,21 +194,21 @@ def get_current_user_with_role(
 
 
 # Specific role dependencies
-async def get_current_grihasta(
+def get_current_grihasta(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """Ensure current user is Grihasta"""
     return get_current_user_with_role("grihasta", current_user)
 
 
-async def get_current_acharya(
+def get_current_acharya(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """Ensure current user is Acharya"""
     return get_current_user_with_role("acharya", current_user)
 
 
-async def get_current_admin(
+def get_current_admin(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """Ensure current user is Admin"""

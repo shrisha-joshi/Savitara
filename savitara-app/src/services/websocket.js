@@ -28,7 +28,7 @@ class WebSocketService {
 
     try {
       const wsUrl = API_CONFIG.baseURL.replace('http', 'ws');
-      this.ws = new WebSocket(`${wsUrl}/ws/${userId}`);
+      this.ws = new WebSocket(`${wsUrl}/ws/${userId}?token=${token}`);
 
       this.ws.onopen = () => {
         console.log('WebSocket connected');

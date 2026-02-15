@@ -18,6 +18,9 @@ from app.schemas.requests import StandardResponse
 router = APIRouter(prefix="/payments", tags=["Payments"])
 razorpay_service = RazorpayService()
 
+# Constants
+PAYMENT_NOT_FOUND_MSG = "Payment not found"
+
 # --- Request Schemas ---
 class PaymentInitiateRequest(BaseModel):
     amount: float = Field(..., gt=0)
@@ -116,8 +119,8 @@ async def verify_payment(
         if not update_result:
              raise ResourceNotFoundError(message="Payment order not found")
 
-        # TODO: Trigger post-payment logic (update booking status, add to wallet)
-        # For now, just confirming verification.
+        # Note: Post-payment logic (booking status update, wallet credit) is handled
+        # by the /bookings/{id}/payment/verify endpoint which updates booking status
 
         return StandardResponse(
             success=True,
@@ -153,12 +156,12 @@ async def get_payment_details(
     try:
         payment = await db.payments.find_one({"_id": ObjectId(payment_id), "user_id": current_user["id"]})
         if not payment:
-            raise ResourceNotFoundError(message="Payment not found")
+            raise ResourceNotFoundError(message=PAYMENT_NOT_FOUND_MSG)
         
         payment["id"] = str(payment.pop("_id"))
         return StandardResponse(success=True, data=payment)
     except Exception:
-        raise ResourceNotFoundError(message="Payment not found")
+        raise ResourceNotFoundError(message=PAYMENT_NOT_FOUND_MSG)
 
 @router.post("/{payment_id}/refund", response_model=StandardResponse)
 async def initiate_refund(
@@ -169,7 +172,7 @@ async def initiate_refund(
 ):
     payment = await db.payments.find_one({"_id": ObjectId(payment_id), "user_id": current_user["id"]})
     if not payment:
-        raise ResourceNotFoundError(message="Payment not found")
+        raise ResourceNotFoundError(message=PAYMENT_NOT_FOUND_MSG)
         
     # Mock refund logic for now or call service
     # refund = razorpay_service.refund(payment['razorpay_payment_id'], request.amount)

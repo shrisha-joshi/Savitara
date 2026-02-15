@@ -5,7 +5,7 @@ import {
   CircularProgress, Select, MenuItem, FormControl,
   InputLabel, Button, Chip, Avatar, IconButton, Tooltip,
   Table, TableBody, TableCell, TableContainer, TableHead,
-  TableRow, LinearProgress, Tab, Tabs, alpha
+  TableRow, LinearProgress, Tab, Tabs, alpha, useTheme
 } from '@mui/material';
 import {
   TrendingUp, TrendingDown, People, Star, Refresh, Download,
@@ -122,14 +122,17 @@ const StatCard = ({ title, value, icon, growth, color, subtitle }) => (
               display="flex" 
               alignItems="center" 
               mt={1.5}
-              sx={{
-                px: 1.5,
-                py: 0.5,
-                borderRadius: 2,
-                display: 'inline-flex',
-                background: (theme) => growth >= 0 
+              sx={(theme) => {
+                const avatarBg = growth >= 0
                   ? alpha('#22C55E', theme.palette.mode === 'dark' ? 0.15 : 0.1)
-                  : alpha('#EF4444', theme.palette.mode === 'dark' ? 0.15 : 0.1),
+                  : alpha('#EF4444', theme.palette.mode === 'dark' ? 0.15 : 0.1);
+                return {
+                  px: 1.5,
+                  py: 0.5,
+                  borderRadius: 2,
+                  display: 'inline-flex',
+                  background: avatarBg
+                };
               }}
             >
               {growth >= 0 ? (
@@ -196,6 +199,7 @@ TabPanel.propTypes = {
 };
 
 const Dashboard = () => {
+  const theme = useTheme();
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('30days');
   const [activeTab, setActiveTab] = useState(0);
@@ -391,7 +395,7 @@ const Dashboard = () => {
               value={stats.totalUsers}
               icon={<People />}
               growth={stats.userGrowth}
-              color="success.main"
+              color={theme.palette.success.main}
               subtitle={`${stats.activeUsers} active`}
             />
           </Grid>
@@ -401,7 +405,7 @@ const Dashboard = () => {
               value={stats.totalBookings}
               icon={<EventAvailable />}
               growth={stats.bookingGrowth}
-              color="warning.main"
+              color={theme.palette.warning.main}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>

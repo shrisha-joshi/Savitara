@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Button, Text, TextInput, SegmentedButtons } from 'react-native-paper';
+import { Button, Text, TextInput, SegmentedButtons, HelperText } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { getErrorMessage } from '../../utils/errorHandler';
@@ -13,8 +13,43 @@ const LoginScreen = () => {
   const [name, setName] = useState('');
   const [role, setRole] = useState('grihasta');
   const [showPassword, setShowPassword] = useState(false);
+  const [errors, setErrors] = useState({});
+
+  const validate = () => {
+    let isValid = true;
+    let tempErrors = {};
+
+    // Email validation
+    if (!email) {
+      tempErrors.email = 'Email is required';
+      isValid = false;
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      tempErrors.email = 'Please enter a valid email address';
+      isValid = false;
+    }
+
+    // Password validation
+    if (!password) {
+      tempErrors.password = 'Password is required';
+      isValid = false;
+    } else if (mode === 'register' && password.length < 8) {
+      tempErrors.password = 'Password must be at least 8 characters';
+      isValid = false;
+    }
+
+    // Name validation (only for register)
+    if (mode === 'register' && !name.trim()) {
+      tempErrors.name = 'Full name is required';
+      isValid = false;
+    }
+
+    setErrors(tempErrors);
+    return isValid;
+  };
 
   const handleEmailAuth = async () => {
+    if (!validate()) return;
+    
     if (mode === 'login') {
       await loginWithEmail(email, password);
     } else {
@@ -51,10 +86,16 @@ const LoginScreen = () => {
             <TextInput
               label="Full Name"
               value={name}
-              onChangeText={setName}
+              onChangeText={(text) => {
+                setName(text);
+                if (errors.name) setErrors({...errors, name: null});
+              }}
               mode="outlined"
               style={styles.input}
+              error={!!errors.name}
             />
+            {errors.name && <HelperText type="error" visible={true}>{errors.name}</HelperText>}
+            
             <SegmentedButtons
               value={role}
               onValueChange={setRole}
@@ -70,22 +111,37 @@ const LoginScreen = () => {
         <TextInput
           label="Email"
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(text) => {
+             setEmail(text);
+             if (errors.email) setErrors({...errors, email: null});
+          }}
           mode="outlined"
           keyboardType="email-address"
           autoCapitalize="none"
           style={styles.input}
+          error={!!errors.email}
         />
+        {errors.email && <HelperText type="error" visible={true}>{errors.email}</HelperText>}
 
         <TextInput
           label="Password"
           value={password}
-          onChangeText={setPassword}
+          onChangeText={(text) => {
+             setPassword(text);
+             if (errors.password) setErrors({...errors, password: null});
+          }}
           mode="outlined"
           secureTextEntry={!showPassword}
           right={<TextInput.Icon icon={showPassword ? "eye-off" : "eye"} onPress={() => setShowPassword(!showPassword)} />}
           style={styles.input}
+          error={!!errors.password}
         />
+        {errors.password && <HelperText type="error" visible={true}>{errors.password}</HelperText>}
+        {mode === 'register' && !errors.password && (
+            <HelperText type="info" visible={true}>
+              Password must be at least 8 characters
+            </HelperText>
+        )}
 
         <Button 
           mode="contained" 

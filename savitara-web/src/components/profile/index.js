@@ -1,4 +1,7 @@
 export { default as ProfileHeader } from './ProfileHeader'
 export { default as ProfileStats } from './ProfileStats'
+export { default as EditableField } from './EditableField'
+export { CommonProfileFields, AcharyaProfileFields } from './ProfileFields'
+export { QuickLinks, AccountActions } from './AccountActions'
 export { LogoutDialog, DeleteAccountDialog1, DeleteAccountDialog2 } from './ProfileDialogs'
 export * from './profileUtils'

@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Container, 
   Typography, 
   Grid, 
   Box, 
-  CircularProgress,
   Alert,
   Pagination,
-  Button
+  CircularProgress,
 } from '@mui/material';
 import Layout from '../../components/Layout';
 import SearchFilters from '../../components/SearchFilters';
@@ -40,13 +39,6 @@ export default function SearchAcharyas() {
       // The array in SearchFilters is Title Case: 'Vedic Rituals', 'Astrology Consultation'
       // The param from Home is lowercase: 'astrology', 'vedic rituals' or similar.
       
-      const initial = {
-        query: serviceParam // Using query as a fallback or if search text is desired
-        // To do this properly, we'd map 'astrology' -> ['Astrology Consultation'] etc.
-      };
-      
-      // Update filters in state (we need to lift state ideally or pass to SearchFilters)
-      // Since SearchFilters manages its own state, passing initialFilters prop is key.
     }
   }, [location.search]);
 
@@ -69,7 +61,7 @@ export default function SearchAcharyas() {
   
   const [initialFilters] = useState(getInitialFiltersFromUrl());
 
-  const fetchAcharyas = async (filters = {}, page = 1) => {
+  const fetchAcharyas = useCallback(async (filters = {}, page = 1) => {
     try {
       setLoading(true);
       setError(null);
@@ -94,12 +86,15 @@ export default function SearchAcharyas() {
 
       const response = await api.get('/users/acharyas', { params });
       
-      if (response.data.success) {
-        setAcharyas(response.data.data.acharyas);
-        setPagination(prev => ({
-          ...prev,
-          ...response.data.data.pagination
-        }));
+      if (response.data?.success) {
+        setAcharyas(response.data.data?.acharyas || []);
+        const paginationData = response.data.data?.pagination;
+        if (paginationData) {
+          setPagination(prev => ({
+            ...prev, 
+            ...paginationData
+          }));
+        }
       }
     } catch (err) {
       console.error('Search failed:', err);
@@ -107,38 +102,20 @@ export default function SearchAcharyas() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pagination.limit]);
 
   // Initial load is handled by the SearchFilters component's initial useEffect/interaction
   // or we can trigger it here if SearchFilters doesn't fire immediately.
   // SearchFilters has a debounce that fires onFiltersChange.
   
-  const handleFiltersChange = (newFilters) => {
-    fetchAcharyas(newFilters, 1);
-  };
-
-  const handlePageChange = (event, value) => {
-    // We need to keep current filters. 
-    // Ideally SearchFilters state should be lifted up or passed back.
-    // For now, we'll just update the page in pagination state and 
-    // rely on a ref or simple state if we had access to current filters.
-    // To solve this properly, let's wrap the fetch in a tailored handler
-    // that assumes we have the latest filters.
-    // simpler: pass page to fetchAcharyas, but we need the *current* filters.
-    // Since we don't store filters in this component's state, let's just 
-    // update the display for now, but a real fix involves useState for filters here.
-    setPagination(prev => ({ ...prev, page: value }));
-    // Note: This won't actually fetch the new page with correct filters unless
-    // we store filters in state. Let's assume we do.
-  };
 
   // State to hold current filters for pagination
   const [currentFilters, setCurrentFilters] = useState({});
 
-  const onFiltersAndUpdate = (filters) => {
+  const onFiltersAndUpdate = useCallback((filters) => {
     setCurrentFilters(filters);
     fetchAcharyas(filters, 1);
-  };
+  }, [fetchAcharyas]);
 
   const onPageChangeWithFilters = (event, value) => {
     setPagination(prev => ({ ...prev, page: value }));
@@ -176,9 +153,9 @@ export default function SearchAcharyas() {
 
         <Container maxWidth="xl">
           <Grid container spacing={3}>
-            {/* Filters Sidebar */}
-            <Grid item xs={12} md={3}>
-              <Box sx={{ position: 'sticky', top: 20 }}>
+            {/* Filters Section (Horizontal) */}
+            <Grid item xs={12}>
+              <Box sx={{ mb: 3 }}>
                 <SearchFilters 
                   onFiltersChange={onFiltersAndUpdate} 
                   initialFilters={initialFilters}
@@ -187,14 +164,16 @@ export default function SearchAcharyas() {
             </Grid>
 
             {/* Results Area */}
-            <Grid item xs={12} md={9}>
-              {loading ? (
+            <Grid item xs={12}>
+              {loading && (
                 <Box sx={{ display: 'flex', justifyContent: 'center', p: 8 }}>
                   <CircularProgress color="primary" />
                 </Box>
-              ) : error ? (
+              )}
+              {!loading && error && (
                 <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>
-              ) : (
+              )}
+              {!loading && !error && (
                 <>
                   <Grid container spacing={3}>
                     {acharyas.length > 0 ? (
@@ -203,7 +182,8 @@ export default function SearchAcharyas() {
                           <AcharyaCard 
                             acharya={acharya} 
                             onViewProfile={(id) => navigate(`/acharya/${id}`)}
-                            onBook={(id) => navigate(`/booking/create/${id}`)}
+                            onBook={(id, mode) => navigate(`/booking/create/${id}?mode=${mode || 'instant'}`)}
+                            onChat={(id) => navigate(`/chat/u/${id}`)}
                           />
                         </Grid>
                       ))

@@ -94,6 +94,59 @@ class SearchService:
         except Exception as e:
             logger.error(f"Bulk indexing failed: {e}")
     
+    @staticmethod
+    def _build_filter_clauses(
+        filters: Dict[str, Any],
+        location: Optional[Dict[str, Any]] = None
+    ) -> list:
+        """Build Elasticsearch filter clauses from search filters."""
+        RATINGS_AVERAGE = "ratings.average"
+        filter_clauses = []
+
+        # Simple term filters
+        term_mappings = {
+            "city": "location.city",
+            "state": "location.state",
+        }
+        for key, field in term_mappings.items():
+            if filters.get(key):
+                filter_clauses.append({"term": {field: filters[key]}})
+
+        # Array term filters
+        for key in ("specializations", "languages"):
+            if filters.get(key):
+                vals = filters[key] if isinstance(filters[key], list) else [filters[key]]
+                filter_clauses.append({"terms": {key: vals}})
+
+        # Range filters
+        range_mappings = [
+            ("min_rating", RATINGS_AVERAGE, "gte"),
+            ("max_rating", RATINGS_AVERAGE, "lte"),
+            ("min_price", "hourly_rate", "gte"),
+            ("max_price", "hourly_rate", "lte"),
+            ("min_experience", "experience_years", "gte"),
+        ]
+        for filter_key, field, comparator in range_mappings:
+            if filters.get(filter_key):
+                filter_clauses.append({"range": {field: {comparator: filters[filter_key]}}})
+
+        if filters.get("is_verified"):
+            filter_clauses.append({"term": {"is_verified": True}})
+
+        # Location-based filter
+        if location and location.get("lat") and location.get("lon"):
+            filter_clauses.append({
+                "geo_distance": {
+                    "distance": location.get("distance", "10km"),
+                    "location.coordinates": {
+                        "lat": location["lat"],
+                        "lon": location["lon"]
+                    }
+                }
+            })
+
+        return filter_clauses
+
     async def search_acharyas(
         self,
         query: Optional[str] = None,
@@ -121,7 +174,6 @@ class SearchService:
         
         # Build Elasticsearch query
         must_clauses = []
-        filter_clauses = []
         
         # Text search
         if query:
@@ -134,50 +186,7 @@ class SearchService:
                 }
             })
         
-        # Filters
-        if filters.get("city"):
-            filter_clauses.append({"term": {"location.city": filters["city"]}})
-        
-        if filters.get("state"):
-            filter_clauses.append({"term": {"location.state": filters["state"]}})
-        
-        if filters.get("specializations"):
-            specs = filters["specializations"] if isinstance(filters["specializations"], list) else [filters["specializations"]]
-            filter_clauses.append({"terms": {"specializations": specs}})
-        
-        if filters.get("languages"):
-            langs = filters["languages"] if isinstance(filters["languages"], list) else [filters["languages"]]
-            filter_clauses.append({"terms": {"languages": langs}})
-        
-        if filters.get("min_rating"):
-            filter_clauses.append({"range": {"ratings.average": {"gte": filters["min_rating"]}}})
-        
-        if filters.get("max_rating"):
-            filter_clauses.append({"range": {"ratings.average": {"lte": filters["max_rating"]}}})
-        
-        if filters.get("min_price"):
-            filter_clauses.append({"range": {"hourly_rate": {"gte": filters["min_price"]}}})
-        
-        if filters.get("max_price"):
-            filter_clauses.append({"range": {"hourly_rate": {"lte": filters["max_price"]}}})
-        
-        if filters.get("min_experience"):
-            filter_clauses.append({"range": {"experience_years": {"gte": filters["min_experience"]}}})
-        
-        if filters.get("is_verified"):
-            filter_clauses.append({"term": {"is_verified": True}})
-        
-        # Location-based search
-        if location and location.get("lat") and location.get("lon"):
-            filter_clauses.append({
-                "geo_distance": {
-                    "distance": location.get("distance", "10km"),
-                    "location.coordinates": {
-                        "lat": location["lat"],
-                        "lon": location["lon"]
-                    }
-                }
-            })
+        filter_clauses = self._build_filter_clauses(filters, location)
         
         # Build final query
         search_query = {

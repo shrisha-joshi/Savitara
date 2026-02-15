@@ -28,6 +28,11 @@ from app.core.exceptions import (
 from app.db.connection import get_db
 from app.models.database import UserStatus, Notification
 
+# MongoDB query constants - SonarQube: S1192
+MONGO_REGEX = "$regex"
+MONGO_OPTIONS = "$options"
+REGEX_CASE_INSENSITIVE = "i"
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -193,6 +198,17 @@ async def get_pending_acharyas(
         
         acharyas = await db.users.aggregate(pipeline).to_list(length=limit)
         
+        # Serialize ObjectIds to strings
+        for acharya in acharyas:
+            if "_id" in acharya:
+                acharya["_id"] = str(acharya["_id"])
+            if "profile" in acharya and "_id" in acharya["profile"]:
+                acharya["profile"]["_id"] = str(acharya["profile"]["_id"])
+            # Convert user_id in profile to string if it's ObjectId
+            if "profile" in acharya and "user_id" in acharya["profile"]:
+                if isinstance(acharya["profile"]["user_id"], ObjectId):
+                    acharya["profile"]["user_id"] = str(acharya["profile"]["user_id"])
+        
         # Get total count
         total_count = await db.users.count_documents({
             "role": "acharya",
@@ -227,7 +243,7 @@ def _create_verification_notification_message(action: str, notes: str = None) ->
     return f"Your Acharya verification has been declined. Reason: {notes or 'Not specified'}"
 
 
-async def _send_verification_push_notification(acharya_doc: dict, action: str, reason: str = None):
+def _send_verification_push_notification(acharya_doc: dict, action: str, reason: str = None):
     """Send push notification for verification status"""
     if not acharya_doc or not acharya_doc.get("fcm_token"):
         return
@@ -237,7 +253,7 @@ async def _send_verification_push_notification(acharya_doc: dict, action: str, r
         notification_service = NotificationService()
         title = "Profile Verified!" if action == "approve" else "Verification Update"
         body = "Congratulations! Your profile is verified." if action == "approve" else f"Verification denied: {reason or 'Please contact support'}"
-        await notification_service.send_notification(
+        notification_service.send_notification(
             token=acharya_doc["fcm_token"],
             title=title,
             body=body,
@@ -264,8 +280,17 @@ async def verify_acharya(  # noqa: C901
     try:
         admin_id = current_user["id"]
         
+        # Convert string ID to ObjectId
+        try:
+            acharya_oid = ObjectId(acharya_id)
+        except Exception:
+            raise InvalidInputError(
+                message="Invalid acharya ID format",
+                field="acharya_id"
+            )
+        
         # Get Acharya user
-        acharya = await db.users.find_one({"_id": acharya_id, "role": "acharya"})
+        acharya = await db.users.find_one({"_id": acharya_oid, "role": "acharya"})
         if not acharya:
             raise ResourceNotFoundError(
                 resource_type="Acharya",
@@ -283,7 +308,7 @@ async def verify_acharya(  # noqa: C901
         new_status = UserStatus.ACTIVE if verification.action == "approve" else UserStatus.SUSPENDED
         
         await db.users.update_one(
-            {"_id": acharya_id},
+            {"_id": acharya_oid},
             {
                 "$set": {
                     "status": new_status.value,
@@ -303,11 +328,12 @@ async def verify_acharya(  # noqa: C901
             notification_type="verification",
             data={"action": verification.action}
         )
-        await db.notifications.insert_one(notification.model_dump(by_alias=True))
+        notification_doc = notification.model_dump(by_alias=True, exclude_none=True)
+        await db.notifications.insert_one(notification_doc)
         
         # Send push notification
         acharya_doc = await db.users.find_one({"_id": ObjectId(acharya_id)})
-        await _send_verification_push_notification(acharya_doc, verification.action, verification.reason)
+        _send_verification_push_notification(acharya_doc, verification.action, verification.notes)
         
         logger.info(f"Acharya {acharya_id} verification: {verification.action} by admin {admin_id}")
         
@@ -469,7 +495,7 @@ async def moderate_review(
             notification_type="review_moderation",
             data={"review_id": review_id, "action": action}
         )
-        await db.notifications.insert_one(notification.model_dump(by_alias=True))
+        await db.notifications.insert_one(notification.model_dump(by_alias=True, exclude_none=True))
         
         logger.info(f"Review {review_id} {action}ed by admin {admin_id}")
         
@@ -521,6 +547,134 @@ async def update_acharya_rating(acharya_id: str, db: AsyncIOMotorDatabase):
         )
 
 
+def _build_acharya_query(kyc_status: Optional[str]) -> dict:
+    """Build MongoDB query filter for Acharya listing"""
+    query = {"role": "acharya"}
+    if kyc_status:
+        status_mapping = {
+            "pending": "pending",
+            "verified": "active",
+            "rejected": "suspended"
+        }
+        query["status"] = status_mapping.get(kyc_status.lower(), kyc_status.lower())
+    return query
+
+
+def _serialize_acharya_doc(acharya: dict) -> dict:
+    """Convert ObjectId fields to strings for JSON serialization"""
+    if "_id" in acharya:
+        acharya["_id"] = str(acharya["_id"])
+    profile = acharya.get("acharya_profile")
+    if profile:
+        if "_id" in profile:
+            profile["_id"] = str(profile["_id"])
+        if isinstance(profile.get("user_id"), ObjectId):
+            profile["user_id"] = str(profile["user_id"])
+    return acharya
+
+
+@router.get(
+    "/acharyas",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get All Acharyas",
+    description="Get list of all Acharyas"
+)
+async def get_acharyas(
+    kyc_status: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=1000),
+    current_user: Dict[str, Any] = Depends(get_current_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get all Acharyas"""
+    try:
+        query = _build_acharya_query(kyc_status)
+        logger.info(f"Fetching acharyas with query: {query}")
+        
+        pipeline = [
+            {MONGO_MATCH: query},
+            {
+                MONGO_LOOKUP: {
+                    "from": "acharya_profiles",
+                    "localField": "_id",
+                    "foreignField": "user_id",
+                    "as": "acharya_profile"
+                }
+            },
+            {MONGO_UNWIND: {"path": "$acharya_profile", "preserveNullAndEmptyArrays": True}},
+            {MONGO_SKIP: (page - 1) * limit},
+            {MONGO_LIMIT: limit}
+        ]
+        
+        acharyas = await db.users.aggregate(pipeline).to_list(length=limit)
+        serialized = [_serialize_acharya_doc(a) for a in acharyas]
+        total = await db.users.count_documents(query)
+        
+        return StandardResponse(
+            success=True,
+            data={
+                "acharyas": serialized,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total": total,
+                    "pages": (total + limit - 1) // limit
+                }
+            }
+        )
+    except Exception as e:
+        logger.error(f"Get acharyas error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch acharyas"
+        )
+
+
+@router.get(
+    "/users/{user_id}",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get User Details",
+    description="Get detailed information about a specific user"
+)
+async def get_user_by_id(
+    user_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get user by ID"""
+    try:
+        # Try to find user by ObjectId or string ID
+        try:
+            user = await db.users.find_one({"_id": ObjectId(user_id)})
+        except Exception:
+            user = await db.users.find_one({"_id": user_id})
+        
+        if not user:
+            raise ResourceNotFoundError(
+                resource_type="User",
+                resource_id=user_id
+            )
+        
+        # Convert ObjectId to string
+        if "_id" in user:
+            user["_id"] = str(user["_id"])
+        
+        return StandardResponse(
+            success=True,
+            data=user
+        )
+    except ResourceNotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"Get user by ID error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch user details"
+        )
+
+
 @router.get(
     "/users/search",
     response_model=StandardResponse,
@@ -530,10 +684,10 @@ async def update_acharya_rating(acharya_id: str, db: AsyncIOMotorDatabase):
 )
 async def search_users(
     email: Optional[str] = Query(None),
-    role: Optional[str] = Query(None, pattern="^(grihasta|acharya|admin)$"),
-    status_filter: Optional[str] = Query(None, pattern="^(active|pending|suspended|deleted)$"),
+    role: Optional[str] = Query(None),
+    status_filter: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=1000),
     current_user: Dict[str, Any] = Depends(get_current_admin),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
@@ -542,16 +696,21 @@ async def search_users(
         # Build query
         query = {}
         if email:
-            query["email"] = {"$regex": email, "$options": "i"}
-        if role:
-            query["role"] = role
-        if status_filter:
-            query["status"] = status_filter
+            query["email"] = {MONGO_REGEX: email, MONGO_OPTIONS: REGEX_CASE_INSENSITIVE}
+        if role and role.lower() != "all":
+            query["role"] = {MONGO_REGEX: f"^{role}$", MONGO_OPTIONS: REGEX_CASE_INSENSITIVE}
+        if status_filter and status_filter.lower() != "all":
+            query["status"] = {MONGO_REGEX: f"^{status_filter}$", MONGO_OPTIONS: REGEX_CASE_INSENSITIVE}
         
         # Get users
         users = await db.users.find(query).sort("created_at", -1).skip(
             (page - 1) * limit
         ).limit(limit).to_list(length=limit)
+
+        # Convert ObjectId to string for serialization
+        for user in users:
+            if "_id" in user:
+                user["_id"] = str(user["_id"])
         
         # Get total count
         total_count = await db.users.count_documents(query)
@@ -594,8 +753,17 @@ async def suspend_user(
     try:
         admin_id = current_user["id"]
         
+        # Convert string ID to ObjectId
+        try:
+            user_oid = ObjectId(user_id)
+        except Exception:
+            raise InvalidInputError(
+                message="Invalid user ID format",
+                field="user_id"
+            )
+        
         # Get user
-        user = await db.users.find_one({"_id": user_id})
+        user = await db.users.find_one({"_id": user_oid})
         if not user:
             raise ResourceNotFoundError(
                 resource_type="User",
@@ -611,7 +779,7 @@ async def suspend_user(
         
         # Update status
         await db.users.update_one(
-            {"_id": user_id},
+            {"_id": user_oid},
             {
                 "$set": {
                     "status": UserStatus.SUSPENDED.value,
@@ -630,7 +798,7 @@ async def suspend_user(
             notification_type="account_status",
             data={"action": "suspended"}
         )
-        await db.notifications.insert_one(notification.model_dump(by_alias=True))
+        await db.notifications.insert_one(notification.model_dump(by_alias=True, exclude_none=True))
         
         logger.info(f"User {user_id} suspended by admin {admin_id}")
         
@@ -663,8 +831,17 @@ async def activate_user(
 ):
     """Reactivate user account"""
     try:
+        # Convert string ID to ObjectId
+        try:
+            user_oid = ObjectId(user_id)
+        except Exception:
+            raise InvalidInputError(
+                message="Invalid user ID format",
+                field="user_id"
+            )
+        
         # Get user
-        user = await db.users.find_one({"_id": user_id})
+        user = await db.users.find_one({"_id": user_oid})
         if not user:
             raise ResourceNotFoundError(
                 resource_type="User",
@@ -673,7 +850,7 @@ async def activate_user(
         
         # Update status
         await db.users.update_one(
-            {"_id": user_id},
+            {"_id": user_oid},
             {
                 "$set": {
                     "status": UserStatus.ACTIVE.value,
@@ -695,7 +872,7 @@ async def activate_user(
             notification_type="account_status",
             data={"action": "activated"}
         )
-        await db.notifications.insert_one(notification.model_dump(by_alias=True))
+        await db.notifications.insert_one(notification.model_dump(by_alias=True, exclude_none=True))
         
         logger.info(f"User {user_id} activated by admin {current_user['id']}")
         
@@ -747,7 +924,7 @@ async def broadcast_notification(
                 body=notification_data.body,
                 notification_type="broadcast",
                 data=notification_data.data or {}
-            ).model_dump(by_alias=True)
+            ).model_dump(by_alias=True, exclude_none=True)
             for user_id in user_ids
         ]
         
@@ -781,7 +958,7 @@ async def broadcast_notification(
                 batch_size = 500
                 for i in range(0, len(fcm_tokens), batch_size):
                     batch_tokens = fcm_tokens[i:i+batch_size]
-                    await notification_service.send_multicast(
+                    notification_service.send_multicast(
                         tokens=batch_tokens,
                         title=notification_data.title,
                         body=notification_data.body,
@@ -828,8 +1005,6 @@ async def get_notification_history(
         
         for n in notifications:
             n["_id"] = str(n["_id"])
-        
-        total = await db.notification_history.count_documents({})
         
         return StandardResponse(
             success=True,
@@ -948,7 +1123,7 @@ async def get_audit_logs(
         # Build query
         query = {}
         if action:
-            query["action"] = {"$regex": action, "$options": "i"}
+            query["action"] = {MONGO_REGEX: action, MONGO_OPTIONS: REGEX_CASE_INSENSITIVE}
         if user_id:
             query["user_id"] = user_id
         
@@ -977,11 +1152,11 @@ async def get_audit_logs(
         stats = {
             "totalToday": await db.audit_logs.count_documents({"timestamp": {"$gte": today_start}}),
             "authEvents": await db.audit_logs.count_documents({
-                "action": {"$regex": "auth", "$options": "i"},
+                "action": {MONGO_REGEX: "auth", MONGO_OPTIONS: REGEX_CASE_INSENSITIVE},
                 "timestamp": {"$gte": today_start}
             }),
             "adminActions": await db.audit_logs.count_documents({
-                "action": {"$regex": "admin", "$options": "i"},
+                "action": {MONGO_REGEX: "admin", MONGO_OPTIONS: REGEX_CASE_INSENSITIVE},
                 "timestamp": {"$gte": today_start}
             }),
             "failedEvents": await db.audit_logs.count_documents({

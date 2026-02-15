@@ -92,6 +92,13 @@ async def google_login(
         # Verify Google token
         google_info = verify_google_token(auth_request.id_token)
         
+        # Prevent admin role self-assignment via OAuth
+        if auth_request.role == UserRole.ADMIN:
+            raise InvalidInputError(
+                message="Admin role cannot be self-assigned",
+                field="role"
+            )
+        
         if not google_info['email_verified']:
             raise AuthenticationError(
                 message="Email not verified with Google",
@@ -102,16 +109,19 @@ async def google_login(
         user_doc = await db.users.find_one({"email": google_info['email']})
         
         if user_doc:
-            # Existing user - update last login
+            # Existing user - update last login and profile info
+            update_fields = {
+                "google_id": google_info['google_id'],
+                "profile_picture": google_info.get('picture'),
+                "last_login": datetime.now(timezone.utc)
+            }
+            # Store name if not already set
+            if google_info.get('name') and not user_doc.get('name'):
+                update_fields["name"] = google_info['name']
+            
             await db.users.update_one(
                 {"email": google_info['email']},
-                {
-                    "$set": {
-                        "google_id": google_info['google_id'],
-                        "profile_picture": google_info.get('picture'),
-                        "last_login": datetime.now(timezone.utc)
-                    }
-                }
+                {"$set": update_fields}
             )
             user = User(**user_doc)
             is_new_user = False
@@ -217,6 +227,7 @@ async def register(
         user = User(
             email=request.email,
             password_hash=security_manager.get_password_hash(request.password),
+            name=request.name,
             role=request.role,
             status=UserStatus.PENDING,  # Always PENDING for new users until onboarding
             credits=100  # Welcome bonus
@@ -375,9 +386,12 @@ async def refresh_token(
     try:
         # Verify refresh token
         payload = security_manager.verify_token(
-            refresh_request.refresh_token,
-            token_type="refresh"
+            refresh_request.refresh_token
         )
+        
+        # Validate token type
+        if payload.get("type") != "refresh":
+            raise AuthenticationError(message="Invalid token type. Expected refresh token.")
         
         user_id = payload.get("sub")
         if not user_id:

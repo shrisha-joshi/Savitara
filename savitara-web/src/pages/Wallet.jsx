@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useAuth } from '../../context/AuthContext'
-import api from '../../services/api'
-import MobileNavigation from '../../components/navigation/MobileNavigation'
+import api from '../services/api'
+import MobileNavigation from '../components/navigation/MobileNavigation'
 import './Wallet.css'
 
 const Wallet = () => {
@@ -174,27 +173,30 @@ const Wallet = () => {
 
       {/* Add Money Modal */}
       {showAddMoneyModal && (
-        <div 
-          className="modal-overlay" 
-          onClick={() => setShowAddMoneyModal(false)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === 'Escape' && setShowAddMoneyModal(false)}
+        <div
+          className="modal-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+              setShowAddMoneyModal(false)
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShowAddMoneyModal(false)
+          }}
+          tabIndex={-1}
         >
-          <div 
-            className="modal-content" 
-            onClick={e => e.stopPropagation()}
-            role="document"
-          >
+          <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="wallet-modal-title">
             <div className="modal-header">
-              <h3>Add Money to Wallet</h3>
+              <h3 id="wallet-modal-title">Add Money to Wallet</h3>
               <button className="close-btn" onClick={() => setShowAddMoneyModal(false)}>×</button>
             </div>
             
             <form onSubmit={handleAddMoney} className="add-money-form">
               <div className="form-group">
-                <label>Enter Amount (₹)</label>
+                <label htmlFor="wallet-amount">Enter Amount (₹)</label>
                 <input
+                  id="wallet-amount"
                   type="number"
                   min="100"
                   step="1"

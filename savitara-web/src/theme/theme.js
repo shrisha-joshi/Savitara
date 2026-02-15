@@ -207,7 +207,7 @@ export const muiTheme = {
     body2: { fontSize: typography.fontSize.sm },
   },
   shape: {
-    borderRadius: parseInt(borderRadius.lg),
+    borderRadius: Number.parseInt(borderRadius.lg),
   },
   components: {
     MuiButton: {

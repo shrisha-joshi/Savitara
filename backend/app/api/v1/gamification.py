@@ -11,7 +11,7 @@ from app.core.constants import (
     MONGO_GROUP, MONGO_COND, MONGO_STATUS, ERROR_ADMIN_REQUIRED
 )
 from app.services.gamification_service import GamificationService
-from app.db.connection import get_database
+from app.db.connection import get_db
 from app.models.gamification import ActionType, RewardType, Coupon
 from pydantic import BaseModel, Field
 
@@ -94,7 +94,7 @@ class CreateCouponRequest(BaseModel):
 async def award_coins_endpoint(
     request: AwardCoinsRequest,
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Award coins to current user (internal use by other services)"""
     # Restrict to admin or system roles
@@ -117,7 +117,7 @@ async def award_coins_endpoint(
 async def redeem_coins_endpoint(
     request: RedeemCoinsRequest,
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Redeem coins for booking discount"""
     service = GamificationService(db)
@@ -137,7 +137,7 @@ async def redeem_coins_endpoint(
 @router.get("/coins/balance")
 async def get_coins_balance(
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Get user's coin balance and transactions"""
     service = GamificationService(db)
@@ -149,7 +149,7 @@ async def get_coins_balance(
 async def get_coin_transactions(
     limit: int = Query(50, le=100),
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Get coin transaction history"""
     transactions = await db.coin_transactions.find(
@@ -165,7 +165,7 @@ async def get_coin_transactions(
 async def award_points_endpoint(
     request: AwardPointsRequest,
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Award points to user"""
     target_user_id = request.target_user_id or str(current_user["_id"])
@@ -192,7 +192,7 @@ async def award_points_endpoint(
 @router.get("/loyalty/status")
 async def get_loyalty_status(
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Get user's loyalty tier and benefits"""
     service = GamificationService(db)
@@ -276,7 +276,7 @@ async def get_loyalty_tiers(current_user: dict = Depends(get_current_user)):
 @router.get("/vouchers/my")
 async def get_my_vouchers(
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Get all active vouchers for current user"""
     service = GamificationService(db)
@@ -289,7 +289,7 @@ async def claim_voucher(
     voucher_code: str,
     earned_via: str = Query("manual_claim"),
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Claim a voucher by code"""
     service = GamificationService(db)
@@ -311,7 +311,7 @@ async def claim_voucher(
 async def validate_coupon(
     request: ValidateCouponRequest,
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Validate a coupon code"""
     service = GamificationService(db)
@@ -331,7 +331,7 @@ async def validate_coupon(
 @router.get("/coupons/available")
 async def get_available_coupons(
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Get all available coupons for current user"""
     # Get active coupons
@@ -389,7 +389,7 @@ async def get_available_coupons(
 async def calculate_price(
     request: CalculatePriceRequest,
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Calculate final price with all discounts (Amazon-style display)"""
     service = GamificationService(db)
@@ -409,7 +409,7 @@ async def calculate_price(
 @router.get("/referral/my-code")
 async def get_my_referral_code(
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Get or generate user's referral code"""
     service = GamificationService(db)
@@ -473,7 +473,7 @@ async def get_my_referral_code(
 async def create_referral(
     request: CreateReferralRequest,
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Create a referral (called when someone uses referral code)"""
     service = GamificationService(db)
@@ -492,7 +492,7 @@ async def create_referral(
 @router.get("/referral/leaderboard")
 async def get_referral_leaderboard(
     month: Optional[str] = Query(None, description="Month in YYYY-MM format"),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Get referral leaderboard for a month"""
     if not month:
@@ -511,7 +511,7 @@ async def get_referral_leaderboard(
 @router.get("/milestones/my")
 async def get_my_milestones(
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Get user's achieved milestones"""
     milestones = await db.milestones.find(
@@ -552,7 +552,7 @@ async def get_available_milestones(current_user: dict = Depends(get_current_user
 @router.get("/stats/overview")
 async def get_gamification_overview(
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Get complete gamification overview for user"""
     service = GamificationService(db)
@@ -597,7 +597,7 @@ async def get_gamification_overview(
 async def create_voucher_admin(
     voucher_data: CreateVoucherRequest,
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Admin: Create a new voucher"""
     if current_user.get("role") != "admin":
@@ -618,7 +618,7 @@ async def create_voucher_admin(
 async def create_coupon_admin(
     coupon_data: CreateCouponRequest,
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Admin: Create a new coupon"""
     if current_user.get("role") != "admin":
@@ -644,7 +644,7 @@ async def create_coupon_admin(
 @router.get("/admin/analytics")
 async def get_gamification_analytics(
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_db)
 ):
     """Admin: Get gamification analytics"""
     if current_user["role"] != "admin":

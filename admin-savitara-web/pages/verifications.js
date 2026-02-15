@@ -28,7 +28,6 @@ import {
   Cancel as CancelIcon,
   Person as PersonIcon,
   LocationOn as LocationOnIcon,
-  Language as LanguageIcon,
   Star as StarIcon,
   Phone as PhoneIcon,
   Email as EmailIcon,
@@ -112,11 +111,13 @@ function Verifications() {
           </Typography>
         </Box>
 
-        {loading ? (
+        {loading && (
           <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
             <CircularProgress />
           </Box>
-        ) : pendingVerifications.length === 0 ? (
+        )}
+        
+        {!loading && pendingVerifications.length === 0 && (
           <Paper sx={{ p: 4, textAlign: 'center' }}>
             <CheckCircleIcon sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
             <Typography variant="h6" gutterBottom>
@@ -126,7 +127,9 @@ function Verifications() {
               No pending Acharya verifications at the moment
             </Typography>
           </Paper>
-        ) : (
+        )}
+        
+        {!loading && pendingVerifications.length > 0 && (
           <Grid container spacing={3}>
             {pendingVerifications.map((acharya) => (
               <Grid item xs={12} md={6} key={acharya._id}>
@@ -145,7 +148,7 @@ function Verifications() {
                         <PersonIcon />
                       </Avatar>
                       <Box>
-                        <Typography variant="h6">{acharya.full_name}</Typography>
+                        <Typography variant="h6">{acharya.profile?.name || 'N/A'}</Typography>
                         <Chip label="PENDING" size="small" color="warning" />
                       </Box>
                     </Box>
@@ -155,16 +158,16 @@ function Verifications() {
                     <Stack spacing={1.5}>
                       <Box display="flex" alignItems="center">
                         <EmailIcon sx={{ mr: 1, fontSize: 20, color: 'text.secondary' }} />
-                        <Typography variant="body2">{acharya.email}</Typography>
+                        <Typography variant="body2">{acharya.email || 'N/A'}</Typography>
                       </Box>
                       <Box display="flex" alignItems="center">
                         <PhoneIcon sx={{ mr: 1, fontSize: 20, color: 'text.secondary' }} />
-                        <Typography variant="body2">{acharya.phone_number || 'N/A'}</Typography>
+                        <Typography variant="body2">{acharya.profile?.phone || 'N/A'}</Typography>
                       </Box>
                       <Box display="flex" alignItems="center">
                         <LocationOnIcon sx={{ mr: 1, fontSize: 20, color: 'text.secondary' }} />
                         <Typography variant="body2">
-                          {acharya.profile?.location?.city}, {acharya.profile?.location?.state}
+                          {acharya.profile?.location?.city || 'N/A'}, {acharya.profile?.location?.state || 'N/A'}
                         </Typography>
                       </Box>
                       <Box display="flex" alignItems="center">
@@ -177,12 +180,43 @@ function Verifications() {
 
                     <Box mt={2}>
                       <Typography variant="body2" fontWeight="bold" gutterBottom>
+                        Parampara:
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {acharya.profile?.parampara || 'N/A'}
+                      </Typography>
+                    </Box>
+
+                    <Box mt={2}>
+                      <Typography variant="body2" fontWeight="bold" gutterBottom>
+                        Gotra:
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {acharya.profile?.gotra || 'N/A'}
+                      </Typography>
+                    </Box>
+
+                    <Box mt={2}>
+                      <Typography variant="body2" fontWeight="bold" gutterBottom>
+                        Study Place:
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {acharya.profile?.study_place || 'N/A'}
+                      </Typography>
+                    </Box>
+
+                    <Box mt={2}>
+                      <Typography variant="body2" fontWeight="bold" gutterBottom>
                         Specializations:
                       </Typography>
                       <Box display="flex" flexWrap="wrap" gap={0.5}>
-                        {acharya.profile?.specializations?.slice(0, 5).map((spec, idx) => (
-                          <Chip key={idx} label={spec} size="small" color="primary" variant="outlined" />
-                        ))}
+                        {acharya.profile?.specializations && acharya.profile.specializations.length > 0 ? (
+                          acharya.profile.specializations.slice(0, 5).map((spec) => (
+                            <Chip key={`spec-${acharya._id}-${spec}`} label={spec} size="small" color="primary" variant="outlined" />
+                          ))
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">N/A</Typography>
+                        )}
                       </Box>
                     </Box>
 
@@ -191,11 +225,60 @@ function Verifications() {
                         Languages:
                       </Typography>
                       <Box display="flex" flexWrap="wrap" gap={0.5}>
-                        {acharya.profile?.languages?.slice(0, 5).map((lang, idx) => (
-                          <Chip key={idx} label={lang} size="small" />
-                        ))}
+                        {acharya.profile?.languages && acharya.profile.languages.length > 0 ? (
+                          acharya.profile.languages.slice(0, 5).map((lang) => (
+                            <Chip key={`lang-${acharya._id}-${lang}`} label={lang} size="small" />
+                          ))
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">N/A</Typography>
+                        )}
                       </Box>
                     </Box>
+
+                    {acharya.profile?.referred_by && (
+                      <Box mt={2}>
+                        <Typography variant="body2" fontWeight="bold" gutterBottom>
+                          Referred By:
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {acharya.profile.referred_by}
+                        </Typography>
+                      </Box>
+                    )}
+
+                    {acharya.profile?.referral_code && (
+                      <Box mt={2}>
+                        <Typography variant="body2" fontWeight="bold" gutterBottom>
+                          Referral Code:
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {acharya.profile.referral_code}
+                        </Typography>
+                      </Box>
+                    )}
+
+                    {acharya.profile?.verification_documents && acharya.profile.verification_documents.length > 0 && (
+                      <Box mt={2}>
+                        <Typography variant="body2" fontWeight="bold" gutterBottom>
+                          Uploaded Documents:
+                        </Typography>
+                        <Stack spacing={0.5}>
+                          {acharya.profile.verification_documents.map((doc, idx) => (
+                            <Button
+                              key={`doc-${acharya._id}-${idx}-${doc.substring(doc.length - 10)}`}
+                              size="small"
+                              variant="outlined"
+                              href={doc}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              sx={{ justifyContent: 'flex-start' }}
+                            >
+                              📄 Document {idx + 1}
+                            </Button>
+                          ))}
+                        </Stack>
+                      </Box>
+                    )}
 
                     {acharya.profile?.bio && (
                       <Box mt={2}>

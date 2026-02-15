@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import {
   Container,
   Paper,
@@ -13,7 +13,12 @@ import {
   Step,
   StepLabel,
   CircularProgress,
-  Alert
+  Alert,
+  FormControl,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio
 } from '@mui/material';
 import { DatePicker, TimePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -27,9 +32,24 @@ const steps = ['Service Details', 'Schedule', 'Confirm'];
 
 export default function CreateBooking() {
   const { acharyaId } = useParams();
+
+  if (!acharyaId || acharyaId === 'undefined') {
+    return (
+      <Box sx={{ p: 4, textAlign: 'center' }}>
+        <Typography variant="h6" color="error">
+          Error: Invalid acharya selected. Please go back and select again.
+        </Typography>
+        <Button variant="contained" component={Link} to="/acharyas" sx={{ mt: 2 }}>
+          Back to List
+        </Button>
+      </Box>
+    );
+  }
+
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const preSelectedPoojaId = searchParams.get('poojaId');
+  const mode = searchParams.get('mode') || 'instant';
 
   const [activeStep, setActiveStep] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -43,12 +63,22 @@ export default function CreateBooking() {
 
   // Form State
   const [selectedPooja, setSelectedPooja] = useState('');
+  const [bookingType, setBookingType] = useState('only');
   const [date, setDate] = useState(null);
   const [time, setTime] = useState(null);
   const [notes, setNotes] = useState('');
+  const [requirements, setRequirements] = useState('');
 
   useEffect(() => {
     const fetchDetails = async () => {
+      // Handle invalid ID explicitly to prevent bad API calls
+      if (!acharyaId || acharyaId === 'undefined') {
+        console.warn('CreateBooking: Invalid acharyaId:', acharyaId);
+        setError('Invalid Acharya ID provided.');
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         // We reuse the profile endpoint to get Acharya details and their poojas
@@ -70,7 +100,8 @@ export default function CreateBooking() {
         setLoading(false);
       }
     };
-    if (acharyaId) fetchDetails();
+    
+    fetchDetails();
   }, [acharyaId, preSelectedPoojaId]);
 
   const handleNext = () => {
@@ -96,6 +127,9 @@ export default function CreateBooking() {
       const payload = {
         acharya_id: acharyaId,
         pooja_id: selectedPooja,
+        booking_type: bookingType,
+        booking_mode: mode,
+        requirements: mode === 'request' ? requirements : undefined,
         date: format(date, 'yyyy-MM-dd'),
         time: format(time, 'HH:mm'),
         notes: notes
@@ -109,7 +143,11 @@ export default function CreateBooking() {
         setTimeout(() => {
            // Assuming response contains booking_id or similar
            const bookingId = response.data.data.booking_id || response.data.data.id;
-           navigate(`/booking/${bookingId}/payment`);
+           if (mode === 'request') {
+             navigate('/bookings'); 
+           } else {
+             navigate(`/booking/${bookingId}/payment`);
+           }
         }, 2000);
       }
     } catch (err) {
@@ -150,8 +188,12 @@ export default function CreateBooking() {
             {success ? (
                <Box textAlign="center" py={4}>
                  <FaCheckCircle size={64} color="green" />
-                 <Typography variant="h5" mt={2}>Booking Initiated Successfully!</Typography>
-                 <Typography color="text.secondary">Redirecting to payment...</Typography>
+                 <Typography variant="h5" mt={2}>
+                   {mode === 'request' ? 'Request Sent Successfully!' : 'Booking Initiated Successfully!'}
+                 </Typography>
+                 <Typography color="text.secondary">
+                   {mode === 'request' ? 'Waiting for Acharya approval...' : 'Redirecting to payment...'}
+                 </Typography>
                </Box>
             ) : (
               <>
@@ -182,6 +224,18 @@ export default function CreateBooking() {
                         <Typography variant="body2">{getPoojaDetails().description}</Typography>
                       </Paper>
                     )}
+
+                    <FormControl sx={{ mt: 3 }}>
+                      <FormLabel>Booking Type</FormLabel>
+                      <RadioGroup
+                        row
+                        value={bookingType}
+                        onChange={(e) => setBookingType(e.target.value)}
+                      >
+                        <FormControlLabel value="only" control={<Radio />} label="Pooja Only" />
+                        <FormControlLabel value="with_samagri" control={<Radio />} label="With Samagri (Materials)" />
+                      </RadioGroup>
+                    </FormControl>
                   </Box>
                 )}
 
@@ -219,6 +273,18 @@ export default function CreateBooking() {
                         onChange={(e) => setNotes(e.target.value)}
                         sx={{ mt: 3 }}
                      />
+                     {mode === 'request' && (
+                       <TextField
+                          fullWidth
+                          multiline
+                          rows={3}
+                          label="Additional Requirements / Questions"
+                          placeholder="List any specific samagri or questions you have..."
+                          value={requirements}
+                          onChange={(e) => setRequirements(e.target.value)}
+                          sx={{ mt: 3 }}
+                       />
+                     )}
                   </Box>
                 )}
 
@@ -233,6 +299,9 @@ export default function CreateBooking() {
                         
                         <Grid item xs={6}><Typography color="text.secondary">Service:</Typography></Grid>
                         <Grid item xs={6}><Typography fontWeight="bold">{getPoojaDetails()?.name}</Typography></Grid>
+                        
+                        <Grid item xs={6}><Typography color="text.secondary">Type:</Typography></Grid>
+                        <Grid item xs={6}><Typography fontWeight="bold">{bookingType === 'with_samagri' ? 'With Samagri' : 'Pooja Only'}</Typography></Grid>
                         
                         <Grid item xs={6}><Typography color="text.secondary">Date:</Typography></Grid>
                         <Grid item xs={6}><Typography fontWeight="bold">{date && format(date, 'PPP')}</Typography></Grid>
@@ -266,7 +335,11 @@ export default function CreateBooking() {
                       disabled={submitting}
                       startIcon={submitting && <CircularProgress size={20} color="inherit" />}
                     >
-                      {submitting ? 'Processing...' : 'Confirm & Pay'}
+                      {(() => {
+                        if (submitting) return 'Processing...';
+                        if (mode === 'request') return 'Submit Request';
+                        return 'Confirm & Pay';
+                      })()}
                     </Button>
                   ) : (
                     <Button variant="contained" onClick={handleNext}>

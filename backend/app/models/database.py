@@ -56,16 +56,19 @@ class UserStatus(str, Enum):
     ACTIVE = "active"
     VERIFIED = "verified"
     SUSPENDED = "suspended"
+    DELETED = "deleted"
 
 
 class BookingStatus(str, Enum):
     """Booking status enumeration"""
+    PENDING_PAYMENT = "pending_payment"
     REQUESTED = "requested"
     CONFIRMED = "confirmed"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
     REJECTED = "rejected"
+    FAILED = "failed"
 
 
 class PaymentStatus(str, Enum):
@@ -208,19 +211,24 @@ class Booking(BaseModel):
     acharya_id: PyObjectId
     pooja_id: PyObjectId
     booking_type: str  # "only" or "with_samagri"
+    booking_mode: str = "instant"  # "instant" or "request"
+    requirements: Optional[str] = None  # User requirements for "request" mode
     date_time: datetime
-    duration_minutes: int
+    end_time: Optional[datetime] = None
     location: Optional[Location] = None
-    status: BookingStatus = BookingStatus.REQUESTED
+    status: BookingStatus = BookingStatus.PENDING_PAYMENT
     payment_status: PaymentStatus = PaymentStatus.PENDING
-    base_amount: float
-    samagri_amount: Optional[float] = 0
-    discount_amount: Optional[float] = 0
-    total_amount: float
+    base_price: float = 0
+    samagri_price: Optional[float] = 0
+    platform_fee: Optional[float] = 0
+    discount: Optional[float] = 0
+    total_amount: float = 0
     coupon_code: Optional[str] = None
     razorpay_order_id: Optional[str] = None
     razorpay_payment_id: Optional[str] = None
     start_otp: Optional[str] = None  # OTP for starting the event
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     attendance: Optional[AttendanceConfirmation] = None
     notes: Optional[str] = None
     created_at: datetime = Field(default_factory=utcnow)

@@ -20,6 +20,47 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [backdropMessage, setBackdropMessage] = useState('')
+  const [errors, setErrors] = useState({})
+
+  // Form Validation Logic
+  const validateForm = () => {
+    let tempErrors = {}
+    let isValid = true
+
+    // Email Validation
+    if (!email) {
+      tempErrors.email = 'Email is required'
+      isValid = false
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      tempErrors.email = 'Please enter a valid email address'
+      isValid = false
+    }
+
+    // Password Validation
+    if (!password) {
+      tempErrors.password = 'Password is required'
+      isValid = false
+    } else if (mode === 'register') {
+      if (password.length < 8) {
+        tempErrors.password = 'Password must be at least 8 characters'
+        isValid = false
+      }
+      // Optional: Add regex for special chars if backend requires it
+      // else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#\$%\^&\*])/.test(password)) {
+      //   tempErrors.password = 'Password must include uppercase, lowercase, number, and special char'
+      //   isValid = false
+      // }
+    }
+
+    // Name Validation (Register mode only)
+    if (mode === 'register' && !name.trim()) {
+      tempErrors.name = 'Full Name is required'
+      isValid = false
+    }
+
+    setErrors(tempErrors)
+    return isValid
+  }
 
   // Handle Firebase Google Sign-In
   const handleGoogleSignIn = async () => {
@@ -42,6 +83,15 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    
+    // Clear previous errors
+    setErrors({})
+    
+    // Validate form before submitting
+    if (!validateForm()) {
+      return
+    }
+
     setLoading(true)
     try {
       if (mode === 'login') {
@@ -148,9 +198,14 @@ export default function Login() {
                     fullWidth
                     label="Full Name"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => {
+                      setName(e.target.value)
+                      if (errors.name) setErrors({...errors, name: ''})
+                    }}
                     margin="normal"
                     required
+                    error={!!errors.name}
+                    helperText={errors.name}
                   />
                   <ToggleButtonGroup
                     value={role}
@@ -169,18 +224,28 @@ export default function Login() {
                 label="Email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value)
+                  if (errors.email) setErrors({...errors, email: ''})
+                }}
                 margin="normal"
                 required
+                error={!!errors.email}
+                helperText={errors.email}
               />
               <TextField
                 fullWidth
                 label="Password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  if (errors.password) setErrors({...errors, password: ''})
+                }}
                 margin="normal"
                 required
+                error={!!errors.password}
+                helperText={errors.password || (mode === 'register' ? 'Min. 8 characters' : '')}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">

@@ -3,8 +3,7 @@ import { getMessaging, getToken, onMessage } from 'firebase/messaging'
 import { 
   getAuth, 
   GoogleAuthProvider, 
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithPopup,
   signOut,
   onAuthStateChanged 
 } from 'firebase/auth'
@@ -37,40 +36,35 @@ export const googleProvider = new GoogleAuthProvider()
 googleProvider.addScope('email')
 googleProvider.addScope('profile')
 
-// Check for redirect result on page load (for redirect flow)
+// Check for redirect result - No-op for Popup flow
 export const checkRedirectResult = async () => {
-  try {
-    console.log('🔍 Checking for redirect result...')
-    const result = await getRedirectResult(auth)
-    if (result) {
-      console.log('✅ Got redirect result, user:', result.user.email)
-      const idToken = await result.user.getIdToken()
-      return {
-        user: {
-          uid: result.user.uid,
-          email: result.user.email,
-          displayName: result.user.displayName,
-          photoURL: result.user.photoURL,
-        },
-        idToken
-      }
-    }
-    console.log('📭 No redirect result found')
-    return null
-  } catch (error) {
-    console.error('❌ Redirect result error:', error)
-    throw error
-  }
+  return null
 }
 
-// Sign in with Google using redirect (more reliable than popup)
+// Sign in with Google using Popup (Simpler and more reliable than redirect)
 export const signInWithGoogle = async () => {
   try {
-    console.log('🔄 Starting Google Sign-In with redirect...')
-    // Use redirect flow - this will navigate away from the page
-    await signInWithRedirect(auth, googleProvider)
-    // This line won't be reached - page will redirect to Google
-    return null
+    console.log('🔄 Starting Google Sign-In with popup...')
+    const result = await signInWithPopup(auth, googleProvider)
+    
+    // Get the Google ID Token (required for backend verification)
+    // The backend uses google.oauth2.verify_oauth2_token which expects a Google OIDC token
+    const credential = GoogleAuthProvider.credentialFromResult(result)
+    const googleIdToken = credential?.idToken
+    
+    if (!googleIdToken) {
+       console.warn("No Google ID Token found in credential, falling back to Firebase ID Token (Backend might reject this if not configured for Firebase verification)")
+    }
+
+    return {
+      user: {
+        uid: result.user.uid,
+        email: result.user.email,
+        displayName: result.user.displayName,
+        photoURL: result.user.photoURL,
+      },
+      idToken: googleIdToken || await result.user.getIdToken()
+    }
   } catch (error) {
     console.error('❌ Google sign-in error:', error)
     console.error('Error code:', error.code)
@@ -80,6 +74,12 @@ export const signInWithGoogle = async () => {
     let errorMessage
     
     switch (error.code) {
+      case 'auth/popup-closed-by-user':
+        errorMessage = 'Sign-in cancelled by user.'
+        break
+      case 'auth/popup-blocked':
+        errorMessage = 'Sign-in popup blocked. Please allow popups for this site.'
+        break
       case 'auth/operation-not-allowed':
         errorMessage = 'Google Sign-In is not enabled. Please contact support.'
         break

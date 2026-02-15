@@ -15,6 +15,7 @@ import sys
 import time
 
 from app.core.config import settings
+from app.core.security import SecurityManager
 from app.core.exceptions import SavitaraException, create_http_exception
 from app.db.connection import DatabaseManager
 from app.middleware.rate_limit import rate_limiter, handle_rate_limit_exceeded
@@ -50,6 +51,47 @@ if settings.is_production:
 
 logger = logging.getLogger(__name__)
 
+# API Documentation paths - SonarQube: S1192
+API_DOCS_PATH = "/api/docs"
+API_REDOC_PATH = "/api/redoc"
+DOCS_PATH = "/docs"
+
+
+async def _connect_database():
+    """Connect to MongoDB with error handling"""
+    try:
+        await DatabaseManager.connect_to_database()
+    except Exception as e:
+        logger.error(f"MongoDB connection failed: {e}")
+        logger.warning("Application starting without MongoDB - some features may not work")
+
+
+async def _connect_redis_services():
+    """Connect Redis for rate limiting, caching, and WebSocket"""
+    try:
+        await rate_limiter.connect_redis()
+    except Exception as e:
+        logger.warning(f"Redis rate limiter connection failed: {e}")
+    
+    try:
+        await cache.connect()
+    except Exception as e:
+        logger.warning(f"Redis cache connection failed: {e}")
+    
+    try:
+        await manager.connect_redis()
+    except Exception as e:
+        logger.warning(f"WebSocket Redis connection failed: {e}")
+
+
+async def _initialize_search():
+    """Initialize Elasticsearch search service"""
+    try:
+        await search_service.create_index()
+        logger.info("Search service initialized")
+    except Exception as e:
+        logger.warning(f"Search service initialization failed: {e}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -61,37 +103,10 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Savitara application...")
     
     try:
-        # Connect to MongoDB (non-blocking - app will start even if it fails)
-        try:
-            await DatabaseManager.connect_to_database()
-        except Exception as e:
-            logger.error(f"MongoDB connection failed: {e}")
-            logger.warning("Application starting without MongoDB - some features may not work")
-        
-        # Connect rate limiter Redis (non-blocking)
-        try:
-            await rate_limiter.connect_redis()
-        except Exception as e:
-            logger.warning(f"Redis rate limiter connection failed: {e}")
-        
-        # Connect cache Redis (non-blocking)
-        try:
-            await cache.connect()
-        except Exception as e:
-            logger.warning(f"Redis cache connection failed: {e}")
-        
-        # Connect WebSocket Redis (Pub/Sub)
-        try:
-            await manager.connect_redis()
-        except Exception as e:
-            logger.warning(f"WebSocket Redis connection failed: {e}")
-
-        # Initialize search service (Elasticsearch)
-        try:
-            await search_service.create_index()
-            logger.info("Search service initialized")
-        except Exception as e:
-            logger.warning(f"Search service initialization failed: {e}")
+        await _connect_database()
+        await _connect_redis_services()
+        await _initialize_search()
+        app.search_service = search_service
         
         # Create database indexes for performance (non-blocking)
         try:
@@ -158,8 +173,8 @@ app = FastAPI(
     title=settings.APP_NAME,
     description="Spiritual platform connecting Grihastas with Acharyas",
     version=settings.API_VERSION,
-    docs_url="/api/docs" if settings.DEBUG else None,
-    redoc_url="/api/redoc" if settings.DEBUG else None,
+    docs_url=API_DOCS_PATH if settings.DEBUG else None,
+    redoc_url=API_REDOC_PATH if settings.DEBUG else None,
     lifespan=lifespan
 )
 
@@ -406,7 +421,7 @@ async def root():
         "message": "Savitara API is running",
         "status": "ok",
         "version": settings.API_VERSION,
-        "docs": f"/api/docs" if settings.DEBUG else "/docs"
+        "docs": API_DOCS_PATH if settings.DEBUG else DOCS_PATH
     }
 
 
@@ -417,7 +432,7 @@ async def api_info():
     return {
         "message": "Welcome to Savitara API",
         "version": settings.API_VERSION,
-        "docs": "/api/docs" if settings.DEBUG else None
+        "docs": API_DOCS_PATH if settings.DEBUG else None
     }
 
 
@@ -448,14 +463,47 @@ app.include_router(gamification.router, prefix=API_V1_PREFIX, tags=["Gamificatio
 
 # WebSocket endpoint for real-time communication
 @app.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str):
+async def websocket_endpoint(websocket: WebSocket, user_id: str, token: str = None):
     """
     WebSocket endpoint for real-time features:
     - Chat messages
     - Booking updates
     - Notifications
     - Online status
+    
+    Requires 'token' query parameter for authentication.
     """
+    # Verify token before connecting
+    try:
+        if not token:
+            logger.warning(f"WebSocket connection attempt without token for user {user_id}")
+            await websocket.close(code=1008, reason="Token required")
+            return
+            
+        # Verify JWT token
+        # Note: We catch the HTTPException from verify_token as we need to close the socket gracefully
+        try:
+            payload = SecurityManager.verify_token(token)
+        except HTTPException:
+            logger.warning(f"Invalid token for WebSocket connection user {user_id}")
+            await websocket.close(code=1008, reason="Invalid token")
+            return
+            
+        # Verify user_id matches token subject
+        token_sub = payload.get("sub")
+        if not token_sub or token_sub != user_id:
+            logger.warning(f"Token user mismatch: token={token_sub}, requested={user_id}")
+            await websocket.close(code=1008, reason="User mismatch")
+            return
+            
+    except Exception as e:
+        logger.error(f"WebSocket auth error: {e}")
+        try:
+            await websocket.close(code=1011, reason="Authentication error")
+        except RuntimeError:
+            pass # Socket might be already closed
+        return
+
     await manager.connect(user_id, websocket)
     
     try:

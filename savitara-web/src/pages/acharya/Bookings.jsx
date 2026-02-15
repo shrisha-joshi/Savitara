@@ -28,7 +28,6 @@ import {
   LocationOn,
   VideoCall,
   Person,
-  Phone,
   CheckCircle,
   Cancel,
   PlayArrow,
@@ -46,6 +45,7 @@ export default function AcharyaBookings() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [actionDialog, setActionDialog] = useState({ open: false, type: null })
+  const [amount, setAmount] = useState('')
 
   useEffect(() => {
     loadBookings()
@@ -92,8 +92,22 @@ export default function AcharyaBookings() {
     try {
       let endpoint = ''
       let successMessage = ''
+      let data = null
 
       switch (action) {
+        case 'accept':
+          endpoint = `/bookings/${selectedBooking._id}/status`
+          successMessage = 'Booking request accepted'
+          data = { 
+            status: 'pending_payment',
+            amount: amount ? Number.parseFloat(amount) : undefined
+          }
+          break
+        case 'reject':
+          endpoint = `/bookings/${selectedBooking._id}/status`
+          successMessage = 'Booking request declined'
+          data = { status: 'rejected' }
+          break
         case 'start':
           endpoint = `/bookings/${selectedBooking._id}/start`
           successMessage = 'Booking started successfully'
@@ -110,7 +124,12 @@ export default function AcharyaBookings() {
           return
       }
 
-      await api.put(endpoint)
+      if (data) {
+        await api.put(endpoint, data)
+      } else {
+        await api.put(endpoint)
+      }
+
       toast.success(successMessage)
       setActionDialog({ open: false, type: null })
       setSelectedBooking(null)
@@ -123,33 +142,44 @@ export default function AcharyaBookings() {
 
   const getStatusColor = (status) => {
     const colors = {
+      requested: 'info',
       pending: 'warning',
       confirmed: 'info',
       in_progress: 'primary',
       completed: 'success',
-      cancelled: 'error'
+      cancelled: 'error',
+      rejected: 'error'
     }
     return colors[status] || 'default'
   }
 
   const getStatusIcon = (status) => {
     const icons = {
+      requested: <Schedule />,
       pending: <Schedule />,
       confirmed: <CheckCircle />,
       in_progress: <PlayArrow />,
       completed: <CheckCircle />,
-      cancelled: <Cancel />
+      cancelled: <Cancel />,
+      rejected: <Cancel />
     }
     return icons[status]
   }
 
   const tabs = [
     { value: 'all', label: 'All', count: bookings.length },
-    { value: 'pending', label: 'Pending', count: bookings.filter(b => b.status === 'pending').length },
+    { value: 'requested', label: 'Requests', count: bookings.filter(b => b.status === 'requested').length },
+    { value: 'pending', label: 'Pending Payment', count: bookings.filter(b => b.status === 'pending_payment' || b.status === 'pending').length },
     { value: 'confirmed', label: 'Confirmed', count: bookings.filter(b => b.status === 'confirmed').length },
     { value: 'in_progress', label: 'In Progress', count: bookings.filter(b => b.status === 'in_progress').length },
     { value: 'completed', label: 'Completed', count: bookings.filter(b => b.status === 'completed').length }
   ]
+
+  const dialogTitle = actionDialog.type === 'accept' ? 'Accept Booking Request?' :
+             actionDialog.type === 'reject' ? 'Decline Booking Request?' :
+             actionDialog.type === 'start' ? 'Start Booking Session?' :
+             actionDialog.type === 'complete' ? 'Complete Booking?' :
+             actionDialog.type === 'cancel' ? 'Cancel Booking?' : ''
 
   return (
     <Layout>
@@ -253,7 +283,8 @@ export default function AcharyaBookings() {
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
             <CircularProgress size={60} />
           </Box>
-        ) : filteredBookings.length === 0 ? (
+        ) : (
+          filteredBookings.length === 0 ? (
           <Card>
             <CardContent>
               <Box sx={{ textAlign: 'center', py: 8 }}>
@@ -262,12 +293,12 @@ export default function AcharyaBookings() {
                   No bookings found
                 </Typography>
                 <Typography variant="body2" color="text.disabled">
-                  {selectedTab !== 'all' ? `No ${selectedTab} bookings` : 'You don\'t have any bookings yet'}
+                  {selectedTab === 'all' ? 'You don\'t have any bookings yet' : `No ${selectedTab} bookings`}
                 </Typography>
               </Box>
             </CardContent>
           </Card>
-        ) : (
+          ) : (
           <Grid container spacing={3}>
             {filteredBookings.map((booking) => (
               <Grid item xs={12} md={6} lg={4} key={booking._id || booking.id}>
@@ -360,6 +391,34 @@ export default function AcharyaBookings() {
 
                     {/* Action Buttons */}
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                      {booking.status === 'requested' && (
+                        <>
+                          <Button
+                            fullWidth
+                            variant="contained"
+                            color="primary"
+                            onClick={() => {
+                              setSelectedBooking(booking)
+                              setAmount(booking.total_amount || '')
+                              setActionDialog({ open: true, type: 'accept' })
+                            }}
+                          >
+                            Accept
+                          </Button>
+                           <Button
+                            fullWidth
+                            variant="outlined"
+                            color="error"
+                            onClick={() => {
+                              setSelectedBooking(booking)
+                              setActionDialog({ open: true, type: 'reject' })
+                            }}
+                          >
+                            Decline
+                          </Button>
+                        </>
+                      )}
+
                       {booking.status === 'confirmed' && (
                         <Button
                           fullWidth
@@ -415,7 +474,7 @@ export default function AcharyaBookings() {
               </Grid>
             ))}
           </Grid>
-        )}
+        ))}
 
         {/* Action Confirmation Dialog */}
         <Dialog
@@ -425,11 +484,29 @@ export default function AcharyaBookings() {
           fullWidth
         >
           <DialogTitle>
-            {actionDialog.type === 'start' && 'Start Booking Session?'}
-            {actionDialog.type === 'complete' && 'Complete Booking?'}
-            {actionDialog.type === 'cancel' && 'Cancel Booking?'}
+            {dialogTitle}
           </DialogTitle>
           <DialogContent>
+            {actionDialog.type === 'accept' && (
+              <Box>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  This will accept the request and notify the Grihasta to proceed with payment.
+                </Alert>
+                <TextField
+                  fullWidth
+                  label="Confirmed Amount (₹)"
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  helperText="You can adjust the final amount here before accepting"
+                />
+              </Box>
+            )}
+            {actionDialog.type === 'reject' && (
+              <Alert severity="warning">
+                This will decline the request. This action cannot be undone.
+              </Alert>
+            )}
             {actionDialog.type === 'start' && (
               <Alert severity="info">
                 This will mark the booking as "In Progress" and notify the Grihasta that the session has started.

@@ -3,7 +3,7 @@ import { Container, Box, Typography, Grid, Card, CardContent, Paper, Avatar, Rat
 import { useNavigate } from 'react-router-dom'
 import { Star, VerifiedUser, Schedule, Payments, FormatQuote, ArrowForward } from '@mui/icons-material'
 import Layout from '../components/Layout'
-import HeroCarousel from '../components/carousel/HeroCarousel'
+import HeroSection from '../components/hero/HeroSection'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import api from '../services/api'
@@ -164,9 +164,9 @@ export default function Home() {
 
   return (
     <Layout>
-      {/* Hero Carousel Section - Full Height excluding header */}
+      {/* Hero Section - Full Height excluding header */}
       <Box sx={{ mt: -4 }}> {/* Negative margin to pull it up behind transparent header if needed, or just adjust height */}
-         <HeroCarousel height="calc(100vh - 64px)" /> 
+         <HeroSection height="calc(100vh - 64px)" /> 
       </Box>
 
       {/* Features Section */}
@@ -358,7 +358,7 @@ export default function Home() {
         </Container>
       </Box>
 
-      {/* Testimonials Section - Auto-sliding Carousel */}
+      {/* Testimonials Section - Auto-sliding Horizontal Scroll */}
       <Box sx={{ py: 12, bgcolor: isDark ? '#000' : '#FFF8F0', overflow: 'hidden' }}>
         <Container maxWidth="lg" sx={{ mb: 6 }}>
           <Box textAlign="center">

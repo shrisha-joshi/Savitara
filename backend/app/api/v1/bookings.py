@@ -60,6 +60,106 @@ def generate_otp(length: int = 6) -> str:
     return ''.join(secrets.choice(string.digits) for _ in range(length))
 
 
+async def _validate_acharya_and_pooja(
+    db: AsyncIOMotorDatabase, acharya_id: str, pooja_id: str
+) -> tuple[dict, dict]:
+    """Validate Acharya and Pooja exist"""
+    # 1. Validate Acharya exists
+    acharya = await db.acharya_profiles.find_one(
+        {"_id": ObjectId(acharya_id)}
+    )
+    if not acharya:
+        raise ResourceNotFoundError(
+            resource_type="Acharya",
+            resource_id=acharya_id
+        )
+    
+    # 2. Validate Pooja exists
+    pooja = await db.poojas.find_one({"_id": ObjectId(pooja_id)})
+    if not pooja:
+        raise ResourceNotFoundError(
+            resource_type="Pooja",
+            resource_id=pooja_id
+        )
+    return acharya, pooja
+
+
+async def _check_slot_availability(
+    db: AsyncIOMotorDatabase,
+    acharya_id: str,
+    start_time: datetime,
+    end_time: datetime
+):
+    """Check if the requested slot is available"""
+    conflicting_booking = await db.bookings.find_one({
+        "acharya_id": acharya_id,
+        "status": {"$nin": [
+            BookingStatus.CANCELLED.value,
+            BookingStatus.COMPLETED.value,
+            BookingStatus.FAILED.value
+        ]},
+        "$or": [
+            {
+                "date_time": {
+                    "$gte": start_time,
+                    "$lt": end_time
+                }
+            },
+            {
+                "date_time": {"$lt": start_time},
+                "end_time": {"$gt": start_time}
+            }
+        ]
+    })
+    
+    if conflicting_booking:
+        raise SlotUnavailableError(
+            acharya_id=acharya_id,
+            start_time=start_time,
+            end_time=end_time
+        )
+
+
+async def _process_coupon(
+    db: AsyncIOMotorDatabase,
+    coupon_code: str,
+    subtotal: float
+) -> float:
+    """Apply coupon if valid and return discount amount"""
+    if not coupon_code:
+        return 0.0
+        
+    coupon = await db.coupons.find_one({
+        "code": coupon_code,
+        "is_active": True,
+        "valid_from": {"$lte": datetime.now(timezone.utc)},
+        "valid_until": {"$gte": datetime.now(timezone.utc)}
+    })
+    
+    if not coupon:
+        return 0.0
+        
+    # Check usage limit
+    max_uses = coupon.get("max_uses", 0)
+    current_uses = coupon.get("used_count", 0)
+    
+    if max_uses > 0 and current_uses >= max_uses:
+        logger.info(f"Coupon {coupon_code} has reached max usage limit")
+        return 0.0
+        
+    discount = subtotal * (coupon.get("discount_percentage", 0) / 100)
+    
+    # Increment coupon usage count
+    await db.coupons.update_one(
+        {"_id": coupon["_id"]},
+        {"$inc": {"used_count": 1}}
+    )
+    
+    return discount
+
+
+
+
 @router.post(
     "",
     response_model=StandardResponse,
@@ -86,29 +186,16 @@ async def create_booking(
     try:
         grihasta_id = current_user["id"]
         
-        # 1. Validate Acharya exists
-        acharya = await db.acharya_profiles.find_one(
-            {"_id": ObjectId(booking_data.acharya_id)}
+        # 1 & 2. Validate Acharya and Pooja
+        acharya, pooja = await _validate_acharya_and_pooja(
+            db, booking_data.acharya_id, booking_data.pooja_id
         )
-        if not acharya:
-            raise ResourceNotFoundError(
-                resource_type="Acharya",
-                resource_id=booking_data.acharya_id
-            )
         
-        # 2. Validate Pooja exists
-        pooja = await db.poojas.find_one({"_id": ObjectId(booking_data.pooja_id)})
-        if not pooja:
-            raise ResourceNotFoundError(
-                resource_type="Pooja",
-                resource_id=booking_data.pooja_id
-            )
-        
-        # 3. Parse datetime
+        # 3. Parse datetime (assume UTC)
         booking_datetime = datetime.strptime(
             f"{booking_data.date} {booking_data.time}",
             "%Y-%m-%d %H:%M"
-        )
+        ).replace(tzinfo=timezone.utc)
         
         # 4. Check if datetime is in the future
         if booking_datetime <= datetime.now(timezone.utc):
@@ -121,33 +208,9 @@ async def create_booking(
         slot_start = booking_datetime
         slot_end = booking_datetime + timedelta(hours=pooja.get("duration_hours", 2))
         
-        conflicting_booking = await db.bookings.find_one({
-            "acharya_id": booking_data.acharya_id,
-            "status": {"$nin": [
-                BookingStatus.CANCELLED.value,
-                BookingStatus.COMPLETED.value,
-                BookingStatus.FAILED.value
-            ]},
-            "$or": [
-                {
-                    "date_time": {
-                        "$gte": slot_start,
-                        "$lt": slot_end
-                    }
-                },
-                {
-                    "date_time": {"$lt": slot_start},
-                    "end_time": {"$gt": slot_start}
-                }
-            ]
-        })
-        
-        if conflicting_booking:
-            raise SlotUnavailableError(
-                acharya_id=booking_data.acharya_id,
-                start_time=slot_start,
-                end_time=slot_end
-            )
+        await _check_slot_availability(
+            db, booking_data.acharya_id, slot_start, slot_end
+        )
         
         # 6. Calculate pricing
         pricing_result = PricingService.calculate_price(
@@ -164,48 +227,53 @@ async def create_booking(
         
         # Apply coupon if provided
         if booking_data.coupon_code:
-            coupon = await db.coupons.find_one({
-                "code": booking_data.coupon_code,
-                "is_active": True,
-                "valid_from": {"$lte": datetime.now(timezone.utc)},
-                "valid_until": {"$gte": datetime.now(timezone.utc)}
-            })
-            if coupon:
-                discount = subtotal * (coupon.get("discount_percentage", 0) / 100)
-                total_amount -= discount
-        
-        # 7. Create Razorpay order
-        try:
-            from app.services.payment_service import PaymentService
-            payment_service = PaymentService()
-            razorpay_order = payment_service.create_order(
-                amount=total_amount,
-                currency="INR",
-                notes={
-                    "grihasta_id": grihasta_id,
-                    "acharya_id": booking_data.acharya_id,
-                    "pooja_id": booking_data.pooja_id
-                }
+            discount = await _process_coupon(
+                db, booking_data.coupon_code, subtotal
             )
-            razorpay_order_id = razorpay_order.get("id")
-        except Exception as e:
-            logger.warning(f"Razorpay order creation warning: {e}")
-            # In development, use dummy order ID
-            razorpay_order_id = f"order_dev_{secrets.token_hex(8)}"
+            total_amount -= discount
+        
+        # 7. Create Razorpay order (only for instant bookings)
+        razorpay_order_id = None
+        if booking_data.booking_mode == "instant":
+            try:
+                from app.services.payment_service import PaymentService
+                payment_service = PaymentService()
+                razorpay_order = payment_service.create_order(
+                    amount=total_amount,
+                    currency="INR",
+                    notes={
+                        "grihasta_id": grihasta_id,
+                        "acharya_id": booking_data.acharya_id,
+                        "pooja_id": booking_data.pooja_id
+                    }
+                )
+                razorpay_order_id = razorpay_order.get("id")
+            except Exception as e:
+                logger.warning(f"Razorpay order creation warning: {e}")
+                # In development, use dummy order ID
+                razorpay_order_id = f"order_dev_{secrets.token_hex(8)}"
         
         # Extract prices from pricing result
         base_price = pricing_result.get("base_price", pooja.get("price", 0))
         samagri_price = pricing_result.get("samagri_price", 0)
         
+        # Determine initial status
+        initial_status = BookingStatus.PENDING_PAYMENT
+        if booking_data.booking_mode == "request":
+            initial_status = BookingStatus.REQUESTED
+
         # 8. Create booking
         booking = Booking(
             grihasta_id=grihasta_id,
             acharya_id=booking_data.acharya_id,
             pooja_id=booking_data.pooja_id,
             booking_type=booking_data.booking_type,
+            booking_mode=booking_data.booking_mode,
+            requirements=booking_data.requirements,
             date_time=booking_datetime,
+            end_time=slot_end,
             location=booking_data.location,
-            status=BookingStatus.PENDING_PAYMENT,
+            status=initial_status,
             payment_status=PaymentStatus.PENDING,
             base_price=base_price,
             samagri_price=samagri_price,
@@ -222,6 +290,25 @@ async def create_booking(
         
         logger.info(f"Booking created: {booking.id} for Grihasta {grihasta_id}")
         
+        # Send request notification to Acharya
+        if booking_data.booking_mode == "request":
+            try:
+                from app.services.notification_service import NotificationService
+                notification_service = NotificationService()
+                if acharya.get("fcm_token"):
+                    notification_service.send_notification(
+                        token=acharya["fcm_token"],
+                        title="New Booking Request",
+                        body=f"Request from {current_user['full_name']} for {pooja.get('name')}",
+                        data={"type": "booking_request", "booking_id": str(booking.id)}
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to send request notification: {e}")
+
+        response_message = "Booking created. Please complete payment."
+        if booking_data.booking_mode == "request":
+            response_message = "Booking requested. Waiting for Acharya approval."
+
         return StandardResponse(
             success=True,
             data={
@@ -229,9 +316,9 @@ async def create_booking(
                 "razorpay_order_id": razorpay_order_id,
                 "amount": total_amount,
                 "currency": "INR",
-                "status": BookingStatus.PENDING_PAYMENT.value
+                "status": initial_status.value
             },
-            message="Booking created. Please complete payment."
+            message=response_message
         )
         
     except (ResourceNotFoundError, InvalidInputError, SlotUnavailableError):
@@ -275,16 +362,27 @@ async def update_booking_status(
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """Update booking status"""
-    booking = await db.bookings.find_one({"_id": booking_id})
+    booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
     if not booking:
         raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
     
     if current_user["role"] not in [UserRole.ADMIN.value, UserRole.ACHARYA.value]:
          raise PermissionDeniedError(action="Update status")
 
+    update_doc = {
+        "status": status_update.status,
+        "updated_at": datetime.now(timezone.utc)
+    }
+    
+    if status_update.amount is not None:
+        update_doc["total_amount"] = status_update.amount
+        
+    if status_update.notes is not None:
+        update_doc["notes"] = status_update.notes
+
     await db.bookings.update_one(
-        {"_id": booking_id},
-        {"$set": {"status": status_update.status, "updated_at": datetime.now(timezone.utc)}}
+        {"_id": ObjectId(booking_id)},
+        {"$set": update_doc}
     )
     return StandardResponse(success=True, message="Status updated")
 
@@ -301,7 +399,7 @@ async def cancel_booking(
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """Cancel booking"""
-    booking = await db.bookings.find_one({"_id": booking_id})
+    booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
     if not booking:
          raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
     
@@ -309,7 +407,7 @@ async def cancel_booking(
          raise PermissionDeniedError(action="Cancel booking")
          
     await db.bookings.update_one(
-        {"_id": booking_id},
+        {"_id": ObjectId(booking_id)},
         {"$set": {"status": BookingStatus.CANCELLED.value, "updated_at": datetime.now(timezone.utc)}}
     )
     return StandardResponse(success=True, message="Booking cancelled")
@@ -327,12 +425,19 @@ async def generate_attendance_otp(
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """Generate OTP for attendance"""
-    booking = await db.bookings.find_one({"_id": booking_id})
+    booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
     if not booking:
          raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
          
     otp = generate_otp()
-    return StandardResponse(success=True, message="OTP generated")
+    
+    # Store OTP in booking document
+    await db.bookings.update_one(
+        {"_id": ObjectId(booking_id)},
+        {"$set": {"start_otp": otp, "updated_at": datetime.now(timezone.utc)}}
+    )
+    
+    return StandardResponse(success=True, data={"otp": otp}, message="OTP generated")
 
 
 @router.post(
@@ -356,12 +461,12 @@ async def verify_payment(
     """
     try:
         # Get booking
-        booking_doc = await db.bookings.find_one({"_id": booking_id})
+        booking_doc = await db.bookings.find_one({"_id": ObjectId(booking_id)})
         if not booking_doc:
             raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
         
         # Verify ownership
-        if booking_doc["grihasta_id"] != current_user["id"]:
+        if str(booking_doc["grihasta_id"]) != current_user["id"]:
             raise PermissionDeniedError(action="Verify payment")
         
         # Verify Razorpay signature
@@ -387,7 +492,7 @@ async def verify_payment(
         start_otp = generate_otp()
         
         await db.bookings.update_one(
-            {"_id": booking_id},
+            {"_id": ObjectId(booking_id)},
             {
                 "$set": {
                     "status": BookingStatus.CONFIRMED.value,
@@ -407,7 +512,7 @@ async def verify_payment(
             # Notify Grihasta
             grihasta = await db.users.find_one({"_id": ObjectId(booking_doc["grihasta_id"])})
             if grihasta and grihasta.get("fcm_token"):
-                await notification_service.send_notification(
+                notification_service.send_notification(
                     token=grihasta["fcm_token"],
                     title="Booking Confirmed",
                     body=f"Your booking with {booking_doc['acharya_name']} is confirmed. OTP: {start_otp}",
@@ -417,7 +522,7 @@ async def verify_payment(
             # Notify Acharya
             acharya = await db.users.find_one({"_id": ObjectId(booking_doc["acharya_id"])})
             if acharya and acharya.get("fcm_token"):
-                await notification_service.send_notification(
+                notification_service.send_notification(
                     token=acharya["fcm_token"],
                     title="New Booking Confirmed",
                     body=f"Booking from {booking_doc['grihasta_name']} confirmed",
@@ -468,12 +573,12 @@ async def start_booking(
         acharya_id = current_user["id"]
         
         # Get booking
-        booking_doc = await db.bookings.find_one({"_id": booking_id})
+        booking_doc = await db.bookings.find_one({"_id": ObjectId(booking_id)})
         if not booking_doc:
             raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
         
         # Verify Acharya
-        if booking_doc["acharya_id"] != acharya_id:
+        if str(booking_doc["acharya_id"]) != acharya_id:
             raise PermissionDeniedError(action="Start booking")
         
         # Check booking status
@@ -492,7 +597,7 @@ async def start_booking(
         
         # Update to IN_PROGRESS
         await db.bookings.update_one(
-            {"_id": booking_id},
+            {"_id": ObjectId(booking_id)},
             {
                 "$set": {
                     "status": BookingStatus.IN_PROGRESS.value,
@@ -534,7 +639,7 @@ def _update_attendance_for_user(attendance: dict, user_role: str, confirmed: boo
 async def _complete_booking_with_notifications(db, booking_id: str, booking_doc: dict):
     """Complete booking and send notifications to both parties"""
     await db.bookings.update_one(
-        {"_id": booking_id},
+        {"_id": ObjectId(booking_id)},
         {
             "$set": {
                 "status": BookingStatus.COMPLETED.value,
@@ -551,7 +656,7 @@ async def _complete_booking_with_notifications(db, booking_id: str, booking_doc:
         # Notify Grihasta
         grihasta = await db.users.find_one({"_id": ObjectId(booking_doc["grihasta_id"])})
         if grihasta and grihasta.get("fcm_token"):
-            await notification_service.send_notification(
+            notification_service.send_notification(
                 token=grihasta["fcm_token"],
                 title=BOOKING_COMPLETED,
                 body="Your booking has been completed successfully",
@@ -561,7 +666,7 @@ async def _complete_booking_with_notifications(db, booking_id: str, booking_doc:
         # Notify Acharya
         acharya = await db.users.find_one({"_id": ObjectId(booking_doc["acharya_id"])})
         if acharya and acharya.get("fcm_token"):
-            await notification_service.send_notification(
+            notification_service.send_notification(
                 token=acharya["fcm_token"],
                 title=BOOKING_COMPLETED,
                 body="Booking completed. Payment will be transferred.",
@@ -572,8 +677,8 @@ async def _complete_booking_with_notifications(db, booking_id: str, booking_doc:
 
 def _verify_booking_participation(booking_doc: dict, user_id: str, user_role: str) -> None:
     """Verify user is participant in booking"""
-    if ((user_role == UserRole.GRIHASTA.value and booking_doc["grihasta_id"] != user_id) or
-        (user_role == UserRole.ACHARYA.value and booking_doc["acharya_id"] != user_id) or
+    if ((user_role == UserRole.GRIHASTA.value and str(booking_doc["grihasta_id"]) != user_id) or
+        (user_role == UserRole.ACHARYA.value and str(booking_doc["acharya_id"]) != user_id) or
         (user_role not in [UserRole.GRIHASTA.value, UserRole.ACHARYA.value])):
         raise PermissionDeniedError(action=ERROR_CONFIRM_ATTENDANCE)
 
@@ -594,7 +699,7 @@ async def _update_booking_attendance(
         attendance["acharya_confirmed_at"] = datetime.now(timezone.utc)
     
     await db.bookings.update_one(
-        {"_id": booking_id},
+        {"_id": ObjectId(booking_id)},
         {"$set": {"attendance": attendance, "updated_at": datetime.now(timezone.utc)}}
     )
     return attendance
@@ -622,7 +727,7 @@ async def confirm_attendance(
         user_role = current_user["role"]
         
         # Get booking
-        booking_doc = await db.bookings.find_one({"_id": booking_id})
+        booking_doc = await db.bookings.find_one({"_id": ObjectId(booking_id)})
         if not booking_doc:
             raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
         
@@ -768,7 +873,7 @@ async def get_booking_details(
     try:
         # Get booking with aggregation
         pipeline = [
-            {MONGO_MATCH: {"_id": booking_id}},
+            {MONGO_MATCH: {"_id": ObjectId(booking_id)}},
             {
                 MONGO_LOOKUP: {
                     "from": "poojas",
@@ -808,8 +913,8 @@ async def get_booking_details(
         # Verify access
         user_role = current_user["role"]
         user_id = current_user["id"]
-        if ((user_role == UserRole.GRIHASTA.value and booking["grihasta_id"] != user_id) or
-            (user_role == UserRole.ACHARYA.value and booking["acharya_id"] != user_id)):
+        if ((user_role == UserRole.GRIHASTA.value and str(booking["grihasta_id"]) != user_id) or
+            (user_role == UserRole.ACHARYA.value and str(booking["acharya_id"]) != user_id)):
             raise PermissionDeniedError(action=ERROR_VIEW_BOOKING)
         
         return StandardResponse(

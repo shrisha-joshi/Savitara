@@ -14,6 +14,11 @@ from app.core.constants import MONGO_REGEX, MONGO_OPTIONS
 # Error message constants
 NO_FIELDS_TO_UPDATE = "No fields to update"
 
+# MongoDB Constants
+RATINGS_AVERAGE = "ratings.average"
+MATCH_OP = "$match"
+
+
 from app.schemas.requests import (
     GrihastaOnboardingRequest,
     AcharyaOnboardingRequest,
@@ -234,7 +239,7 @@ async def acharya_onboarding(
             admin_users = await db.users.find({"role": UserRole.ADMIN.value}).to_list(None)
             admin_tokens = [u.get("fcm_token") for u in admin_users if u.get("fcm_token")]
             if admin_tokens:
-                await notification_service.send_multicast(
+                notification_service.send_multicast(
                     tokens=admin_tokens,
                     title="New Acharya Verification Request",
                     body="User submitted profile for verification",
@@ -549,25 +554,42 @@ async def _search_with_elasticsearch(
     params: AcharyaSearchParams
 ) -> StandardResponse:
     """Execute Elasticsearch search and return formatted response"""
+    # Prepare location dict if latitude and longitude are provided
+    location = None
+    if params.latitude is not None and params.longitude is not None:
+        location = {
+            "lat": params.latitude,
+            "lon": params.longitude,
+            "distance": "50km"  # Default search radius
+        }
+    
     result = await search_service.search_acharyas(
         query=params.query or "",
         filters=params.get_filter_dict(),
-        latitude=params.latitude,
-        longitude=params.longitude,
+        location=location,
         sort_by=params.sort_by,
         page=params.page,
         limit=params.limit
     )
     
+    # Check if search returned an error (ES connection failure)
+    if result.get("error"):
+        raise ConnectionError(f"Elasticsearch search failed: {result['error']}")
+    
+    # search_service returns 'results' key, not 'hits'
+    acharyas_list = result.get("results", result.get("hits", []))
+    pagination_data = result.get("pagination", {})
+    total = pagination_data.get("total", 0)
+    
     return StandardResponse(
         success=True,
         data={
-            "acharyas": result["hits"],
+            "acharyas": acharyas_list,
             "pagination": {
                 "page": params.page,
                 "limit": params.limit,
-                "total": result["total"],
-                "pages": (result["total"] + params.limit - 1) // params.limit
+                "total": total,
+                "pages": (total + params.limit - 1) // params.limit
             },
             "search_metadata": {
                 "query": params.query,
@@ -580,7 +602,7 @@ async def _search_with_elasticsearch(
 
 def _build_mongodb_query_filter(params: AcharyaSearchParams) -> dict:
     """Build MongoDB query filter from search parameters"""
-    query_filter = {"rating": {"$gte": params.min_rating}}
+    query_filter = {RATINGS_AVERAGE: {"$gte": params.min_rating}}
     
     if params.city:
         query_filter["location.city"] = {MONGO_REGEX: params.city, MONGO_OPTIONS: "i"}
@@ -599,20 +621,38 @@ async def _search_with_mongodb(
     params: AcharyaSearchParams
 ) -> StandardResponse:
     """Execute MongoDB search and return formatted response"""
-    query_filter = _build_mongodb_query_filter(params)
+    # Build query filter without ratings check since MongoDB Atlas may have issues
+    query_filter = {}
+   
+    # Add other filters if provided
+    if params.city:
+        query_filter["location.city"] = {MONGO_REGEX: params.city, MONGO_OPTIONS: "i"}
+    if params.state:
+        query_filter["location.state"] = {MONGO_REGEX: params.state, MONGO_OPTIONS: "i"}
+    if params.specialization:
+        query_filter["specializations"] = {MONGO_REGEX: params.specialization, MONGO_OPTIONS: "i"}
+    if params.language:
+        query_filter["languages"] = {MONGO_REGEX: params.language, MONGO_OPTIONS: "i"}
+    
+    # Apply rating filter after initial match if needed
+    logger.info(f"MongoDB search query_filter: {query_filter}")
     
     pipeline = [
-        {"$match": query_filter},
+        {MATCH_OP: query_filter},
+        # Convert string user_id to ObjectId for lookup
+        {"$addFields": {"user_id_obj": {"$toObjectId": "$user_id"}}},
         {
             "$lookup": {
                 "from": "users",
-                "localField": "user_id",
+                "localField": "user_id_obj",  # Use converted ObjectId
                 "foreignField": "_id",
                 "as": "user"
             }
         },
         {"$unwind": "$user"},
-        {"$match": {"user.status": UserStatus.ACTIVE.value}},
+        {MATCH_OP: {"user.status": UserStatus.ACTIVE.value}},
+        # Apply rating filter after lookup
+        {MATCH_OP: {RATINGS_AVERAGE: {"$gte": params.min_rating}}},
         {
             "$project": {
                 "_id": 1,
@@ -624,20 +664,29 @@ async def _search_with_mongodb(
                 "languages": 1,
                 "location": 1,
                 "bio": 1,
-                "rating": 1,
+                "ratings": 1,
                 "total_bookings": 1,
                 "profile_picture": "$user.profile_picture"
             }
         },
-        {"$sort": {"rating": -1, "total_bookings": -1}},
+        {"$sort": {RATINGS_AVERAGE: -1, "total_bookings": -1}},
         {"$skip": (params.page - 1) * params.limit},
         {"$limit": params.limit}
     ]
     
     acharyas = await db.acharya_profiles.aggregate(pipeline).to_list(length=params.limit)
     
+    logger.info(f"MongoDB aggregation returned {len(acharyas)} results")
+    
+    # Convert ObjectId fields to strings for JSON serialization
+    for acharya in acharyas:
+        if "_id" in acharya:
+            acharya["_id"] = str(acharya["_id"])
+        if "user_id" in acharya and isinstance(acharya["user_id"], ObjectId):
+            acharya["user_id"] = str(acharya["user_id"])
+    
     # Get total count
-    count_pipeline = pipeline[:4]  # Up to status filter
+    count_pipeline = pipeline[:6]  # Up to and including rating filter
     total_count = len(await db.acharya_profiles.aggregate(count_pipeline).to_list(length=None))
     
     return StandardResponse(
@@ -694,12 +743,18 @@ async def search_acharyas(
             except Exception:
                 pass
 
-        # Use Elasticsearch if enabled and available
+        # Use Elasticsearch if enabled and available, with MongoDB fallback
+        response = None
         if params.use_elasticsearch and has_search_service:
-            from app.services.search_service import SearchService
-            search_service: SearchService = request.app.search_service
-            response = await _search_with_elasticsearch(search_service, params)
-        else:
+            try:
+                from app.services.search_service import SearchService
+                search_service: SearchService = request.app.search_service
+                response = await _search_with_elasticsearch(search_service, params)
+            except Exception as es_error:
+                logger.warning(f"Elasticsearch search failed, falling back to MongoDB: {es_error}")
+                response = None
+        
+        if response is None:
             # Fallback to MongoDB search
             response = await _search_with_mongodb(db, params)
         
@@ -728,15 +783,33 @@ async def get_acharya_details(
 ):
     """Get Acharya public profile with reviews and poojas"""
     try:
+        # Convert ID to ObjectId for MongoDB query
+        try:
+            acharya_oid = ObjectId(acharya_id)
+        except Exception:
+             # If exact string match fails, maybe it IS a string ID (rare but possible) or invalid
+             acharya_oid = acharya_id
+
         # Get Acharya profile
-        profile_doc = await db.acharya_profiles.find_one({"_id": acharya_id})
+        # Use query with either ObjectId or string to be safe
+        profile_doc = await db.acharya_profiles.find_one({
+            "$or": [{"_id": acharya_oid}, {"_id": acharya_id}]
+        })
+        
         if not profile_doc:
             raise ResourceNotFoundError(message="Acharya not found", resource_id=acharya_id)
         
         # Check if Acharya is active
-        user_doc = await db.users.find_one({"_id": profile_doc["user_id"]})
-        if not user_doc or user_doc["status"] != UserStatus.ACTIVE.value:
-            raise ResourceNotFoundError(message="Acharya not found", resource_id=acharya_id)
+        # Ensure user_id is handled correctly (it is stored as string in profile, but ObjectId in user)
+        user_identifier = profile_doc["user_id"]
+        try:
+             user_oid = ObjectId(user_identifier)
+        except Exception:
+             user_oid = user_identifier
+
+        user_doc = await db.users.find_one({"_id": user_oid})
+        if not user_doc or user_doc.get("status") != UserStatus.ACTIVE.value:
+            raise ResourceNotFoundError(message="Acharya not found or inactive", resource_id=acharya_id)
         
         # Get public reviews
         reviews = await db.reviews.find({

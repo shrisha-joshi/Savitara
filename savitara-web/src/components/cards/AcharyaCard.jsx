@@ -1,30 +1,56 @@
 import React from 'react';
-import { Box, Typography, Card, CardContent, CardMedia, Button, Rating, Chip, Avatar, IconButton } from '@mui/material';
+import { Box, Typography, Card, CardContent, CardMedia, Button, Rating, Chip, Avatar, IconButton, Stack } from '@mui/material';
 import { motion } from 'framer-motion';
-import { FaStar, FaMapMarkerAlt, FaClock, FaRupeeSign, FaHeart, FaRegHeart } from 'react-icons/fa';
+import { FaStar, FaMapMarkerAlt, FaClock, FaHeart, FaRegHeart, FaUserCircle, FaComments, FaCalendarCheck } from 'react-icons/fa';
 
 // Acharya Card Component
 export const AcharyaCard = ({ 
   acharya, 
   onBook, 
   onViewProfile, 
+  onChat,
   onFavorite,
   isFavorite = false,
   variant = 'default' // 'default', 'compact', 'featured'
 }) => {
   const {
-    id,
+    id: originalId,
+    _id,
+    user_id,
     name,
-    profileImage,
-    specializations = [],
+    profileImage: _profileImage,
+    image: _image,
+    specializations: _specializations,
+    specialization: _specialization,
     rating = 0,
     reviewCount = 0,
-    experience,
+    experience_years,
+    experience: _experience,
     location,
-    hourlyRate,
-    isVerified = false,
+    // Price hidden as per requirement
+    price,
+    description,
+    isVerified: _isVerified,
+    is_verified: _is_verified,
+    languages,
     isAvailable = true,
   } = acharya;
+  
+  const id = originalId || _id || user_id;
+
+  // Map backend fields to frontend expected fields if needed
+  const profileImage = _profileImage || _image;
+  const specializations = _specializations || (_specialization ? (Array.isArray(_specialization) ? _specialization : [_specialization]) : []);
+  const experience = experience_years || _experience || 0;
+  const isVerified = _isVerified || _is_verified || false;
+
+
+  const formatLocation = (loc) => {
+    if (!loc) return 'Location not available';
+    if (typeof loc === 'string') return loc;
+    const parts = [loc.city, loc.state].filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : 'Location not available';
+  };
 
   if (variant === 'compact') {
     return (
@@ -59,9 +85,6 @@ export const AcharyaCard = ({
               </Typography>
             </Box>
           </Box>
-          <Typography variant="h6" color="primary" fontWeight={600}>
-            ₹{hourlyRate}
-          </Typography>
         </Card>
       </motion.div>
     );
@@ -106,13 +129,29 @@ export const AcharyaCard = ({
             FEATURED
           </Box>
 
-          <CardMedia
-            component="img"
-            height="200"
-            image={profileImage || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400'}
-            alt={name}
-            sx={{ objectFit: 'cover' }}
-          />
+
+          {profileImage ? (
+            <CardMedia
+              component="img"
+              height="200"
+              image={profileImage}
+              alt={name}
+              sx={{ objectFit: 'cover' }}
+            />
+          ) : (
+            <Box 
+              sx={{ 
+                height: 200, 
+                bgcolor: '#f5f5f5', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                color: '#bdbdbd'
+              }}
+            >
+              <FaUserCircle size={80} />
+            </Box>
+          )}
           
           <CardContent sx={{ p: 3 }}>
             <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1}>
@@ -164,39 +203,43 @@ export const AcharyaCard = ({
             <Box display="flex" justifyContent="space-between" alignItems="center">
               <Box>
                 <Typography variant="body2" color="text.secondary" display="flex" alignItems="center" gap={0.5}>
-                  <FaMapMarkerAlt size={12} /> {location}
+                  <FaMapMarkerAlt size={12} /> {formatLocation(location)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" display="flex" alignItems="center" gap={0.5}>
                   <FaClock size={12} /> {experience} years exp
                 </Typography>
               </Box>
-              <Box textAlign="right">
-                <Typography variant="h5" color="primary" fontWeight={700}>
-                  ₹{hourlyRate}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">/hour</Typography>
-              </Box>
             </Box>
 
-            <Button
-              fullWidth
-              variant="contained"
-              onClick={() => onBook && onBook(id)}
-              disabled={!isAvailable}
-              sx={{
-                mt: 2,
-                background: 'linear-gradient(135deg, #FF9933 0%, #FFD700 100%)',
-                color: '#1A2233',
-                fontWeight: 600,
-                borderRadius: 2,
-                py: 1.5,
-                '&:hover': {
-                  background: 'linear-gradient(135deg, #FFD700 0%, #FF9933 100%)',
-                },
-              }}
-            >
-              {isAvailable ? 'Book Now' : 'Not Available'}
-            </Button>
+            <Stack direction="row" spacing={1} mt={2}>
+              <Button
+                variant="outlined"
+                fullWidth
+                startIcon={<FaComments />}
+                onClick={(e) => { e.stopPropagation(); onChat && onChat(id); }}
+                sx={{ borderRadius: 2 }}
+              >
+                Chat
+              </Button>
+              <Button
+                variant="contained"
+                fullWidth
+                startIcon={<FaCalendarCheck />}
+                onClick={(e) => { e.stopPropagation(); onBook && onBook(id, 'request'); }}
+                disabled={!isAvailable}
+                sx={{
+                  background: 'linear-gradient(135deg, #FF9933 0%, #FFD700 100%)',
+                  color: '#1A2233',
+                  fontWeight: 600,
+                  borderRadius: 2,
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #FFD700 0%, #FF9933 100%)',
+                  },
+                }}
+              >
+                Request
+              </Button>
+            </Stack>
           </CardContent>
         </Card>
       </motion.div>
@@ -218,12 +261,28 @@ export const AcharyaCard = ({
         onClick={() => onViewProfile && onViewProfile(id)}
       >
         <Box position="relative">
-          <CardMedia
-            component="img"
-            height="180"
-            image={profileImage || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400'}
-            alt={name}
-          />
+          {profileImage ? (
+            <CardMedia
+              component="img"
+              height="180"
+              image={profileImage}
+              alt={name}
+              sx={{ objectFit: 'cover' }}
+            />
+          ) : (
+             <Box 
+              sx={{ 
+                height: 180, 
+                bgcolor: '#f5f5f5', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                color: '#bdbdbd'
+              }}
+            >
+              <FaUserCircle size={64} />
+            </Box>
+          )}
           {isVerified && (
             <Chip
               label="✓ Verified"
@@ -283,14 +342,38 @@ export const AcharyaCard = ({
             )}
           </Box>
 
-          <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
             <Typography variant="body2" color="text.secondary">
-              <FaMapMarkerAlt size={10} /> {location}
-            </Typography>
-            <Typography variant="h6" color="primary" fontWeight={700}>
-              ₹{hourlyRate}/hr
+              <FaMapMarkerAlt size={10} /> {formatLocation(location)}
             </Typography>
           </Box>
+
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined"
+              size="small"
+              fullWidth
+              startIcon={<FaComments />}
+              onClick={(e) => { e.stopPropagation(); onChat && onChat(id); }}
+            >
+              Chat
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              fullWidth
+              startIcon={<FaCalendarCheck />}
+              onClick={(e) => { e.stopPropagation(); onBook && onBook(id, 'request'); }}
+              disabled={!isAvailable}
+              sx={{
+                background: 'linear-gradient(135deg, #FF9933 0%, #FFD700 100%)',
+                color: '#1A2233',
+                fontWeight: 600,
+              }}
+            >
+              Request
+            </Button>
+          </Stack>
         </CardContent>
       </Card>
     </motion.div>

@@ -24,6 +24,21 @@ api.interceptors.request.use(
   }
 )
 
+// Token refresh queue to prevent concurrent refresh calls
+let isRefreshing = false
+let failedQueue = []
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error)
+    } else {
+      prom.resolve(token)
+    }
+  })
+  failedQueue = []
+}
+
 // Response interceptor to handle token refresh
 api.interceptors.response.use(
   (response) => response,
@@ -32,7 +47,20 @@ api.interceptors.response.use(
 
     // If error is 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // If already refreshing, queue this request
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        })
+          .then((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`
+            return api(originalRequest)
+          })
+          .catch((err) => Promise.reject(err))
+      }
+
       originalRequest._retry = true
+      isRefreshing = true
 
       try {
         const refreshToken = localStorage.getItem('refreshToken')
@@ -48,22 +76,33 @@ api.interceptors.response.use(
         const { access_token, refresh_token: newRefreshToken } = response.data
 
         localStorage.setItem('accessToken', access_token)
-        localStorage.setItem('refreshToken', newRefreshToken)
+        if (newRefreshToken) {
+          localStorage.setItem('refreshToken', newRefreshToken)
+        }
+
+        processQueue(null, access_token)
 
         originalRequest.headers.Authorization = `Bearer ${access_token}`
         return api(originalRequest)
       } catch (refreshError) {
+        processQueue(refreshError, null)
         console.error('Token refresh failed:', refreshError)
         localStorage.removeItem('accessToken')
         localStorage.removeItem('refreshToken')
         window.location.href = '/login'
         return Promise.reject(refreshError)
+      } finally {
+        isRefreshing = false
       }
     }
 
-    // Handle other errors
-    const errorMessage = error.response?.data?.detail || error.message || 'An error occurred'
-    
+    // Extract error message from backend response format
+    const errorMessage =
+      error.response?.data?.error?.message ||
+      error.response?.data?.detail ||
+      error.message ||
+      'An error occurred'
+
     if (error.response?.status === 403) {
       toast.error('Access denied')
     } else if (error.response?.status === 404) {

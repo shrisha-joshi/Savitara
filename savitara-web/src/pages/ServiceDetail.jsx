@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import api from '../../services/api'
-import { useAuth } from '../../context/AuthContext'
-import MobileNavigation from '../../components/navigation/MobileNavigation'
+import api from '../services/api'
+import { useAuth } from '../context/AuthContext'
+import MobileNavigation from '../components/navigation/MobileNavigation'
 import './ServiceDetail.css'
 
 const ServiceDetail = () => {
@@ -205,8 +205,8 @@ const ServiceDetail = () => {
           <section className="info-section">
             <h3>Requirements</h3>
             <ul>
-              {service.requirements?.map((req, index) => (
-                <li key={`req-${index}`}>{req}</li>
+              {service.requirements?.map((req) => (
+                <li key={req}>{req}</li>
               ))}
             </ul>
           </section>
@@ -247,8 +247,8 @@ const ServiceDetail = () => {
               {getBookingTypeDetails('muhurta_consultation').description}
             </p>
             <ul className="includes-list">
-              {getBookingTypeDetails('muhurta_consultation').includes.map((item, idx) => (
-                <li key={`mc-${idx}`}>✓ {item}</li>
+              {getBookingTypeDetails('muhurta_consultation').includes.map((item) => (
+                <li key={item}>✓ {item}</li>
               ))}
             </ul>
             <div className="price-display">
@@ -270,8 +270,8 @@ const ServiceDetail = () => {
               {getBookingTypeDetails('full_service').description}
             </p>
             <ul className="includes-list">
-              {getBookingTypeDetails('full_service').includes.map((item, idx) => (
-                <li key={`fs-${idx}`}>✓ {item}</li>
+              {getBookingTypeDetails('full_service').includes.map((item) => (
+                <li key={item}>✓ {item}</li>
               ))}
             </ul>
             <div className="price-display">
@@ -294,8 +294,8 @@ const ServiceDetail = () => {
             <div className="responsibility-note">
               <strong>You'll need to arrange:</strong>
               <ul className="includes-list">
-                {getBookingTypeDetails('custom_acharya').includes.map((item, idx) => (
-                  <li key={`ca-${idx}`}>{item}</li>
+                {getBookingTypeDetails('custom_acharya').includes.map((item) => (
+                  <li key={item}>{item}</li>
                 ))}
               </ul>
             </div>
@@ -314,20 +314,22 @@ const ServiceDetail = () => {
 
       {/* Booking Modal */}
       {showBookingModal && (
-        <div 
-          className="modal-overlay" 
-          onClick={() => setShowBookingModal(false)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === 'Escape' && setShowBookingModal(false)}
+        <div
+          className="modal-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+              setShowBookingModal(false)
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShowBookingModal(false)
+          }}
+          tabIndex={-1}
         >
-          <div 
-            className="modal-content" 
-            onClick={e => e.stopPropagation()}
-            role="document"
-          >
+          <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="booking-modal-title">
             <div className="modal-header">
-              <h3>Complete Your Booking</h3>
+              <h3 id="booking-modal-title">Complete Your Booking</h3>
               <button className="close-btn" onClick={() => setShowBookingModal(false)}>×</button>
             </div>
             

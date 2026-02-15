@@ -6,6 +6,7 @@ from typing import List, Optional, Union
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator, ValidationInfo
 import secrets
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -56,14 +57,35 @@ class Settings(BaseSettings):
         return v
     
     # Database - MongoDB Atlas
-    MONGODB_URL: str
+    MONGODB_URL: Optional[str] = None
     MONGODB_DB_NAME: str = "savitara"
     MONGODB_MIN_POOL_SIZE: int = 10
     MONGODB_MAX_POOL_SIZE: int = 100
     
     # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: Optional[str] = None
     CACHE_TTL: int = 300
+    
+    @field_validator("MONGODB_URL", mode="before")
+    @classmethod
+    def validate_mongodb_url(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:
+        """Validate MongoDB URL is provided"""
+        if not v:
+            import sys
+            print("\n" + "="*80)
+            print("ERROR: MONGODB_URL is missing!")
+            print("="*80)
+            print("\nTo fix this error:")
+            print("1. Make sure .env file exists at: backend/.env")
+            print("2. Ensure MONGODB_URL is set in your .env file")
+            print("3. Example: MONGODB_URL=mongodb+srv://user:password@cluster.mongodb.net/dbname")
+            print("\nFor development, you can use:")
+            print("   MONGODB_URL=mongodb://localhost:27017")
+            print("\nFor production (Render/Cloud), get the URL from MongoDB Atlas:")
+            print("   https://www.mongodb.com/cloud/atlas")
+            print("="*80 + "\n")
+            sys.exit(1)
+        return v
     
     # Google OAuth - SonarQube: Never expose in logs
     GOOGLE_CLIENT_ID: Optional[str] = None
@@ -141,7 +163,7 @@ class Settings(BaseSettings):
     TEST_OTP_CODE: Optional[str] = "123456"
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(Path(__file__).parent.parent.parent / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore"

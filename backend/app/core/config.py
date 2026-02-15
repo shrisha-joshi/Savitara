@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     # CORS - SonarQube: Validate origins
-    ALLOWED_ORIGINS: Union[List[str], str] = ["http://localhost:3000"]
+    ALLOWED_ORIGINS: Union[List[str], str] = ["http://localhost:3000", "https://savitara-web.vercel.app"]
     
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod

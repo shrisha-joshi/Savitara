@@ -88,7 +88,7 @@ $ cd backend
 $ python test_config_load.py
 ================================================================================
 ✓ Configuration loaded successfully!
-  - MONGODB_URL: mongodb+srv://sheshagirijoshi18_db_savitara:savitara123@clus...
+  - MONGODB_URL: mongodb+srv://YOUR_USERNAME:YOUR_PASSWORD@cluster0.xxxxx...
   - APP_ENV: development
   - DEBUG: True
 ================================================================================

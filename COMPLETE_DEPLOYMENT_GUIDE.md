@@ -69,7 +69,7 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
 ALLOWED_ORIGINS=https://savitara-web.vercel.app,https://admin-savitara-web.vercel.app
 
 # MongoDB (your existing connection)
-MONGODB_URL=mongodb+srv://sheshagirijoshi18_db_savitara:savitara123@cluster0.0q2ghgt.mongodb.net/?appName=Cluster0
+MONGODB_URL=mongodb+srv://YOUR_USERNAME:YOUR_PASSWORD@cluster0.xxxxx.mongodb.net/?appName=Cluster0
 MONGODB_DB_NAME=savitara
 MONGODB_MIN_POOL_SIZE=10
 MONGODB_MAX_POOL_SIZE=100

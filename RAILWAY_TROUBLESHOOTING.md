@@ -48,7 +48,7 @@ ADMIN_API_KEY=your-admin-key-here
 ENCRYPTION_KEY=your-64-char-hex-key-here
 
 # MongoDB (your existing)
-MONGODB_URL=mongodb+srv://sheshagirijoshi18_db_savitara:savitara123@cluster0.0q2ghgt.mongodb.net/?appName=Cluster0
+MONGODB_URL=mongodb+srv://YOUR_USERNAME:YOUR_PASSWORD@cluster0.xxxxx.mongodb.net/?appName=Cluster0
 MONGODB_DB_NAME=savitara
 
 # Redis (Railway provides)

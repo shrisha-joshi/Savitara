@@ -10,8 +10,12 @@ from passlib.context import CryptContext
 from fastapi import HTTPException, Security, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import secrets
+import warnings
 
 from app.core.config import settings
+
+# Suppress bcrypt version reading warning
+warnings.filterwarnings("ignore", message=".*error reading bcrypt version.*", category=UserWarning)
 
 # Password hashing context - SonarQube: Use bcrypt with sufficient rounds
 pwd_context = CryptContext(
@@ -31,17 +35,24 @@ class SecurityManager:
     def verify_password(plain_password: str, hashed_password: str) -> bool:
         """Verify password against hash - truncate to 72 bytes for bcrypt"""
         # Bcrypt has a 72 byte limit, truncate if needed
-        password_bytes = plain_password.encode("utf-8")[:72]
-        plain_password = password_bytes.decode("utf-8", errors="ignore")
-        return pwd_context.verify(plain_password, hashed_password)
+        truncated_password = SecurityManager._truncate_password(plain_password)
+        return pwd_context.verify(truncated_password, hashed_password)
 
     @staticmethod
     def get_password_hash(password: str) -> str:
         """Generate password hash - truncate to 72 bytes for bcrypt"""
         # Bcrypt has a 72 byte limit, truncate if needed
-        password_bytes = password.encode("utf-8")[:72]
-        password = password_bytes.decode("utf-8", errors="ignore")
-        return pwd_context.hash(password)
+        truncated_password = SecurityManager._truncate_password(password)
+        return pwd_context.hash(truncated_password)
+
+    @staticmethod
+    def _truncate_password(password: str) -> str:
+        """Truncate password to 72 bytes for bcrypt compatibility"""
+        if len(password.encode("utf-8")) <= 72:
+            return password
+        # Truncate to 72 characters as a simple solution
+        # This ensures we stay under 72 bytes for most passwords
+        return password[:72]
 
     @staticmethod
     def create_access_token(

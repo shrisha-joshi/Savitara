@@ -6,7 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from datetime import datetime, timezone
 import logging
 
-from app.models.services_catalog import SERVICES_CATALOG
+from app.models.services_catalog import HINDU_SERVICES_CATALOG
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ async def initialize_services_collection(db: AsyncIOMotorDatabase):
 
         # Insert all services from catalog
         services_to_insert = []
-        for service in SERVICES_CATALOG:
+        for service in HINDU_SERVICES_CATALOG:
             service_doc = service.copy()
             service_doc["created_at"] = datetime.now(timezone.utc)
             service_doc["updated_at"] = datetime.now(timezone.utc)

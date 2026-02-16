@@ -4,6 +4,11 @@ SonarQube: S4502 - CSRF protection
 SonarQube: S5122 - CORS configuration
 SonarQube: S4830 - Certificate validation
 """
+import warnings
+# Suppress bcrypt/passlib warnings before any imports
+warnings.filterwarnings("ignore", message=".*error reading bcrypt.*")
+warnings.filterwarnings("ignore", category=UserWarning, module="passlib")
+
 from fastapi import (
     FastAPI,
     Request,

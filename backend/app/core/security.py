@@ -6,22 +6,30 @@ SonarQube: S6437 - No hardcoded credentials
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
+import warnings
+import secrets
+import logging
+
+# Suppress passlib/bcrypt warnings before importing passlib
+warnings.filterwarnings("ignore", category=UserWarning, module="passlib")
+warnings.filterwarnings("ignore", message=".*error reading bcrypt.*")
+
+# Suppress passlib logger output for bcrypt version detection issues
+logging.getLogger("passlib").setLevel(logging.ERROR)
+
 from passlib.context import CryptContext
 from fastapi import HTTPException, Security, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import secrets
-import warnings
 
 from app.core.config import settings
 
-# Suppress bcrypt version reading warning
-warnings.filterwarnings("ignore", message=".*error reading bcrypt version.*", category=UserWarning)
-
 # Password hashing context - SonarQube: Use bcrypt with sufficient rounds
+# Configured to auto-truncate passwords to 72 bytes
 pwd_context = CryptContext(
     schemes=["bcrypt"],
     deprecated="auto",
     bcrypt__rounds=12,  # Secure rounds (not too low)
+    truncate_error=False,  # Auto-truncate instead of raising error
 )
 
 # HTTP Bearer for JWT tokens
@@ -33,26 +41,15 @@ class SecurityManager:
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """Verify password against hash - truncate to 72 bytes for bcrypt"""
-        # Bcrypt has a 72 byte limit, truncate if needed
-        truncated_password = SecurityManager._truncate_password(plain_password)
-        return pwd_context.verify(truncated_password, hashed_password)
+        """Verify password against hash - auto-truncates to 72 bytes via passlib"""
+        # Passlib auto-truncates with truncate_error=False
+        return pwd_context.verify(plain_password, hashed_password)
 
     @staticmethod
     def get_password_hash(password: str) -> str:
-        """Generate password hash - truncate to 72 bytes for bcrypt"""
-        # Bcrypt has a 72 byte limit, truncate if needed
-        truncated_password = SecurityManager._truncate_password(password)
-        return pwd_context.hash(truncated_password)
-
-    @staticmethod
-    def _truncate_password(password: str) -> str:
-        """Truncate password to 72 bytes for bcrypt compatibility"""
-        if len(password.encode("utf-8")) <= 72:
-            return password
-        # Truncate to 72 characters as a simple solution
-        # This ensures we stay under 72 bytes for most passwords
-        return password[:72]
+        """Generate password hash - auto-truncates to 72 bytes via passlib"""
+        # Passlib auto-truncates with truncate_error=False
+        return pwd_context.hash(password)
 
     @staticmethod
     def create_access_token(

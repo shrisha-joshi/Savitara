@@ -14,8 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && pip install --no-cache-dir -r requirements.txt \
     && groupadd -r appuser && useradd -r -g appuser appuser \
-    && mkdir -p /app/uploads/documents \
-    && chown -R appuser:appuser /app/uploads \
+    && mkdir -p /app/uploads/documents /app/logs \
+    && chown -R appuser:appuser /app/uploads /app/logs \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy application code with ownership

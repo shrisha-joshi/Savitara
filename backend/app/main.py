@@ -61,6 +61,8 @@ from slowapi.errors import RateLimitExceeded  # type: ignore
 import sentry_sdk
 
 # Configure logging
+import os
+os.makedirs(os.path.dirname(settings.LOG_FILE), exist_ok=True)
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",

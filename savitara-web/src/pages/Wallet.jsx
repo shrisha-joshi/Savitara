@@ -72,9 +72,9 @@ export default function Wallet() {
       
       // Fetch balance and summary in parallel
       const [balanceRes, summaryRes, transactionsRes] = await Promise.all([
-        api.get('/api/v1/wallet/balance'),
-        api.get('/api/v1/wallet/summary'),
-        api.get('/api/v1/wallet/transactions?limit=50')
+        api.get('/wallet/balance'),
+        api.get('/wallet/summary'),
+        api.get('/wallet/transactions?limit=50')
       ]);
 
       if (balanceRes.data.success) {
@@ -91,7 +91,7 @@ export default function Wallet() {
 
       // Fetch earnings if Acharya
       if (user?.role === 'acharya') {
-        const earningsRes = await api.get('/api/v1/wallet/earnings');
+        const earningsRes = await api.get('/wallet/earnings');
         if (earningsRes.data.success) {
           setEarnings(earningsRes.data.data);
         }
@@ -139,7 +139,7 @@ export default function Wallet() {
       }
 
       // Create Razorpay order
-      const orderRes = await api.post('/api/v1/payments/razorpay/order', {
+      const orderRes = await api.post('/payments/razorpay/order', {
         amount,
         currency: 'INR',
         receipt: `wallet_${Date.now()}`
@@ -160,7 +160,7 @@ export default function Wallet() {
         handler: async function (response) {
           try {
             // Add money to wallet
-            const addMoneyRes = await api.post('/api/v1/wallet/add-money', {
+            const addMoneyRes = await api.post('/wallet/add-money', {
               amount,
               payment_id: response.razorpay_payment_id
             });
@@ -213,7 +213,7 @@ export default function Wallet() {
 
       setLoading(true);
 
-      const response = await api.post('/api/v1/wallet/withdraw', {
+      const response = await api.post('/wallet/withdraw', {
         amount,
         ...bankDetails
       });

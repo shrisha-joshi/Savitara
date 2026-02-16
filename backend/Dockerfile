@@ -9,11 +9,13 @@ WORKDIR /app
 # Copy requirements FIRST to leverage Docker cache
 COPY requirements.txt .
 
-# Install dependencies and create user in a single RUN command to reduce layers
+# Install dependencies, create user, and set up directories in a single RUN command
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && pip install --no-cache-dir -r requirements.txt \
     && groupadd -r appuser && useradd -r -g appuser appuser \
+    && mkdir -p /app/uploads/documents \
+    && chown -R appuser:appuser /app/uploads \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy application code with ownership

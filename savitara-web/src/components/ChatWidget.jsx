@@ -9,6 +9,7 @@ import {
   Check, DoneAll, AccessTime
 } from '@mui/icons-material';
 import { format, isToday, isYesterday } from 'date-fns';
+import api from '../services/api';
 
 const ChatWidget = ({ 
   isOpen, 
@@ -113,18 +114,10 @@ const ChatWidget = ({
   const loadMessages = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/v1/chat/conversations/${conversationId}/messages`,
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        }
-      );
+      const response = await api.get(`/chat/conversations/${conversationId}/messages`);
       
-      if (response.ok) {
-        const data = await response.json();
-        setMessages(data.data.messages || []);
+      if (response.data.success) {
+        setMessages(response.data.data.messages || []);
         scrollToBottom();
       }
     } catch (error) {

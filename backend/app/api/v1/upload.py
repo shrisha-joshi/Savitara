@@ -10,9 +10,22 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Configure upload directory
-UPLOAD_DIR = Path("uploads/documents")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+# Configure upload directory - use /tmp in production for write permissions
+def _get_upload_dir() -> Path:
+    """Get upload directory, handling permission issues in containerized environments."""
+    # Try the standard path first
+    standard_path = Path("uploads/documents")
+    try:
+        standard_path.mkdir(parents=True, exist_ok=True)
+        return standard_path
+    except PermissionError:
+        # Fall back to /tmp for containerized environments
+        fallback_path = Path("/tmp/uploads/documents")
+        fallback_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Using fallback upload directory: {fallback_path}")
+        return fallback_path
+
+UPLOAD_DIR = _get_upload_dir()
 
 # Allowed file types
 ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".doc", ".docx"}

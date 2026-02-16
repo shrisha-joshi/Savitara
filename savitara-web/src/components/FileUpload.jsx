@@ -172,7 +172,7 @@ export default function FileUpload({
       });
       
       // Upload with progress tracking
-      const response = await api.post(`/api/v1/upload/${uploadType}`, formData, {
+      const response = await api.post(`/upload/${uploadType}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         },

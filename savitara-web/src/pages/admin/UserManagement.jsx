@@ -98,7 +98,7 @@ export default function AdminUserManagement() {
       if (roleFilter !== 'all') params.role = roleFilter;
       if (searchQuery) params.search = searchQuery;
 
-      const response = await api.get('/api/v1/admin/users', { params });
+      const response = await api.get('/admin/users', { params });
 
       if (response.data.success) {
         setUsers(response.data.data.users || []);
@@ -114,7 +114,7 @@ export default function AdminUserManagement() {
 
   const fetchStats = async () => {
     try {
-      const response = await api.get('/api/v1/admin/dashboard/analytics');
+      const response = await api.get('/admin/dashboard/analytics');
       if (response.data.success) {
         setStats(response.data.data.overview);
       }
@@ -148,7 +148,7 @@ export default function AdminUserManagement() {
 
     try {
       setLoading(true);
-      const response = await api.post(`/api/v1/admin/users/${selectedUser._id}/approve`, {
+      const response = await api.post(`/admin/users/${selectedUser._id}/approve`, {
         verification_notes: actionReason || 'Approved by admin'
       });
 
@@ -173,7 +173,7 @@ export default function AdminUserManagement() {
 
     try {
       setLoading(true);
-      const response = await api.post(`/api/v1/admin/users/${selectedUser._id}/reject`, {
+      const response = await api.post(`/admin/users/${selectedUser._id}/reject`, {
         rejection_reason: actionReason
       });
 
@@ -198,7 +198,7 @@ export default function AdminUserManagement() {
 
     try {
       setLoading(true);
-      const response = await api.post(`/api/v1/admin/users/${selectedUser._id}/suspend`, {
+      const response = await api.post(`/admin/users/${selectedUser._id}/suspend`, {
         suspension_reason: actionReason
       });
 

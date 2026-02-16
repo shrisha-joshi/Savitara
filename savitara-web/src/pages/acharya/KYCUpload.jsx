@@ -49,7 +49,7 @@ export default function KYCUpload() {
   const fetchKYCStatus = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/v1/users/profile');
+      const response = await api.get('/users/profile');
       
       if (response.data.success) {
         const profile = response.data.data;
@@ -66,7 +66,7 @@ export default function KYCUpload() {
   const handleUploadComplete = async (urls) => {
     try {
       // Update profile with document URLs
-      const response = await api.put('/api/v1/users/profile', {
+      const response = await api.put('/users/profile', {
         kyc_documents: [
           ...uploadedDocuments,
           ...urls.map((url, index) => ({

@@ -65,7 +65,7 @@ export default function CalendarManagement() {
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth() + 1;
       
-      const response = await api.get(`/api/v1/calendar/acharya/${user._id}/schedule`, {
+      const response = await api.get(`/calendar/acharya/${user._id}/schedule`, {
         params: { year, month }
       });
 
@@ -175,7 +175,7 @@ export default function CalendarManagement() {
       };
 
       const response = await api.post(
-        `/api/v1/calendar/acharya/${user._id}/schedule`,
+        `/calendar/acharya/${user._id}/schedule`,
         scheduleData
       );
 
@@ -199,7 +199,7 @@ export default function CalendarManagement() {
       setError('');
 
       const response = await api.post(
-        `/api/v1/calendar/acharya/${user._id}/block-dates`,
+        `/calendar/acharya/${user._id}/block-dates`,
         {
           dates: blockDates.map(d => new Date(d).toISOString()),
           reason: blockReason

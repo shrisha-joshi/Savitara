@@ -88,12 +88,12 @@ export default function AnalyticsDashboard() {
       setError('');
 
       const [overviewRes, revenueRes, userGrowthRes, bookingStatusRes, acharyasRes, servicesRes] = await Promise.all([
-        api.get('/api/v1/analytics/overview', { params: { time_range: timeRange } }),
-        api.get('/api/v1/analytics/revenue-trends', { params: { time_range: timeRange } }),
-        api.get('/api/v1/analytics/user-growth', { params: { time_range: timeRange } }),
-        api.get('/api/v1/analytics/booking-status', { params: { time_range: timeRange } }),
-        api.get('/api/v1/analytics/top-acharyas', { params: { limit: 10 } }),
-        api.get('/api/v1/analytics/popular-services', { params: { limit: 10 } })
+        api.get('/analytics/overview', { params: { time_range: timeRange } }),
+        api.get('/analytics/revenue-trends', { params: { time_range: timeRange } }),
+        api.get('/analytics/user-growth', { params: { time_range: timeRange } }),
+        api.get('/analytics/booking-status', { params: { time_range: timeRange } }),
+        api.get('/analytics/top-acharyas', { params: { limit: 10 } }),
+        api.get('/analytics/popular-services', { params: { limit: 10 } })
       ]);
 
       if (overviewRes.data.success) setOverview(overviewRes.data.data);

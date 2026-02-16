@@ -81,7 +81,7 @@ export default function AdminServiceManagement() {
       setLoading(true);
       setError('');
 
-      const response = await api.get('/api/v1/services', {
+      const response = await api.get('/services', {
         params: {
           skip: page * rowsPerPage,
           limit: rowsPerPage
@@ -102,7 +102,7 @@ export default function AdminServiceManagement() {
 
   const fetchCategories = async () => {
     try {
-      const response = await api.get('/api/v1/services/categories');
+      const response = await api.get('/services/categories');
       if (response.data.success) {
         setCategories(response.data.data || []);
       }
@@ -159,7 +159,7 @@ export default function AdminServiceManagement() {
         requirements_from_user: formData.requirements_from_user.split('\n').filter(item => item.trim() !== '')
       };
 
-      const response = await api.post('/api/v1/admin/services', payload);
+      const response = await api.post('/admin/services', payload);
 
       if (response.data.success) {
         setSuccess('Service created successfully');
@@ -189,7 +189,7 @@ export default function AdminServiceManagement() {
         requirements_from_user: formData.requirements_from_user.split('\n').filter(item => item.trim() !== '')
       };
 
-      const response = await api.put(`/api/v1/admin/services/${selectedService._id}`, payload);
+      const response = await api.put(`/admin/services/${selectedService._id}`, payload);
 
       if (response.data.success) {
         setSuccess('Service updated successfully');
@@ -210,7 +210,7 @@ export default function AdminServiceManagement() {
       setLoading(true);
       setError('');
 
-      const response = await api.delete(`/api/v1/admin/services/${selectedService._id}`);
+      const response = await api.delete(`/admin/services/${selectedService._id}`);
 
       if (response.data.success) {
         setSuccess('Service deleted successfully');

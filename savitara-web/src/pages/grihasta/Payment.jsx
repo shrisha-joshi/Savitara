@@ -54,7 +54,7 @@ export default function Payment() {
       
       // Fetch coin balance
       try {
-        const coinsResponse = await api.get('/api/v1/gamification/coins/balance');
+        const coinsResponse = await api.get('/gamification/coins/balance');
         setCoinBalance(coinsResponse.data.balance || 0);
       } catch (err) {
         console.error('Failed to fetch coin balance:', err);
@@ -82,7 +82,7 @@ export default function Payment() {
       setValidatingCoupon(true);
       setCouponError('');
       
-      const response = await api.post('/api/v1/gamification/coupons/validate', {
+      const response = await api.post('/gamification/coupons/validate', {
         code: couponCode.toUpperCase(),
         booking_amount: booking.total_amount
       });
@@ -121,7 +121,7 @@ export default function Payment() {
     if (!booking) return;
 
     try {
-      const response = await api.post('/api/v1/gamification/calculate-price', {
+      const response = await api.post('/gamification/calculate-price', {
         booking_id: bookingId,
         base_amount: booking.total_amount,
         coupon_code: coupon?.code || null,

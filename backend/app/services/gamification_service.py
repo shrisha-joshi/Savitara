@@ -313,6 +313,7 @@ class GamificationService:
         # Find next tier
         tier_list = sorted(tiers.items(), key=lambda x: x[1]["min"])
         next_tier = None
+        points_needed = 0  # Initialize to 0 if user is at highest tier
 
         for tier_name, tier_data in tier_list:
             if tier_data["min"] > current_points:

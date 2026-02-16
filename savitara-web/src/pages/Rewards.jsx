@@ -62,14 +62,14 @@ export default function Rewards() {
     try {
       setLoading(true)
       const [coins, points, coinTxns, pointTxns, couponsData, vouchersData, referral, loyalty] = await Promise.all([
-        api.get('/api/v1/gamification/coins/balance'),
-        api.get('/api/v1/gamification/points/balance'),
-        api.get('/api/v1/gamification/coins/transactions'),
-        api.get('/api/v1/gamification/points/transactions'),
-        api.get('/api/v1/gamification/coupons'),
-        api.get('/api/v1/gamification/vouchers'),
-        api.get('/api/v1/gamification/referral/stats'),
-        api.get('/api/v1/gamification/loyalty/tier')
+        api.get('/gamification/coins/balance'),
+        api.get('/gamification/points/balance'),
+        api.get('/gamification/coins/transactions'),
+        api.get('/gamification/points/transactions'),
+        api.get('/gamification/coupons'),
+        api.get('/gamification/vouchers'),
+        api.get('/gamification/referral/stats'),
+        api.get('/gamification/loyalty/tier')
       ])
 
       setCoinBalance(coins.data.balance)

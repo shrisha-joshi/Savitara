@@ -20,8 +20,8 @@ export default function Navbar() {
   // Fetch coin balance when user is logged in
   useEffect(() => {
     if (user) {
-      api.get('/api/v1/gamification/coins/balance')
-        .then(res => setCoinBalance(res.data.balance))
+      api.get('/gamification/coins/balance')
+        .then(res => setCoinBalance(res.data?.balance || res.data?.data?.balance || 0))
         .catch(err => console.error('Failed to fetch coin balance:', err))
     }
   }, [user])

@@ -129,7 +129,7 @@ export default function Panchanga() {
                       </Typography>
                     </Box>
                     <Typography variant="h4" color="primary" fontWeight={700} gutterBottom>
-                      {panchanga.tithi || 'N/A'}
+                      {typeof panchanga.tithi === 'object' ? (panchanga.tithi?.name_sanskrit || panchanga.tithi?.name_english || 'N/A') : (panchanga.tithi || 'N/A')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       The lunar day based on the angle between Sun and Moon
@@ -149,7 +149,7 @@ export default function Panchanga() {
                       </Typography>
                     </Box>
                     <Typography variant="h4" color="primary" fontWeight={700} gutterBottom>
-                      {panchanga.nakshatra || 'N/A'}
+                      {typeof panchanga.nakshatra === 'object' ? (panchanga.nakshatra?.name_sanskrit || panchanga.nakshatra?.name_english || 'N/A') : (panchanga.nakshatra || 'N/A')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       The lunar mansion or constellation of the Moon
@@ -169,7 +169,7 @@ export default function Panchanga() {
                       </Typography>
                     </Box>
                     <Typography variant="h4" color="primary" fontWeight={700} gutterBottom>
-                      {panchanga.yoga || 'N/A'}
+                      {typeof panchanga.yoga === 'object' ? (panchanga.yoga?.name || 'N/A') : (panchanga.yoga || 'N/A')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       Auspicious combination of Sun and Moon positions
@@ -189,7 +189,7 @@ export default function Panchanga() {
                       </Typography>
                     </Box>
                     <Typography variant="h4" color="primary" fontWeight={700} gutterBottom>
-                      {panchanga.karana || 'N/A'}
+                      {typeof panchanga.karana === 'object' ? (panchanga.karana?.name || 'N/A') : (panchanga.karana || 'N/A')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       Half of a Tithi, important for timing activities
@@ -209,7 +209,7 @@ export default function Panchanga() {
                       </Typography>
                     </Box>
                     <Typography variant="h4" color="primary" fontWeight={700} gutterBottom>
-                      {panchanga.vara || format(today, 'EEEE')}
+                      {panchanga.day_of_week || panchanga.vara || format(today, 'EEEE')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       The day of the week in Vedic calendar
@@ -229,7 +229,7 @@ export default function Panchanga() {
                       </Typography>
                     </Box>
                     <Typography variant="h4" color="primary" fontWeight={700} gutterBottom>
-                      {panchanga.paksha || 'N/A'}
+                      {panchanga.tithi?.paksha || panchanga.paksha || 'N/A'}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       Shukla (Waxing) or Krishna (Waning) moon phase

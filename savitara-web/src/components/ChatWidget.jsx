@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box, Paper, TextField, Button, Typography, Avatar,
-  List, ListItem, ListItemAvatar, ListItemText, Divider,
-  IconButton, Badge, Chip, CircularProgress, Tooltip
+  List, ListItem, ListItemAvatar,
+  IconButton, Badge, CircularProgress
 } from '@mui/material';
 import {
-  Send, Close, AttachFile, EmojiEmotions,
+  Send, Close,
   Check, DoneAll, AccessTime
 } from '@mui/icons-material';
 import { format, isToday, isYesterday } from 'date-fns';

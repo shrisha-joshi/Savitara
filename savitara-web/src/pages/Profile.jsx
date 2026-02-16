@@ -6,9 +6,18 @@ import {
   Divider,
   Grid,
   Typography,
-  CircularProgress
+  CircularProgress,
+  Card,
+  CardContent,
+  FormControl,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
+  Stack
 } from '@mui/material'
+import { LightMode, DarkMode, SettingsBrightness } from '@mui/icons-material'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import api from '../services/api'
@@ -26,6 +35,7 @@ import { QuickLinks, AccountActions } from '../components/profile/AccountActions
 
 export default function Profile() {
   const { user, logout } = useAuth()
+  const { themePreference, setThemeMode } = useTheme()
   const navigate = useNavigate()
   
   // Profile data state
@@ -321,7 +331,74 @@ export default function Profile() {
               </Typography>
               <ProfileStats stats={stats} />
 
-              <Box sx={{ mt: 3 }} />
+              {/* Theme Settings Section */}
+              <Box sx={{ mt: 4, mb: 3 }}>
+                <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom fontWeight={600}>
+                      Appearance Settings
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                      Choose your preferred theme for the app
+                    </Typography>
+                    <FormControl component="fieldset">
+                      <RadioGroup
+                        value={themePreference}
+                        onChange={(e) => setThemeMode(e.target.value)}
+                      >
+                        <Stack spacing={1.5}>
+                          <FormControlLabel 
+                            value="light" 
+                            control={<Radio />} 
+                            label={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                                <LightMode sx={{ color: 'warning.main' }} />
+                                <Box>
+                                  <Typography variant="body1" fontWeight={500}>Light Mode</Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Bright and clear interface
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            }
+                          />
+                          <FormControlLabel 
+                            value="dark" 
+                            control={<Radio />} 
+                            label={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                                <DarkMode sx={{ color: 'primary.main' }} />
+                                <Box>
+                                  <Typography variant="body1" fontWeight={500}>Dark Mode</Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Easy on the eyes in low light
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            }
+                          />
+                          <FormControlLabel 
+                            value="system" 
+                            control={<Radio />} 
+                            label={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                                <SettingsBrightness sx={{ color: 'info.main' }} />
+                                <Box>
+                                  <Typography variant="body1" fontWeight={500}>System Default</Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Match your device settings
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            }
+                          />
+                        </Stack>
+                      </RadioGroup>
+                    </FormControl>
+                  </CardContent>
+                </Card>
+              </Box>
+
               <QuickLinks navigate={navigate} />
               <AccountActions
                 onLogoutClick={handleLogoutClick}

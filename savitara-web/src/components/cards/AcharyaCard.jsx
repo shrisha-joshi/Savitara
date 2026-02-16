@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box, Typography, Card, CardContent, CardMedia, Button, Rating, Chip, Avatar, IconButton, Stack } from '@mui/material';
 import { motion } from 'framer-motion';
 import { FaStar, FaMapMarkerAlt, FaClock, FaHeart, FaRegHeart, FaUserCircle, FaComments, FaCalendarCheck } from 'react-icons/fa';
@@ -35,8 +34,9 @@ export const AcharyaCard = ({
     languages,
     isAvailable = true,
   } = acharya;
-  
-  const id = originalId || _id || user_id;
+
+  const profileId = originalId || _id || user_id;
+  const acharyaUserId = user_id || originalId || _id;
 
   // Map backend fields to frontend expected fields if needed
   const profileImage = _profileImage || _image;
@@ -69,7 +69,7 @@ export const AcharyaCard = ({
               boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)',
             },
           }}
-          onClick={() => onViewProfile && onViewProfile(id)}
+          onClick={() => onViewProfile && onViewProfile(profileId)}
         >
           <Avatar
             src={profileImage}
@@ -172,7 +172,7 @@ export const AcharyaCard = ({
                   />
                 )}
               </Box>
-              <IconButton onClick={() => onFavorite && onFavorite(id)}>
+              <IconButton onClick={() => onFavorite && onFavorite(profileId)}>
                 {isFavorite ? <FaHeart color="#DC143C" /> : <FaRegHeart color="#6B7A90" />}
               </IconButton>
             </Box>
@@ -216,7 +216,7 @@ export const AcharyaCard = ({
                 variant="outlined"
                 fullWidth
                 startIcon={<FaComments />}
-                onClick={(e) => { e.stopPropagation(); onChat && onChat(id); }}
+                onClick={(e) => { e.stopPropagation(); onChat && onChat(acharyaUserId); }}
                 sx={{ borderRadius: 2 }}
               >
                 Chat
@@ -225,7 +225,7 @@ export const AcharyaCard = ({
                 variant="contained"
                 fullWidth
                 startIcon={<FaCalendarCheck />}
-                onClick={(e) => { e.stopPropagation(); onBook && onBook(id, 'request'); }}
+                onClick={(e) => { e.stopPropagation(); onBook && onBook(profileId, 'request'); }}
                 disabled={!isAvailable}
                 sx={{
                   background: 'linear-gradient(135deg, #FF9933 0%, #FFD700 100%)',
@@ -258,7 +258,7 @@ export const AcharyaCard = ({
           overflow: 'hidden',
           cursor: 'pointer',
         }}
-        onClick={() => onViewProfile && onViewProfile(id)}
+        onClick={() => onViewProfile && onViewProfile(profileId)}
       >
         <Box position="relative">
           {profileImage ? (
@@ -306,7 +306,7 @@ export const AcharyaCard = ({
             }}
             onClick={(e) => {
               e.stopPropagation();
-              onFavorite && onFavorite(id);
+              onFavorite && onFavorite(profileId);
             }}
           >
             {isFavorite ? <FaHeart color="#DC143C" size={16} /> : <FaRegHeart color="#6B7A90" size={16} />}
@@ -354,7 +354,7 @@ export const AcharyaCard = ({
               size="small"
               fullWidth
               startIcon={<FaComments />}
-              onClick={(e) => { e.stopPropagation(); onChat && onChat(id); }}
+              onClick={(e) => { e.stopPropagation(); onChat && onChat(acharyaUserId); }}
             >
               Chat
             </Button>
@@ -363,7 +363,7 @@ export const AcharyaCard = ({
               size="small"
               fullWidth
               startIcon={<FaCalendarCheck />}
-              onClick={(e) => { e.stopPropagation(); onBook && onBook(id, 'request'); }}
+              onClick={(e) => { e.stopPropagation(); onBook && onBook(profileId, 'request'); }}
               disabled={!isAvailable}
               sx={{
                 background: 'linear-gradient(135deg, #FF9933 0%, #FFD700 100%)',

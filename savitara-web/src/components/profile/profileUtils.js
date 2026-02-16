@@ -1,5 +1,4 @@
 import api from '../../services/api'
-import { toast } from 'react-toastify'
 
 /**
  * Fetch user profile data

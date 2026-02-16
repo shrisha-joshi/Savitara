@@ -1,4 +1,3 @@
-import React from 'react';
 import { colors, shadows, mediaQueries } from '../../theme/tokens';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FiHome, FiCalendar, FiMessageSquare, FiUser } from 'react-icons/fi'; // Assuming react-icons is installed, if not we'll use SVGs or text

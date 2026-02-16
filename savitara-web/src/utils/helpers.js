@@ -1,4 +1,4 @@
-import { format, formatDistance, formatRelative } from 'date-fns'
+import { format, formatDistance } from 'date-fns'
 
 // Format date
 export const formatDate = (date, formatStr = 'dd MMM yyyy') => {

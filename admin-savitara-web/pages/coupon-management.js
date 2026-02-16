@@ -340,7 +340,7 @@ const CouponManagement = () => {
                   label="Total Usage Limit"
                   type="number"
                   value={formData.usage_limit || ''}
-                  onChange={(e) => setFormData({...formData, usage_limit: e.target.value ? parseInt(e.target.value) : null})}
+                  onChange={(e) => setFormData({...formData, usage_limit: e.target.value ? Number.parseInt(e.target.value, 10) : null})}
                   helperText="Leave empty for unlimited"
                 />
               </Grid>
@@ -350,7 +350,7 @@ const CouponManagement = () => {
                   label="Per User Limit"
                   type="number"
                   value={formData.per_user_limit}
-                  onChange={(e) => setFormData({...formData, per_user_limit: parseInt(e.target.value)})}
+                  onChange={(e) => setFormData({...formData, per_user_limit: Number.parseInt(e.target.value, 10)})}
                 />
               </Grid>
               <Grid item xs={12} md={6}>

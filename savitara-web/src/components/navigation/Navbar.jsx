@@ -1,14 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   AppBar, Toolbar, Box, Button, IconButton, Drawer, List, ListItem, 
   ListItemIcon, ListItemText, Container, Avatar, Menu, MenuItem, 
   Badge, Divider, Typography, useScrollTrigger, Tooltip
 } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FaBars, FaTimes, FaHome, FaSearch, FaCalendarAlt, FaUser, 
-  FaBell, FaSignOutAlt, FaCog, FaHeart, FaSun, FaMoon
+  FaBell, FaSignOutAlt, FaHeart, FaSun, FaMoon
 } from 'react-icons/fa';
 import SavitaraBrand from '../branding/SavitaraBrand';
 import { useAuth } from '../../context/AuthContext';

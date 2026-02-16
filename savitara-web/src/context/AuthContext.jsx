@@ -106,8 +106,9 @@ export const AuthProvider = ({ children }) => {
       try {
         localStorage.removeItem('accessToken')
         localStorage.removeItem('refreshToken')
-      } catch (e) {
-        // Ignore storage errors
+      } catch (storageError) {
+        // Storage operations may fail in private browsing mode
+        console.warn('Failed to clear tokens from storage:', storageError)
       }
       setUser(null)
     } finally {

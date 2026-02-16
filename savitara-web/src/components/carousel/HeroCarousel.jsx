@@ -93,17 +93,6 @@ const HeroCarousel = ({
   );
 };
 
-import PropTypes from 'prop-types';
-HeroCarousel.propTypes = {
-  interval: PropTypes.number,
-  height: PropTypes.string,
-  // Add other props as needed
-};
 
-HeroCarousel.propTypes = {
-  interval: PropTypes.number,
-  height: PropTypes.string,
-  // Add other props as needed
-};
 
 export default HeroCarousel;

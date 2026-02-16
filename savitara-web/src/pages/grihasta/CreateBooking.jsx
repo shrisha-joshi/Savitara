@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import {
   Container,
@@ -7,7 +7,6 @@ import {
   Grid,
   Box,
   TextField,
-  MenuItem,
   Button,
   Stepper,
   Step,
@@ -18,7 +17,8 @@ import {
   FormLabel,
   RadioGroup,
   FormControlLabel,
-  Radio
+  Radio,
+  Autocomplete
 } from '@mui/material';
 import { DatePicker, TimePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -32,20 +32,6 @@ const steps = ['Service Details', 'Schedule', 'Confirm'];
 
 export default function CreateBooking() {
   const { acharyaId } = useParams();
-
-  if (!acharyaId || acharyaId === 'undefined') {
-    return (
-      <Box sx={{ p: 4, textAlign: 'center' }}>
-        <Typography variant="h6" color="error">
-          Error: Invalid acharya selected. Please go back and select again.
-        </Typography>
-        <Button variant="contained" component={Link} to="/acharyas" sx={{ mt: 2 }}>
-          Back to List
-        </Button>
-      </Box>
-    );
-  }
-
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const preSelectedPoojaId = searchParams.get('poojaId');
@@ -63,11 +49,14 @@ export default function CreateBooking() {
 
   // Form State
   const [selectedPooja, setSelectedPooja] = useState('');
+  const [serviceInput, setServiceInput] = useState('');
   const [bookingType, setBookingType] = useState('only');
   const [date, setDate] = useState(null);
   const [time, setTime] = useState(null);
   const [notes, setNotes] = useState('');
   const [requirements, setRequirements] = useState('');
+
+  const effectiveMode = selectedPooja ? mode : 'request';
 
   useEffect(() => {
     const fetchDetails = async () => {
@@ -90,7 +79,10 @@ export default function CreateBooking() {
           // Pre-select pooja if valid
           if (preSelectedPoojaId) {
             const found = (response.data.data.poojas || []).find(p => p._id === preSelectedPoojaId || p.id === preSelectedPoojaId);
-            if (found) setSelectedPooja(found._id || found.id);
+            if (found) {
+              setSelectedPooja(found._id || found.id);
+              setServiceInput(found.name || '');
+            }
           }
         }
       } catch (err) {
@@ -105,13 +97,33 @@ export default function CreateBooking() {
   }, [acharyaId, preSelectedPoojaId]);
 
   const handleNext = () => {
-    if (activeStep === 0 && !selectedPooja) {
-      setError('Please select a pooja service');
+    if (activeStep === 0 && !serviceInput.trim()) {
+      setError('Please enter or select a pooja service');
       return;
     }
-    if (activeStep === 1 && (!date || !time)) {
-      setError('Please select date and time');
-      return;
+    if (activeStep === 1) {
+      if (!date || !time) {
+        setError('Please select date and time');
+        return;
+      }
+      // Validate date and time are in the future
+      const selectedDateTime = new Date(date);
+      const [hours, minutes] = time.toTimeString().split(':').map(Number);
+      selectedDateTime.setHours(hours, minutes, 0, 0);
+      
+      const now = new Date();
+      if (selectedDateTime <= now) {
+        setError('Please select a future date and time');
+        return;
+      }
+      
+      // Check if date is too far in the future (optional, e.g., max 90 days)
+      const maxDate = new Date();
+      maxDate.setDate(maxDate.getDate() + 90);
+      if (selectedDateTime > maxDate) {
+        setError('Booking date cannot be more than 90 days in advance');
+        return;
+      }
     }
     setError(null);
     setActiveStep((prev) => prev + 1);
@@ -119,31 +131,97 @@ export default function CreateBooking() {
 
   const handleBack = () => setActiveStep((prev) => prev - 1);
 
+  const validateSubmission = () => {
+    if (!acharyaId || acharyaId === 'undefined') {
+      return 'Invalid Acharya selected';
+    }
+    if (!date || !time) {
+      return 'Please select date and time';
+    }
+    return null;
+  };
+
+  const buildPayload = () => {
+    const payload = {
+      acharya_id: acharyaId,
+      booking_type: bookingType,
+      booking_mode: effectiveMode,
+      date: format(date, 'yyyy-MM-dd'),
+      time: format(time, 'HH:mm')
+    };
+
+    // Ensure we have either pooja_id or service_name
+    if (selectedPooja) {
+      payload.pooja_id = selectedPooja;
+    } else if (serviceInput && serviceInput.trim()) {
+      // Only add service_name if we don't have pooja_id
+      payload.service_name = serviceInput.trim();
+    }
+    
+    // Debug logging
+    console.log('Build payload - selectedPooja:', selectedPooja);
+    console.log('Build payload - serviceInput:', serviceInput);
+    console.log('Build payload - bookingType:', bookingType);
+    
+    if (effectiveMode === 'request' && requirements) {
+      payload.requirements = requirements;
+    }
+    
+    if (notes) {
+      payload.notes = notes;
+    }
+    
+    return payload;
+  };
+
+  const getErrorMessage = (err) => {
+    if (err.response?.data?.error?.message) {
+      return err.response.data.error.message;
+    }
+    if (err.response?.data?.message) {
+      return err.response.data.message;
+    }
+    if (err.response?.status === 400) {
+      return 'Invalid booking details. Please check your inputs.';
+    }
+    if (err.response?.status === 404) {
+      return 'Acharya or service not found. Please try again.';
+    }
+    if (err.response?.status === 409) {
+      return 'This time slot is no longer available. Please select another time.';
+    }
+    if (err.response?.status === 500) {
+      return 'Server error. Please try again later.';
+    }
+    if (!err.response) {
+      return 'Network error. Please check your internet connection.';
+    }
+    return 'Booking failed. Please try again.';
+  };
+
   const handleSubmit = async () => {
     try {
       setSubmitting(true);
       setError(null);
 
-      const payload = {
-        acharya_id: acharyaId,
-        pooja_id: selectedPooja,
-        booking_type: bookingType,
-        booking_mode: mode,
-        requirements: mode === 'request' ? requirements : undefined,
-        date: format(date, 'yyyy-MM-dd'),
-        time: format(time, 'HH:mm'),
-        notes: notes
-      };
+      const validationError = validateSubmission();
+      if (validationError) {
+        setError(validationError);
+        setSubmitting(false);
+        return;
+      }
+
+      const payload = buildPayload();
+      console.log('Submitting booking payload:', payload);
 
       const response = await api.post('/bookings', payload);
+      console.log('Booking response:', response.data);
       
       if (response.data.success) {
         setSuccess(true);
-        // Navigate to payment or confirmation after short delay
         setTimeout(() => {
-           // Assuming response contains booking_id or similar
            const bookingId = response.data.data.booking_id || response.data.data.id;
-           if (mode === 'request') {
+           if (effectiveMode === 'request') {
              navigate('/bookings'); 
            } else {
              navigate(`/booking/${bookingId}/payment`);
@@ -152,18 +230,35 @@ export default function CreateBooking() {
       }
     } catch (err) {
       console.error('Booking failed:', err);
-      // Handle backend specific errors (e.g. slot not available)
-      const msg = err.response?.data?.error?.message || 'Booking failed. Please try again.';
-      setError(msg);
+      console.error('Error response:', err.response?.data);
+      console.error('Error status:', err.response?.status);
+      setError(getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
   };
 
   const getPoojaDetails = () => poojas.find(p => p._id === selectedPooja || p.id === selectedPooja);
+  const selectedServiceName = serviceInput || getPoojaDetails()?.name || '';
 
   if (loading) {
     return <Layout><Box p={4} display="flex" justifyContent="center"><CircularProgress /></Box></Layout>;
+  }
+
+  // Guard against invalid acharyaId after loading
+  if (!acharyaId || acharyaId === 'undefined') {
+    return (
+      <Layout>
+        <Box sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="h6" color="error">
+            Error: Invalid acharya selected. Please go back and select again.
+          </Typography>
+          <Button variant="contained" component={Link} to="/acharyas" sx={{ mt: 2 }}>
+            Back to List
+          </Button>
+        </Box>
+      </Layout>
+    );
   }
 
   return (
@@ -189,10 +284,10 @@ export default function CreateBooking() {
                <Box textAlign="center" py={4}>
                  <FaCheckCircle size={64} color="green" />
                  <Typography variant="h5" mt={2}>
-                   {mode === 'request' ? 'Request Sent Successfully!' : 'Booking Initiated Successfully!'}
+                   {effectiveMode === 'request' ? 'Request Sent Successfully!' : 'Booking Initiated Successfully!'}
                  </Typography>
                  <Typography color="text.secondary">
-                   {mode === 'request' ? 'Waiting for Acharya approval...' : 'Redirecting to payment...'}
+                   {effectiveMode === 'request' ? 'Waiting for Acharya approval...' : 'Redirecting to payment...'}
                  </Typography>
                </Box>
             ) : (
@@ -203,37 +298,81 @@ export default function CreateBooking() {
                     <Typography variant="h6" gutterBottom>Select Service Details</Typography>
                     <Typography gutterBottom>Booking with: <b>{acharya?.name}</b></Typography>
                     
-                    <TextField
-                      select
+                    <Autocomplete
                       fullWidth
-                      label="Select Pooja Service"
-                      value={selectedPooja}
-                      onChange={(e) => setSelectedPooja(e.target.value)}
-                      sx={{ mt: 2, mb: 3 }}
-                    >
-                      {poojas.map((pooja) => (
-                        <MenuItem key={pooja._id || pooja.id} value={pooja._id || pooja.id}>
-                          {pooja.name} - ₹{pooja.base_price} ({pooja.duration_hours}h)
-                        </MenuItem>
-                      ))}
-                    </TextField>
+                      freeSolo
+                      selectOnFocus
+                      handleHomeEndKeys
+                      options={poojas}
+                      getOptionLabel={(pooja) => `${pooja.name} - ₹${pooja.base_price} (${pooja.duration_hours}h)`}
+                      value={poojas.find(p => p._id === selectedPooja || p.id === selectedPooja) || null}
+                      inputValue={serviceInput}
+                      onChange={(event, newValue) => {
+                        if (newValue) {
+                          setSelectedPooja(newValue._id || newValue.id || '');
+                          setServiceInput(newValue.name || '');
+                        } else {
+                          setSelectedPooja('');
+                        }
+                      }}
+                      onInputChange={(event, newInputValue) => {
+                        setServiceInput(newInputValue);
+                        if (!newInputValue) {
+                          setSelectedPooja('');
+                        }
+                      }}
+                      filterOptions={(options, state) => {
+                        const inputValue = state.inputValue.toLowerCase();
+                        return options.filter(
+                          (option) =>
+                            option.name.toLowerCase().includes(inputValue) ||
+                            `${option.base_price}`.includes(inputValue) ||
+                            `${option.duration_hours}`.includes(inputValue)
+                        );
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          id="pooja-select"
+                          name="pooja"
+                          label="Search & Select Pooja Service"
+                          placeholder="Type to search by name, price, or duration..."
+                          sx={{ mt: 2, mb: 3 }}
+                        />
+                      )}
+                      noOptionsText="No poojas found"
+                      renderOption={(props, pooja) => (
+                        <li {...props}>
+                          <Box sx={{ width: '100%' }}>
+                            <Typography variant="subtitle2">{pooja.name}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              ₹{pooja.base_price} • {pooja.duration_hours}h duration
+                            </Typography>
+                          </Box>
+                        </li>
+                      )}
+                    />
                     
-                    {getPoojaDetails() && (
+                    {selectedServiceName && (
                       <Paper variant="outlined" sx={{ p: 2, bgcolor: '#fffbf2' }}>
                         <Typography variant="subtitle2">Description:</Typography>
-                        <Typography variant="body2">{getPoojaDetails().description}</Typography>
+                        <Typography variant="body2">
+                          {getPoojaDetails()?.description || 'Custom request will be reviewed by the Acharya.'}
+                        </Typography>
                       </Paper>
                     )}
 
-                    <FormControl sx={{ mt: 3 }}>
-                      <FormLabel>Booking Type</FormLabel>
+                    <FormControl sx={{ mt: 3 }} component="fieldset">
+                      <FormLabel component="legend" id="booking-type-label">Booking Type</FormLabel>
                       <RadioGroup
                         row
+                        name="booking-type"
+                        aria-labelledby="booking-type-label"
                         value={bookingType}
                         onChange={(e) => setBookingType(e.target.value)}
                       >
-                        <FormControlLabel value="only" control={<Radio />} label="Pooja Only" />
-                        <FormControlLabel value="with_samagri" control={<Radio />} label="With Samagri (Materials)" />
+                        <FormControlLabel value="only" control={<Radio inputProps={{ 'aria-label': 'Pooja Only' }} />} label="Pooja Only" />
+                        <FormControlLabel value="with_samagri" control={<Radio inputProps={{ 'aria-label': 'With Samagri' }} />} label="With Samagri (Materials)" />
                       </RadioGroup>
                     </FormControl>
                   </Box>
@@ -251,7 +390,7 @@ export default function CreateBooking() {
                              value={date}
                              onChange={(newDate) => setDate(newDate)}
                              disablePast
-                             slotProps={{ textField: { fullWidth: true } }}
+                             slotProps={{ textField: { id: "date-picker", fullWidth: true, name: "date" } }}
                            />
                          </Grid>
                          <Grid item xs={12} sm={6}>
@@ -259,12 +398,14 @@ export default function CreateBooking() {
                              label="Time"
                              value={time}
                              onChange={(newTime) => setTime(newTime)}
-                             slotProps={{ textField: { fullWidth: true } }}
+                             slotProps={{ textField: { id: "time-picker", fullWidth: true, name: "time" } }}
                            />
                          </Grid>
                        </Grid>
                      </LocalizationProvider>
                      <TextField
+                        id="booking-notes"
+                        name="notes"
                         fullWidth
                         multiline
                         rows={3}
@@ -273,8 +414,10 @@ export default function CreateBooking() {
                         onChange={(e) => setNotes(e.target.value)}
                         sx={{ mt: 3 }}
                      />
-                     {mode === 'request' && (
+                     {effectiveMode === 'request' && (
                        <TextField
+                          id="booking-requirements"
+                          name="requirements"
                           fullWidth
                           multiline
                           rows={3}
@@ -298,7 +441,7 @@ export default function CreateBooking() {
                         <Grid item xs={6}><Typography fontWeight="bold">{acharya?.name}</Typography></Grid>
                         
                         <Grid item xs={6}><Typography color="text.secondary">Service:</Typography></Grid>
-                        <Grid item xs={6}><Typography fontWeight="bold">{getPoojaDetails()?.name}</Typography></Grid>
+                        <Grid item xs={6}><Typography fontWeight="bold">{selectedServiceName}</Typography></Grid>
                         
                         <Grid item xs={6}><Typography color="text.secondary">Type:</Typography></Grid>
                         <Grid item xs={6}><Typography fontWeight="bold">{bookingType === 'with_samagri' ? 'With Samagri' : 'Pooja Only'}</Typography></Grid>
@@ -312,11 +455,17 @@ export default function CreateBooking() {
                     </Paper>
 
                     {/* Gamification Pricing Display */}
-                    <PricingDisplay 
-                      baseAmount={getPoojaDetails()?.base_price || 0}
-                      serviceId={selectedPooja}
-                      onPriceCalculated={() => {}}
-                    />
+                    {selectedPooja ? (
+                      <PricingDisplay 
+                        baseAmount={getPoojaDetails()?.base_price || 0}
+                        serviceId={selectedPooja}
+                        onPriceCalculated={() => {}}
+                      />
+                    ) : (
+                      <Alert severity="info">
+                        Once the Acharya reviews your custom service request, they will share pricing details.
+                      </Alert>
+                    )}
                   </Box>
                 )}
 

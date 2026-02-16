@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import {
   Container,
   Typography,
@@ -21,6 +22,7 @@ import { useNavigate } from 'react-router-dom';
 const BookingCard = ({ booking }) => {
   const navigate = useNavigate();
   const statusColors = {
+    'requested': 'info',
     'pending_payment': 'warning',
     'confirmed': 'success',
     'completed': 'info',
@@ -28,7 +30,7 @@ const BookingCard = ({ booking }) => {
     'failed': 'error'
   };
 
-  const isUpcoming = ['confirmed', 'pending_payment'].includes(booking.status);
+  const isUpcoming = ['requested', 'confirmed', 'pending_payment'].includes(booking.status);
 
   return (
     <Paper sx={{ p: 3, mb: 2, borderRadius: 2 }}>
@@ -77,6 +79,11 @@ const BookingCard = ({ booking }) => {
         </Grid>
 
         <Grid item xs={12} sm={3} sx={{ textAlign: { sm: 'right' } }}>
+          {booking.status === 'requested' && (
+            <Alert severity="info" sx={{ mb: 1, py: 0.5 }}>
+              Awaiting Acharya confirmation
+            </Alert>
+          )}
           {isUpcoming && booking.status === 'confirmed' && (
             <Button 
               variant="contained" 
@@ -112,6 +119,18 @@ const BookingCard = ({ booking }) => {
       </Grid>
     </Paper>
   );
+};
+
+BookingCard.propTypes = {
+  booking: PropTypes.shape({
+    id: PropTypes.string,
+    booking_id: PropTypes.string,
+    date_time: PropTypes.string.isRequired,
+    pooja_name: PropTypes.string,
+    acharya_name: PropTypes.string,
+    status: PropTypes.string.isRequired,
+    total_amount: PropTypes.number
+  }).isRequired
 };
 
 export default function MyBookings() {

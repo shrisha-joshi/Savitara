@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import PropTypes from 'prop-types'
 import {
   Container,
   Typography,
@@ -51,6 +52,12 @@ function CustomTabPanel(props) {
   );
 }
 
+CustomTabPanel.propTypes = {
+  children: PropTypes.node,
+  value: PropTypes.number.isRequired,
+  index: PropTypes.number.isRequired
+};
+
 export default function AcharyaProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -66,7 +73,8 @@ export default function AcharyaProfile() {
   const formatLocation = (loc) => {
     if (!loc) return 'Location not available';
     if (typeof loc === 'string') return loc;
-    return `${loc.city || ''}, ${loc.state || ''}`.replace(/^, |, $/g, '');
+    // Remove leading/trailing commas and spaces
+    return `${loc.city || ''}, ${loc.state || ''}`.replaceAll(/^, /g, '').replaceAll(/, $/g, '');
   };
 
   useEffect(() => {
@@ -93,7 +101,8 @@ export default function AcharyaProfile() {
   }, [id])
 
   const handleBookPooja = (poojaId) => {
-    navigate(`/booking/create/${id}?poojaId=${poojaId}`)
+    const acharyaProfileId = profile?._id || profile?.id || id
+    navigate(`/booking/create/${acharyaProfileId}?poojaId=${poojaId}`)
   }
 
   if (loading) {
@@ -116,6 +125,9 @@ export default function AcharyaProfile() {
       </Layout>
     )
   }
+
+  const acharyaProfileId = profile._id || profile.id || id
+  const acharyaUserId = profile.user_id || profile.userId || profile.account_id || acharyaProfileId
 
   return (
     <Layout>
@@ -180,9 +192,9 @@ export default function AcharyaProfile() {
                 </Box>
 
                 <Box display="flex" gap={1} flexWrap="wrap">
-                  {profile.specializations?.map((spec, index) => (
+                  {profile.specializations?.map((spec) => (
                     <Chip 
-                      key={index} 
+                      key={spec} 
                       label={spec} 
                       sx={{ 
                         backgroundColor: 'rgba(255,255,255,0.1)', 
@@ -198,7 +210,7 @@ export default function AcharyaProfile() {
                     variant="contained" 
                     color="secondary" 
                     startIcon={<FaComment />}
-                    onClick={() => navigate(`/chat/u/${id}`)}
+                    onClick={() => navigate(`/chat/u/${acharyaUserId}`)}
                     sx={{ borderRadius: 20, px: 4 }}
                   >
                     Chat with Acharya
@@ -244,7 +256,7 @@ export default function AcharyaProfile() {
                       </Grid>
                     ) : (
                       <Alert severity="info" action={
-                        <Button color="inherit" size="small" onClick={() => navigate('/booking/create/' + id)}>
+                        <Button color="inherit" size="small" onClick={() => navigate('/booking/create/' + acharyaProfileId)}>
                          Request Custom Booking
                         </Button>
                       }>
@@ -355,7 +367,7 @@ export default function AcharyaProfile() {
                       fullWidth 
                       size="large"
                       sx={{ bgcolor: 'var(--saffron-main)' }}
-                      onClick={() => navigate(`/booking/create/${id}`)}
+                      onClick={() => navigate(`/booking/create/${acharyaProfileId}`)}
                     >
                       Book Session
                     </Button>
@@ -366,7 +378,7 @@ export default function AcharyaProfile() {
                       fullWidth 
                       size="large"
                       startIcon={<MessageIcon />}
-                      onClick={() => navigate(`/chat/u/${id}`)}
+                      onClick={() => navigate(`/chat/u/${acharyaUserId}`)}
                     >
                       Message
                     </Button>

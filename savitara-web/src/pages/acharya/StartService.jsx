@@ -3,7 +3,7 @@ import { Container, Typography } from '@mui/material'
 import Layout from '../../components/Layout'
 
 export default function StartService() {
-  const { id } = useParams()
+  const { bookingId } = useParams()
 
   return (
     <Layout>
@@ -11,7 +11,7 @@ export default function StartService() {
         <Typography variant="h4" gutterBottom>
           Start Service
         </Typography>
-        <Typography>Service ID: {id}</Typography>
+        <Typography>Service ID: {bookingId}</Typography>
       </Container>
     </Layout>
   )

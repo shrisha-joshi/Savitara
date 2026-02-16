@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Container, Typography, Box, Button, TextField, Card, Grid, Chip, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel } from '@mui/material'
-import { Add, Delete, Edit, Event, AccessTime, Refresh } from '@mui/icons-material'
+import { Add, Delete, Edit, AccessTime, Refresh } from '@mui/icons-material'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
 import { toast } from 'react-toastify'
@@ -265,7 +265,7 @@ export default function Calendar() {
               label="Maximum Bookings"
               type="number"
               value={newSlot.max_bookings}
-              onChange={(e) => setNewSlot({ ...newSlot, max_bookings: parseInt(e.target.value) })}
+              onChange={(e) => setNewSlot({ ...newSlot, max_bookings: Number.parseInt(e.target.value, 10) })}
               fullWidth
               inputProps={{ min: 1, max: 20 }}
             />
@@ -328,7 +328,7 @@ export default function Calendar() {
                 label="Maximum Bookings"
                 type="number"
                 value={editingSlot.max_bookings}
-                onChange={(e) => setEditingSlot({ ...editingSlot, max_bookings: parseInt(e.target.value) })}
+                onChange={(e) => setEditingSlot({ ...editingSlot, max_bookings: Number.parseInt(e.target.value, 10) })}
                 fullWidth
                 inputProps={{ min: 1, max: 20 }}
               />

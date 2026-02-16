@@ -32,7 +32,7 @@ ERROR_FETCH_REVIEWS = "Failed to fetch reviews"
 ERROR_ADMIN_REQUIRED = "Admin access required"
 
 # Regex Patterns
-PHONE_REGEX = r'^\+?[1-9]\d{1,14}$'
+PHONE_REGEX = r"^\+?[1-9]\d{1,14}$"
 
 # Setup Script Messages
 MSG_DEPS_INSTALLED = "Dependencies installed"

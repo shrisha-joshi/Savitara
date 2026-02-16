@@ -27,6 +27,7 @@ const MyBookingsScreen = ({ navigation }) => {
 
   const getStatusColor = (status) => {
     const colors = {
+      requested: '#42A5F5', // Blue for requested
       pending: '#FFA726',
       confirmed: '#42A5F5',
       in_progress: '#66BB6A',
@@ -43,6 +44,7 @@ const MyBookingsScreen = ({ navigation }) => {
         onValueChange={setFilter}
         buttons={[
           { value: 'all', label: 'All' },
+          { value: 'requested', label: 'Requested' },
           { value: 'pending', label: 'Pending' },
           { value: 'confirmed', label: 'Confirmed' },
           { value: 'completed', label: 'Completed' },

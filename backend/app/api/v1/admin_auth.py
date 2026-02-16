@@ -4,7 +4,7 @@ Email/Password based admin authentication with super admin management
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from pydantic import BaseModel, EmailStr
 import logging
 from datetime import datetime, timezone
@@ -60,15 +60,14 @@ class AdminUserResponse(BaseModel):
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Admin Email/Password Login",
-    description="Authenticate admin with email and password"
+    description="Authenticate admin with email and password",
 )
 async def admin_login(
-    request: AdminLoginRequest,
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    request: AdminLoginRequest, db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """
     Admin login with email/password
-    
+
     Flow:
     1. Check if admin exists in admin_users collection
     2. Verify password
@@ -78,42 +77,41 @@ async def admin_login(
     try:
         # Find admin user
         admin = await db.admin_users.find_one({"email": request.email.lower()})
-        
+
         if not admin:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password"
+                detail="Invalid email or password",
             )
-        
+
         # Check if password is set
         if not admin.get("password_hash"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Password not set. Please set up your password first."
+                detail="Password not set. Please set up your password first.",
             )
-        
+
         # Verify password
-        if not security_manager.verify_password(request.password, admin["password_hash"]):
+        if not security_manager.verify_password(
+            request.password, admin["password_hash"]
+        ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password"
+                detail="Invalid email or password",
             )
-        
+
         # Update last login
         await db.admin_users.update_one(
             {"email": request.email.lower()},
-            {"$set": {"last_login": datetime.now(timezone.utc)}}
+            {"$set": {"last_login": datetime.now(timezone.utc)}},
         )
-        
+
         # Generate JWT tokens
         access_token = security_manager.create_access_token(
-            user_id=str(admin["_id"]),
-            role="admin"
+            user_id=str(admin["_id"]), role="admin"
         )
-        refresh_token = security_manager.create_refresh_token(
-            user_id=str(admin["_id"])
-        )
-        
+        refresh_token = security_manager.create_refresh_token(user_id=str(admin["_id"]))
+
         return StandardResponse(
             success=True,
             message="Login successful",
@@ -126,18 +124,17 @@ async def admin_login(
                     "email": admin["email"],
                     "name": admin.get("name", admin["email"].split("@")[0]),
                     "role": "admin",
-                    "is_super_admin": admin["email"] == SUPER_ADMIN_EMAIL
-                }
-            }
+                    "is_super_admin": admin["email"] == SUPER_ADMIN_EMAIL,
+                },
+            },
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Admin login error: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Login failed"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Login failed"
         )
 
 
@@ -146,23 +143,22 @@ async def admin_login(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Check Admin Email Status",
-    description="Check if an email is registered as admin and if password is set"
+    description="Check if an email is registered as admin and if password is set",
 )
 async def check_admin_email(
-    request: AdminEmailCheckRequest,
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    request: AdminEmailCheckRequest, db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """Check if email is registered and if password is set"""
     try:
         admin = await db.admin_users.find_one({"email": request.email.lower()})
-    
+
         if not admin:
             return StandardResponse(
                 success=False,
                 message="Email not registered as admin",
-                data={"is_admin": False, "has_password": False}
+                data={"is_admin": False, "has_password": False},
             )
-        
+
         return StandardResponse(
             success=True,
             message="Admin found",
@@ -170,14 +166,14 @@ async def check_admin_email(
                 "is_admin": True,
                 "has_password": bool(admin.get("password_hash")),
                 "name": admin.get("name"),
-                "is_super_admin": admin["email"] == SUPER_ADMIN_EMAIL
-            }
+                "is_super_admin": admin["email"] == SUPER_ADMIN_EMAIL,
+            },
         )
     except Exception as e:
         logger.error(f"Check email error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to check email"
+            detail="Failed to check email",
         )
 
 
@@ -186,11 +182,10 @@ async def check_admin_email(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Setup Admin Password",
-    description="Set password for first-time admin login"
+    description="Set password for first-time admin login",
 )
 async def setup_admin_password(
-    request: AdminSetupPasswordRequest,
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    request: AdminSetupPasswordRequest, db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """
     Setup password for first-time admin login
@@ -200,31 +195,30 @@ async def setup_admin_password(
     """
     if request.password != request.confirm_password:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Passwords do not match"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Passwords do not match"
         )
-    
+
     if len(request.password) < 8:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 8 characters"
+            detail="Password must be at least 8 characters",
         )
-    
+
     # Find admin user
     admin = await db.admin_users.find_one({"email": request.email.lower()})
-    
+
     if not admin:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Email not registered as admin"
+            detail="Email not registered as admin",
         )
-    
+
     if admin.get("password_hash"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password already set. Use login instead."
+            detail="Password already set. Use login instead.",
         )
-    
+
     # Set password
     password_hash = security_manager.get_password_hash(request.password)
     await db.admin_users.update_one(
@@ -232,17 +226,15 @@ async def setup_admin_password(
         {
             "$set": {
                 "password_hash": password_hash,
-                "password_set_at": datetime.now(timezone.utc)
+                "password_set_at": datetime.now(timezone.utc),
             }
-        }
+        },
     )
-    
+
     logger.info(f"Password set for admin: {request.email}")
-    
+
     return StandardResponse(
-        success=True,
-        message="Password set successfully. You can now login.",
-        data={}
+        success=True, message="Password set successfully. You can now login.", data={}
     )
 
 
@@ -251,11 +243,11 @@ async def setup_admin_password(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="List All Admins",
-    description="Get list of all admin users (Super Admin only)"
+    description="Get list of all admin users (Super Admin only)",
 )
 async def list_admins(
     current_admin: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """List all admin users - Super Admin only"""
     # Get current admin email
@@ -263,27 +255,29 @@ async def list_admins(
     if not admin_doc or admin_doc.get("email") != SUPER_ADMIN_EMAIL:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only super admin can view all admins"
+            detail="Only super admin can view all admins",
         )
-    
+
     admins = await db.admin_users.find({}).to_list(length=100)
-    
+
     admin_list = []
     for admin in admins:
-        admin_list.append({
-            "id": str(admin["_id"]),
-            "email": admin["email"],
-            "name": admin.get("name"),
-            "is_super_admin": admin["email"] == SUPER_ADMIN_EMAIL,
-            "has_password": bool(admin.get("password_hash")),
-            "created_at": admin.get("created_at"),
-            "last_login": admin.get("last_login")
-        })
-    
+        admin_list.append(
+            {
+                "id": str(admin["_id"]),
+                "email": admin["email"],
+                "name": admin.get("name"),
+                "is_super_admin": admin["email"] == SUPER_ADMIN_EMAIL,
+                "has_password": bool(admin.get("password_hash")),
+                "created_at": admin.get("created_at"),
+                "last_login": admin.get("last_login"),
+            }
+        )
+
     return StandardResponse(
         success=True,
         message=f"Found {len(admin_list)} admins",
-        data={"admins": admin_list}
+        data={"admins": admin_list},
     )
 
 
@@ -292,12 +286,12 @@ async def list_admins(
     response_model=StandardResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Add New Admin",
-    description="Add a new admin email (Super Admin only)"
+    description="Add a new admin email (Super Admin only)",
 )
 async def add_admin(
     request: AddAdminRequest,
     current_admin: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Add new admin - Super Admin only"""
     # Get current admin email
@@ -305,17 +299,17 @@ async def add_admin(
     if not admin_doc or admin_doc.get("email") != SUPER_ADMIN_EMAIL:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only super admin can add new admins"
+            detail="Only super admin can add new admins",
         )
-    
+
     # Check if email already exists
     existing = await db.admin_users.find_one({"email": request.email.lower()})
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered as admin"
+            detail="Email already registered as admin",
         )
-    
+
     # Add new admin
     new_admin = {
         "email": request.email.lower(),
@@ -323,17 +317,17 @@ async def add_admin(
         "created_at": datetime.now(timezone.utc),
         "created_by": SUPER_ADMIN_EMAIL,
         "password_hash": None,  # Will be set on first login
-        "last_login": None
+        "last_login": None,
     }
-    
+
     result = await db.admin_users.insert_one(new_admin)
-    
+
     logger.info(f"New admin added: {request.email} by {SUPER_ADMIN_EMAIL}")
-    
+
     return StandardResponse(
         success=True,
         message=f"Admin {request.email} added successfully. They can now set their password.",
-        data={"admin_id": str(result.inserted_id), "email": request.email}
+        data={"admin_id": str(result.inserted_id), "email": request.email},
     )
 
 
@@ -342,12 +336,12 @@ async def add_admin(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Remove Admin",
-    description="Remove an admin (Super Admin only)"
+    description="Remove an admin (Super Admin only)",
 )
 async def remove_admin(
     request: RemoveAdminRequest,
     current_admin: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Remove admin - Super Admin only"""
     # Get current admin email
@@ -355,31 +349,27 @@ async def remove_admin(
     if not admin_doc or admin_doc.get("email") != SUPER_ADMIN_EMAIL:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only super admin can remove admins"
+            detail="Only super admin can remove admins",
         )
-    
+
     # Cannot remove super admin
     if request.email.lower() == SUPER_ADMIN_EMAIL:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot remove super admin"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot remove super admin"
         )
-    
+
     # Remove admin
     result = await db.admin_users.delete_one({"email": request.email.lower()})
-    
+
     if result.deleted_count == 0:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Admin not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Admin not found"
         )
-    
+
     logger.info(f"Admin removed: {request.email} by {SUPER_ADMIN_EMAIL}")
-    
+
     return StandardResponse(
-        success=True,
-        message=f"Admin {request.email} removed successfully",
-        data={}
+        success=True, message=f"Admin {request.email} removed successfully", data={}
     )
 
 
@@ -388,11 +378,9 @@ async def remove_admin(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Initialize Super Admin",
-    description="Create super admin account if not exists (internal use)"
+    description="Create super admin account if not exists (internal use)",
 )
-async def init_super_admin(
-    db: AsyncIOMotorDatabase = Depends(get_db)
-):
+async def init_super_admin(db: AsyncIOMotorDatabase = Depends(get_db)):
     """
     Initialize super admin account
     This endpoint creates the super admin if it doesn't exist
@@ -400,14 +388,17 @@ async def init_super_admin(
     """
     try:
         existing = await db.admin_users.find_one({"email": SUPER_ADMIN_EMAIL})
-        
+
         if existing:
             return StandardResponse(
                 success=True,
                 message="Super admin already exists",
-                data={"email": SUPER_ADMIN_EMAIL, "has_password": bool(existing.get("password_hash"))}
+                data={
+                    "email": SUPER_ADMIN_EMAIL,
+                    "has_password": bool(existing.get("password_hash")),
+                },
             )
-        
+
         # Create super admin
         super_admin = {
             "email": SUPER_ADMIN_EMAIL,
@@ -415,21 +406,21 @@ async def init_super_admin(
             "created_at": datetime.now(timezone.utc),
             "created_by": "system",
             "password_hash": None,
-            "last_login": None
+            "last_login": None,
         }
-        
+
         await db.admin_users.insert_one(super_admin)
-        
+
         logger.info(f"Super admin initialized: {SUPER_ADMIN_EMAIL}")
-        
+
         return StandardResponse(
             success=True,
             message="Super admin created. Set password to activate.",
-            data={"email": SUPER_ADMIN_EMAIL}
+            data={"email": SUPER_ADMIN_EMAIL},
         )
     except Exception as e:
         logger.error(f"Init super admin error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to initialize super admin"
+            detail="Failed to initialize super admin",
         )

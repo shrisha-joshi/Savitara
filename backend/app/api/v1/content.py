@@ -4,7 +4,7 @@ Handles testimonials, announcements, and site content management
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 import logging
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -61,35 +61,38 @@ class ToggleStatus(BaseModel):
 
 # ==================== TESTIMONIALS ====================
 
+
 @router.get(
     "/testimonials",
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Get All Testimonials",
-    description="Get all testimonials for admin management"
+    description="Get all testimonials for admin management",
 )
 async def get_testimonials(
     current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Get all testimonials"""
     try:
-        testimonials = await db.testimonials.find().sort("created_at", -1).to_list(length=100)
-        
+        testimonials = (
+            await db.testimonials.find().sort("created_at", -1).to_list(length=100)
+        )
+
         # Convert ObjectId to string
         for t in testimonials:
             t["_id"] = str(t["_id"])
-        
+
         return StandardResponse(
             success=True,
             data=testimonials,
-            message=f"Found {len(testimonials)} testimonials"
+            message=f"Found {len(testimonials)} testimonials",
         )
     except Exception as e:
         logger.error(f"Get testimonials error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch testimonials"
+            detail="Failed to fetch testimonials",
         )
 
 
@@ -98,12 +101,12 @@ async def get_testimonials(
     response_model=StandardResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create Testimonial",
-    description="Create a new testimonial"
+    description="Create a new testimonial",
 )
 async def create_testimonial(
     testimonial: TestimonialCreate,
     current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Create a new testimonial"""
     try:
@@ -111,39 +114,41 @@ async def create_testimonial(
             **testimonial.model_dump(),
             "created_at": datetime.now(timezone.utc),
             "created_by": current_user.get("id") or current_user.get("email"),
-            "updated_at": datetime.now(timezone.utc)
+            "updated_at": datetime.now(timezone.utc),
         }
-        
+
         result = await db.testimonials.insert_one(testimonial_doc)
         testimonial_doc["_id"] = str(result.inserted_id)
-        
+
         logger.info(f"Testimonial created by {current_user.get('email')}")
-        
+
         return StandardResponse(
             success=True,
             data=testimonial_doc,
-            message="Testimonial created successfully"
+            message="Testimonial created successfully",
         )
     except Exception as e:
         logger.error(f"Create testimonial error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create testimonial"
+            detail="Failed to create testimonial",
         )
 
+
+TESTIMONIAL_NOT_FOUND = "Testimonial not found"
 
 @router.put(
     "/testimonials/{testimonial_id}",
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Update Testimonial",
-    description="Update an existing testimonial"
+    description="Update an existing testimonial",
 )
 async def update_testimonial(
     testimonial_id: str,
     testimonial: TestimonialUpdate,
     current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Update a testimonial"""
     try:
@@ -151,25 +156,26 @@ async def update_testimonial(
         existing = await db.testimonials.find_one({"_id": ObjectId(testimonial_id)})
         if not existing:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Testimonial not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail=TESTIMONIAL_NOT_FOUND
             )
-        
+
         # Build update data
-        update_data = {k: v for k, v in testimonial.model_dump().items() if v is not None}
+        update_data = {
+            k: v for k, v in testimonial.model_dump().items() if v is not None
+        }
         update_data["updated_at"] = datetime.now(timezone.utc)
         update_data["updated_by"] = current_user.get("id") or current_user.get("email")
-        
+
         await db.testimonials.update_one(
-            {"_id": ObjectId(testimonial_id)},
-            {"$set": update_data}
+            {"_id": ObjectId(testimonial_id)}, {"$set": update_data}
         )
-        
-        logger.info(f"Testimonial {testimonial_id} updated by {current_user.get('email')}")
-        
+
+        logger.info(
+            f"Testimonial {testimonial_id} updated by {current_user.get('email')}"
+        )
+
         return StandardResponse(
-            success=True,
-            message="Testimonial updated successfully"
+            success=True, message="Testimonial updated successfully"
         )
     except HTTPException:
         raise
@@ -177,7 +183,7 @@ async def update_testimonial(
         logger.error(f"Update testimonial error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update testimonial"
+            detail="Failed to update testimonial",
         )
 
 
@@ -186,13 +192,13 @@ async def update_testimonial(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Toggle Testimonial Status",
-    description="Toggle testimonial visibility"
+    description="Toggle testimonial visibility",
 )
 async def toggle_testimonial(
     testimonial_id: str,
     toggle: ToggleStatus,
     current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Toggle testimonial active status"""
     try:
@@ -201,20 +207,19 @@ async def toggle_testimonial(
             {
                 "$set": {
                     "is_active": toggle.is_active,
-                    "updated_at": datetime.now(timezone.utc)
+                    "updated_at": datetime.now(timezone.utc),
                 }
-            }
+            },
         )
-        
+
         if result.matched_count == 0:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Testimonial not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail=TESTIMONIAL_NOT_FOUND
             )
-        
+
         return StandardResponse(
             success=True,
-            message=f"Testimonial {'activated' if toggle.is_active else 'deactivated'}"
+            message=f"Testimonial {'activated' if toggle.is_active else 'deactivated'}",
         )
     except HTTPException:
         raise
@@ -222,7 +227,7 @@ async def toggle_testimonial(
         logger.error(f"Toggle testimonial error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to toggle testimonial"
+            detail="Failed to toggle testimonial",
         )
 
 
@@ -231,28 +236,28 @@ async def toggle_testimonial(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Delete Testimonial",
-    description="Delete a testimonial"
+    description="Delete a testimonial",
 )
 async def delete_testimonial(
     testimonial_id: str,
     current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Delete a testimonial"""
     try:
         result = await db.testimonials.delete_one({"_id": ObjectId(testimonial_id)})
-        
+
         if result.deleted_count == 0:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Testimonial not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Testimonial not found"
             )
-        
-        logger.info(f"Testimonial {testimonial_id} deleted by {current_user.get('email')}")
-        
+
+        logger.info(
+            f"Testimonial {testimonial_id} deleted by {current_user.get('email')}"
+        )
+
         return StandardResponse(
-            success=True,
-            message="Testimonial deleted successfully"
+            success=True, message="Testimonial deleted successfully"
         )
     except HTTPException:
         raise
@@ -260,40 +265,45 @@ async def delete_testimonial(
         logger.error(f"Delete testimonial error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete testimonial"
+            detail="Failed to delete testimonial",
         )
 
 
 # ==================== ANNOUNCEMENTS ====================
+
 
 @router.get(
     "/announcements",
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Get All Announcements",
-    description="Get all announcements for admin management"
+    description="Get all announcements for admin management",
 )
 async def get_announcements(
     current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Get all announcements"""
     try:
-        announcements = await db.announcements.find().sort([("priority", -1), ("created_at", -1)]).to_list(length=100)
-        
+        announcements = (
+            await db.announcements.find()
+            .sort([("priority", -1), ("created_at", -1)])
+            .to_list(length=100)
+        )
+
         for a in announcements:
             a["_id"] = str(a["_id"])
-        
+
         return StandardResponse(
             success=True,
             data=announcements,
-            message=f"Found {len(announcements)} announcements"
+            message=f"Found {len(announcements)} announcements",
         )
     except Exception as e:
         logger.error(f"Get announcements error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch announcements"
+            detail="Failed to fetch announcements",
         )
 
 
@@ -302,12 +312,12 @@ async def get_announcements(
     response_model=StandardResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create Announcement",
-    description="Create a new announcement"
+    description="Create a new announcement",
 )
 async def create_announcement(
     announcement: AnnouncementCreate,
     current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Create a new announcement"""
     try:
@@ -315,24 +325,24 @@ async def create_announcement(
             **announcement.model_dump(),
             "created_at": datetime.now(timezone.utc),
             "created_by": current_user.get("id") or current_user.get("email"),
-            "updated_at": datetime.now(timezone.utc)
+            "updated_at": datetime.now(timezone.utc),
         }
-        
+
         result = await db.announcements.insert_one(announcement_doc)
         announcement_doc["_id"] = str(result.inserted_id)
-        
+
         logger.info(f"Announcement created by {current_user.get('email')}")
-        
+
         return StandardResponse(
             success=True,
             data=announcement_doc,
-            message="Announcement created successfully"
+            message="Announcement created successfully",
         )
     except Exception as e:
         logger.error(f"Create announcement error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create announcement"
+            detail="Failed to create announcement",
         )
 
 
@@ -341,37 +351,38 @@ async def create_announcement(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Update Announcement",
-    description="Update an existing announcement"
+    description="Update an existing announcement",
 )
 async def update_announcement(
     announcement_id: str,
     announcement: AnnouncementUpdate,
     current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Update an announcement"""
     try:
         existing = await db.announcements.find_one({"_id": ObjectId(announcement_id)})
         if not existing:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Announcement not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found"
             )
-        
-        update_data = {k: v for k, v in announcement.model_dump().items() if v is not None}
+
+        update_data = {
+            k: v for k, v in announcement.model_dump().items() if v is not None
+        }
         update_data["updated_at"] = datetime.now(timezone.utc)
         update_data["updated_by"] = current_user.get("id") or current_user.get("email")
-        
+
         await db.announcements.update_one(
-            {"_id": ObjectId(announcement_id)},
-            {"$set": update_data}
+            {"_id": ObjectId(announcement_id)}, {"$set": update_data}
         )
-        
-        logger.info(f"Announcement {announcement_id} updated by {current_user.get('email')}")
-        
+
+        logger.info(
+            f"Announcement {announcement_id} updated by {current_user.get('email')}"
+        )
+
         return StandardResponse(
-            success=True,
-            message="Announcement updated successfully"
+            success=True, message="Announcement updated successfully"
         )
     except HTTPException:
         raise
@@ -379,7 +390,7 @@ async def update_announcement(
         logger.error(f"Update announcement error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update announcement"
+            detail="Failed to update announcement",
         )
 
 
@@ -388,28 +399,28 @@ async def update_announcement(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Delete Announcement",
-    description="Delete an announcement"
+    description="Delete an announcement",
 )
 async def delete_announcement(
     announcement_id: str,
     current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Delete an announcement"""
     try:
         result = await db.announcements.delete_one({"_id": ObjectId(announcement_id)})
-        
+
         if result.deleted_count == 0:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Announcement not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found"
             )
-        
-        logger.info(f"Announcement {announcement_id} deleted by {current_user.get('email')}")
-        
+
+        logger.info(
+            f"Announcement {announcement_id} deleted by {current_user.get('email')}"
+        )
+
         return StandardResponse(
-            success=True,
-            message="Announcement deleted successfully"
+            success=True, message="Announcement deleted successfully"
         )
     except HTTPException:
         raise
@@ -417,46 +428,53 @@ async def delete_announcement(
         logger.error(f"Delete announcement error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete announcement"
+            detail="Failed to delete announcement",
         )
 
 
 # ==================== NOTIFICATION HISTORY ====================
+
 
 @router.get(
     "/notifications/history",
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Get Notification History",
-    description="Get broadcast notification history"
+    description="Get broadcast notification history",
 )
 async def get_notification_history(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=100),
     current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Get notification history"""
     try:
         skip = (page - 1) * limit
-        
-        notifications = await db.notification_history.find().sort("sent_at", -1).skip(skip).limit(limit).to_list(length=limit)
-        
+
+        notifications = (
+            await db.notification_history.find()
+            .sort("sent_at", -1)
+            .skip(skip)
+            .limit(limit)
+            .to_list(length=limit)
+        )
+
         for n in notifications:
             n["_id"] = str(n["_id"])
-        
-        total = await db.notification_history.count_documents({})
-        
+
+        await db.notification_history.count_documents({})
+
         return StandardResponse(
             success=True,
             data=notifications,
-            message=f"Found {len(notifications)} notifications"
+            message=f"Found {len(notifications)} notifications",
         )
     except Exception as e:
         logger.error(f"Get notification history error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch notification history"
+            detail="Failed to fetch notification history",
         )
 
 
@@ -471,32 +489,30 @@ public_router = APIRouter(prefix="/content", tags=["Public Content"])
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Get Active Testimonials",
-    description="Get active testimonials for public display"
+    description="Get active testimonials for public display",
 )
-async def get_public_testimonials(
-    db: AsyncIOMotorDatabase = Depends(get_db)
-):
+async def get_public_testimonials(db: AsyncIOMotorDatabase = Depends(get_db)):
     """Get active testimonials for public display"""
     try:
-        testimonials = await db.testimonials.find(
-            {"is_active": True}
-        ).sort("created_at", -1).limit(10).to_list(length=10)
-        
+        testimonials = (
+            await db.testimonials.find({"is_active": True})
+            .sort("created_at", -1)
+            .limit(10)
+            .to_list(length=10)
+        )
+
         for t in testimonials:
             t["_id"] = str(t["_id"])
             # Remove internal fields
             t.pop("created_by", None)
             t.pop("updated_by", None)
-        
-        return StandardResponse(
-            success=True,
-            data=testimonials
-        )
+
+        return StandardResponse(success=True, data=testimonials)
     except Exception as e:
         logger.error(f"Get public testimonials error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch testimonials"
+            detail="Failed to fetch testimonials",
         )
 
 
@@ -505,29 +521,27 @@ async def get_public_testimonials(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Get Active Announcements",
-    description="Get active announcements for public display"
+    description="Get active announcements for public display",
 )
-async def get_public_announcements(
-    db: AsyncIOMotorDatabase = Depends(get_db)
-):
+async def get_public_announcements(db: AsyncIOMotorDatabase = Depends(get_db)):
     """Get active announcements for public display"""
     try:
-        announcements = await db.announcements.find(
-            {"is_active": True}
-        ).sort([("priority", -1), ("created_at", -1)]).limit(5).to_list(length=5)
-        
+        announcements = (
+            await db.announcements.find({"is_active": True})
+            .sort([("priority", -1), ("created_at", -1)])
+            .limit(5)
+            .to_list(length=5)
+        )
+
         for a in announcements:
             a["_id"] = str(a["_id"])
             a.pop("created_by", None)
             a.pop("updated_by", None)
-        
-        return StandardResponse(
-            success=True,
-            data=announcements
-        )
+
+        return StandardResponse(success=True, data=announcements)
     except Exception as e:
         logger.error(f"Get public announcements error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch announcements"
+            detail="Failed to fetch announcements",
         )

@@ -4,7 +4,7 @@ Handles Google OAuth login, JWT token management
 SonarQube: S5122 - Proper CORS handled in main.py
 """
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPBearer
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from typing import Dict, Any
@@ -14,9 +14,8 @@ from app.schemas.requests import (
     GoogleAuthRequest,
     LoginRequest,
     RegisterRequest,
-    TokenResponse,
     RefreshTokenRequest,
-    StandardResponse
+    StandardResponse,
 )
 from app.core.config import get_settings
 from app.core.security import SecurityManager, get_current_user
@@ -41,28 +40,25 @@ def verify_google_token(token: str) -> Dict[str, Any]:
     try:
         # Verify token with Google
         idinfo = id_token.verify_oauth2_token(
-            token,
-            google_requests.Request(),
-            settings.GOOGLE_CLIENT_ID
+            token, google_requests.Request(), settings.GOOGLE_CLIENT_ID
         )
-        
+
         # Verify issuer
-        if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
-            raise ValueError('Invalid issuer')
-        
+        if idinfo["iss"] not in ["accounts.google.com", "https://accounts.google.com"]:
+            raise ValueError("Invalid issuer")
+
         # Extract user info
         return {
-            'email': idinfo['email'],
-            'google_id': idinfo['sub'],
-            'name': idinfo.get('name'),
-            'picture': idinfo.get('picture'),
-            'email_verified': idinfo.get('email_verified', False)
+            "email": idinfo["email"],
+            "google_id": idinfo["sub"],
+            "name": idinfo.get("name"),
+            "picture": idinfo.get("picture"),
+            "email_verified": idinfo.get("email_verified", False),
         }
     except ValueError as e:
         logger.error(f"Google token verification failed: {e}")
         raise AuthenticationError(
-            message="Invalid Google token",
-            details={"error": str(e)}
+            message="Invalid Google token", details={"error": str(e)}
         )
 
 
@@ -71,104 +67,98 @@ def verify_google_token(token: str) -> Dict[str, Any]:
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Google OAuth Login",
-    description="Authenticate user with Google OAuth and return JWT tokens"
+    description="Authenticate user with Google OAuth and return JWT tokens",
 )
 async def google_login(
-    auth_request: GoogleAuthRequest,
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    auth_request: GoogleAuthRequest, db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """
     Google OAuth authentication endpoint
-    
+
     Flow:
     1. Verify Google ID token
     2. Check if user exists, create if new
     3. Generate JWT access + refresh tokens
     4. Return tokens and user info
-    
+
     SonarQube: S6437 - No hardcoded credentials, uses Google OAuth
     """
     try:
         # Verify Google token
         google_info = verify_google_token(auth_request.id_token)
-        
+
         # Prevent admin role self-assignment via OAuth
         if auth_request.role == UserRole.ADMIN:
             raise InvalidInputError(
-                message="Admin role cannot be self-assigned",
-                field="role"
+                message="Admin role cannot be self-assigned", field="role"
             )
-        
-        if not google_info['email_verified']:
+
+        if not google_info["email_verified"]:
             raise AuthenticationError(
                 message="Email not verified with Google",
-                details={"email": google_info['email']}
+                details={"email": google_info["email"]},
             )
-        
+
         # Check if user exists
-        user_doc = await db.users.find_one({"email": google_info['email']})
-        
+        user_doc = await db.users.find_one({"email": google_info["email"]})
+
         if user_doc:
             # Existing user - update last login and profile info
             update_fields = {
-                "google_id": google_info['google_id'],
-                "profile_picture": google_info.get('picture'),
-                "last_login": datetime.now(timezone.utc)
+                "google_id": google_info["google_id"],
+                "profile_picture": google_info.get("picture"),
+                "last_login": datetime.now(timezone.utc),
             }
             # Store name if not already set
-            if google_info.get('name') and not user_doc.get('name'):
-                update_fields["name"] = google_info['name']
-            
+            if google_info.get("name") and not user_doc.get("name"):
+                update_fields["name"] = google_info["name"]
+
             await db.users.update_one(
-                {"email": google_info['email']},
-                {"$set": update_fields}
+                {"email": google_info["email"]}, {"$set": update_fields}
             )
             user = User(**user_doc)
             is_new_user = False
         else:
             # New user - create account with PENDING status until onboarding
             user = User(
-                email=google_info['email'],
-                google_id=google_info['google_id'],
+                email=google_info["email"],
+                google_id=google_info["google_id"],
                 role=auth_request.role,
                 status=UserStatus.PENDING,  # Always PENDING for new users until onboarding
-                profile_picture=google_info.get('picture'),
-                credits=100  # Welcome bonus
+                profile_picture=google_info.get("picture"),
+                credits=100,  # Welcome bonus
             )
-            
+
             result = await db.users.insert_one(user.model_dump(by_alias=True))
             user.id = str(result.inserted_id)
             is_new_user = True
-            
+
             logger.info(f"New user created: {user.email} with role {user.role}")
-        
+
         # Check user status
         if user.status == UserStatus.SUSPENDED:
             raise AuthenticationError(
-                message="Account suspended",
-                details={"contact": "support@savitara.com"}
+                message="Account suspended", details={"contact": "support@savitara.com"}
             )
-        
+
         if user.status == UserStatus.DELETED:
-            raise AuthenticationError(
-                message="Account deleted",
-                details={}
-            )
-        
+            raise AuthenticationError(message="Account deleted", details={})
+
         # Check if user has completed onboarding by checking if profile exists
-        profile_collection = "grihasta_profiles" if user.role == UserRole.GRIHASTA else "acharya_profiles"
+        profile_collection = (
+            "grihasta_profiles"
+            if user.role == UserRole.GRIHASTA
+            else "acharya_profiles"
+        )
         profile = await db[profile_collection].find_one({"user_id": str(user.id)})
         has_completed_onboarding = profile is not None
-        
+
         # Generate JWT tokens
         access_token = security_manager.create_access_token(
-            user_id=str(user.id),
-            role=user.role.value
+            user_id=str(user.id), role=user.role.value
         )
-        refresh_token = security_manager.create_refresh_token(
-            user_id=str(user.id)
-        )
-        
+        refresh_token = security_manager.create_refresh_token(user_id=str(user.id))
+
         return StandardResponse(
             success=True,
             data={
@@ -184,19 +174,19 @@ async def google_login(
                     "credits": user.credits,
                     "is_new_user": is_new_user,
                     "onboarded": has_completed_onboarding,
-                    "onboarding_completed": has_completed_onboarding
-                }
+                    "onboarding_completed": has_completed_onboarding,
+                },
             },
-            message="Authentication successful"
+            message="Authentication successful",
         )
-        
+
     except AuthenticationError:
         raise
     except Exception as e:
         logger.error(f"Login error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication failed"
+            detail="Authentication failed",
         )
 
 
@@ -205,11 +195,10 @@ async def google_login(
     response_model=StandardResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Email Registration",
-    description="Register a new user with email and password"
+    description="Register a new user with email and password",
 )
 async def register(
-    request: RegisterRequest,
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    request: RegisterRequest, db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """
     Register new user with email/password
@@ -220,7 +209,7 @@ async def register(
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered"
+                detail="Email already registered",
             )
 
         # Create new user - status is PENDING until onboarding is complete
@@ -230,22 +219,21 @@ async def register(
             name=request.name,
             role=request.role,
             status=UserStatus.PENDING,  # Always PENDING for new users until onboarding
-            credits=100  # Welcome bonus
+            credits=100,  # Welcome bonus
         )
-        
-        result = await db.users.insert_one(user.model_dump(by_alias=True, exclude_none=True))
+
+        result = await db.users.insert_one(
+            user.model_dump(by_alias=True, exclude_none=True)
+        )
         user_id = str(result.inserted_id)
-        
+
         # Generate tokens
         access_token = security_manager.create_access_token(
-            user_id=user_id,
-            role=user.role.value
+            user_id=user_id, role=user.role.value
         )
-        
-        refresh_token = security_manager.create_refresh_token(
-            user_id=user_id
-        )
-        
+
+        refresh_token = security_manager.create_refresh_token(user_id=user_id)
+
         # New user always needs onboarding
         return StandardResponse(
             success=True,
@@ -263,9 +251,9 @@ async def register(
                     "credits": user.credits,
                     "is_new_user": True,
                     "onboarded": False,
-                    "onboarding_completed": False
-                }
-            }
+                    "onboarding_completed": False,
+                },
+            },
         )
     except HTTPException:
         raise
@@ -273,7 +261,7 @@ async def register(
         logger.error(f"Registration error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Registration failed. Please try again."
+            detail="Registration failed. Please try again.",
         )
 
 
@@ -282,12 +270,9 @@ async def register(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Email Login",
-    description="Authenticate user with email and password"
+    description="Authenticate user with email and password",
 )
-async def login(
-    request: LoginRequest,
-    db: AsyncIOMotorDatabase = Depends(get_db)
-):
+async def login(request: LoginRequest, db: AsyncIOMotorDatabase = Depends(get_db)):
     """
     Login with email/password
     """
@@ -297,46 +282,47 @@ async def login(
         if not user_doc:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="No account found with this email. Please sign up first."
+                detail="No account found with this email. Please sign up first.",
             )
-            
+
         user = User(**user_doc)
-        
+
         # Verify password
-        if not user.password_hash or not security_manager.verify_password(request.password, user.password_hash):
+        if not user.password_hash or not security_manager.verify_password(
+            request.password, user.password_hash
+        ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password"
+                detail="Invalid email or password",
             )
-            
+
         # Check status
         if user.status == UserStatus.SUSPENDED:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account suspended"
+                status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended"
             )
-            
+
         # Update last login
         await db.users.update_one(
-            {"_id": user.id},
-            {"$set": {"last_login": datetime.now(timezone.utc)}}
+            {"_id": user.id}, {"$set": {"last_login": datetime.now(timezone.utc)}}
         )
-        
+
         # Check if user has completed onboarding by checking if profile exists
-        profile_collection = "grihasta_profiles" if user.role == UserRole.GRIHASTA else "acharya_profiles"
+        profile_collection = (
+            "grihasta_profiles"
+            if user.role == UserRole.GRIHASTA
+            else "acharya_profiles"
+        )
         profile = await db[profile_collection].find_one({"user_id": str(user.id)})
         has_completed_onboarding = profile is not None
-        
+
         # Generate tokens
         access_token = security_manager.create_access_token(
-            user_id=str(user.id),
-            role=user.role.value
+            user_id=str(user.id), role=user.role.value
         )
-        
-        refresh_token = security_manager.create_refresh_token(
-            user_id=str(user.id)
-        )
-        
+
+        refresh_token = security_manager.create_refresh_token(user_id=str(user.id))
+
         return StandardResponse(
             success=True,
             message="Login successful",
@@ -353,9 +339,9 @@ async def login(
                     "credits": user.credits,
                     "is_new_user": False,
                     "onboarded": has_completed_onboarding,
-                    "onboarding_completed": has_completed_onboarding
-                }
-            }
+                    "onboarding_completed": has_completed_onboarding,
+                },
+            },
         )
     except HTTPException:
         raise
@@ -363,7 +349,7 @@ async def login(
         logger.error(f"Login error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Login failed. Please try again."
+            detail="Login failed. Please try again.",
         )
 
 
@@ -372,67 +358,62 @@ async def login(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Refresh Access Token",
-    description="Get new access token using refresh token"
+    description="Get new access token using refresh token",
 )
 async def refresh_token(
-    refresh_request: RefreshTokenRequest,
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    refresh_request: RefreshTokenRequest, db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """
     Refresh access token
-    
+
     SonarQube: Token rotation prevents replay attacks
     """
     try:
         # Verify refresh token
-        payload = security_manager.verify_token(
-            refresh_request.refresh_token
-        )
-        
+        payload = security_manager.verify_token(refresh_request.refresh_token)
+
         # Validate token type
         if payload.get("type") != "refresh":
-            raise AuthenticationError(message="Invalid token type. Expected refresh token.")
-        
+            raise AuthenticationError(
+                message="Invalid token type. Expected refresh token."
+            )
+
         user_id = payload.get("sub")
         if not user_id:
             raise AuthenticationError(message="Invalid token payload")
-        
+
         # Verify user still exists and is active
         user_doc = await db.users.find_one({"_id": user_id})
         if not user_doc:
             raise AuthenticationError(message="User not found")
-        
+
         user = User(**user_doc)
         if user.status in [UserStatus.SUSPENDED, UserStatus.DELETED]:
             raise AuthenticationError(message="Account not active")
-        
+
         # Generate new tokens
         access_token = security_manager.create_access_token(
-            user_id=str(user.id),
-            role=user.role.value
+            user_id=str(user.id), role=user.role.value
         )
-        new_refresh_token = security_manager.create_refresh_token(
-            user_id=str(user.id)
-        )
-        
+        new_refresh_token = security_manager.create_refresh_token(user_id=str(user.id))
+
         return StandardResponse(
             success=True,
             data={
                 "access_token": access_token,
                 "refresh_token": new_refresh_token,
                 "token_type": "bearer",
-                "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+                "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             },
-            message="Token refreshed successfully"
+            message="Token refreshed successfully",
         )
-        
+
     except AuthenticationError:
         raise
     except Exception as e:
         logger.error(f"Token refresh error: {e}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token refresh failed"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token refresh failed"
         )
 
 
@@ -441,24 +422,22 @@ async def refresh_token(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Logout",
-    description="Invalidate user session (client should delete tokens)"
+    description="Invalidate user session (client should delete tokens)",
 )
-async def logout(
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
+async def logout(current_user: Dict[str, Any] = Depends(get_current_user)):
     """
     Logout endpoint
-    
+
     Note: JWT tokens are stateless. Client must delete tokens.
     In production, implement token blacklist with Redis for immediate invalidation.
-    
+
     SonarQube: S2068 - No password in code
     """
     logger.info(f"User {current_user['id']} logged out")
-    
+
     return StandardResponse(
         success=True,
-        message="Logged out successfully. Please delete tokens on client side."
+        message="Logged out successfully. Please delete tokens on client side.",
     )
 
 
@@ -467,27 +446,29 @@ async def logout(
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Get Current User",
-    description="Get authenticated user information"
+    description="Get authenticated user information",
 )
 async def get_current_user_info(
     current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """
     Get current authenticated user information
     """
     user_doc = await db.users.find_one({"_id": current_user["id"]})
-    
+
     if not user_doc:
         raise AuthenticationError(message="User not found")
-    
+
     user = User(**user_doc)
-    
+
     # Check if user has completed onboarding by checking if profile exists
-    profile_collection = "grihasta_profiles" if user.role == UserRole.GRIHASTA else "acharya_profiles"
+    profile_collection = (
+        "grihasta_profiles" if user.role == UserRole.GRIHASTA else "acharya_profiles"
+    )
     profile = await db[profile_collection].find_one({"user_id": str(user.id)})
     has_completed_onboarding = profile is not None
-    
+
     return StandardResponse(
         success=True,
         data={
@@ -496,12 +477,12 @@ async def get_current_user_info(
             "role": user.role.value,
             "status": user.status.value,
             "credits": user.credits,
-            "profile_picture": getattr(user, 'profile_picture', None),
+            "profile_picture": getattr(user, "profile_picture", None),
             "created_at": user.created_at,
             "last_login": user.last_login,
             "onboarded": has_completed_onboarding,
-            "onboarding_completed": has_completed_onboarding
-        }
+            "onboarding_completed": has_completed_onboarding,
+        },
     )
 
 
@@ -509,12 +490,12 @@ async def get_current_user_info(
     "/health",
     status_code=status.HTTP_200_OK,
     summary="Auth Health Check",
-    description="Check if authentication service is working"
+    description="Check if authentication service is working",
 )
 async def auth_health_check():
     """Health check endpoint for auth service"""
     return {
         "status": "healthy",
         "service": "authentication",
-        "google_oauth": "configured" if settings.GOOGLE_CLIENT_ID else "not_configured"
+        "google_oauth": "configured" if settings.GOOGLE_CLIENT_ID else "not_configured",
     }

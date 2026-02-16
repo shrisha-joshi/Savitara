@@ -2,7 +2,7 @@
  * Gamification Dashboard Component
  * Shows coins, points, vouchers, loyalty tier, referrals
  */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -17,13 +17,7 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemIcon,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  TextField,
-  IconButton,
-  Tooltip
+  ListItemIcon
 } from '@mui/material';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import StarsIcon from '@mui/icons-material/Stars';
@@ -32,6 +26,7 @@ import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import ShareIcon from '@mui/icons-material/Share';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import api from '../services/api';
 import './GamificationDashboard.css';
 
 const GamificationDashboard = () => {
@@ -41,7 +36,6 @@ const GamificationDashboard = () => {
   const [coupons, setCoupons] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [milestones, setMilestones] = useState([]);
-  const [referralDialog, setReferralDialog] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -51,42 +45,26 @@ const GamificationDashboard = () => {
   const fetchGamificationData = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
 
       // Fetch overview
-      const overviewRes = await fetch('/api/v1/stats/overview', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const overviewData = await overviewRes.json();
-      setOverview(overviewData);
+      const overviewRes = await api.get('/stats/overview');
+      setOverview(overviewRes.data.data || overviewRes.data);
 
       // Fetch vouchers
-      const vouchersRes = await fetch('/api/v1/vouchers/my', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const vouchersData = await vouchersRes.json();
-      setVouchers(vouchersData.vouchers || []);
+      const vouchersRes = await api.get('/vouchers/my');
+      setVouchers(vouchersRes.data.vouchers || vouchersRes.data.data || []);
 
       // Fetch available coupons
-      const couponsRes = await fetch('/api/v1/coupons/available', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const couponsData = await couponsRes.json();
-      setCoupons(couponsData.coupons || []);
+      const couponsRes = await api.get('/coupons/available');
+      setCoupons(couponsRes.data.coupons || couponsRes.data.data || []);
 
       // Fetch coin transactions
-      const transactionsRes = await fetch('/api/v1/coins/transactions?limit=20', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const transactionsData = await transactionsRes.json();
-      setTransactions(transactionsData.transactions || []);
+      const transactionsRes = await api.get('/coins/transactions?limit=20');
+      setTransactions(transactionsRes.data.transactions || transactionsRes.data.data || []);
 
       // Fetch milestones
-      const milestonesRes = await fetch('/api/v1/milestones/my', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const milestonesData = await milestonesRes.json();
-      setMilestones(milestonesData.milestones || []);
+      const milestonesRes = await api.get('/milestones/my');
+      setMilestones(milestonesRes.data.milestones || milestonesRes.data.data || []);
 
     } catch (error) {
       console.error('Failed to fetch gamification data:', error);

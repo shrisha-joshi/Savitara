@@ -12,14 +12,6 @@ from app.db.connection import DatabaseManager
 from app.core.config import settings
 
 
-@pytest.fixture(scope="session")
-def event_loop() -> Generator:
-    """Create event loop for async tests"""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
 @pytest.fixture(scope="function")
 async def test_db(monkeypatch) -> AsyncGenerator[AsyncIOMotorDatabase, None]:
     """Create test database connection"""
@@ -167,19 +159,5 @@ def auth_headers(authenticated_token):
     return {"Authorization": f"Bearer {authenticated_token}"}
 
 
-@pytest.fixture
-async def async_client(test_db):
-    """Async client for e2e tests"""
-    from httpx import AsyncClient, ASGITransport
-    from app.main import app
-    from app.db.connection import get_db
-    
-    app.dependency_overrides[get_db] = lambda: test_db
-    
-    # Use ASGITransport for FastAPI app
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
-    
-    app.dependency_overrides = {}
+# End of file
 

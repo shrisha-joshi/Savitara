@@ -333,7 +333,7 @@ function Verifications() {
           <DialogTitle>
             <Typography variant="h6">Reject Verification</Typography>
             <Typography variant="body2" color="text.secondary">
-              Please provide a reason for rejecting this Acharya's verification
+              Please provide a reason for rejecting this Acharya&apos;s verification
             </Typography>
           </DialogTitle>
           <DialogContent>

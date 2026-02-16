@@ -29,6 +29,7 @@ import {
   AdminPanelSettings as AdminIcon,
   Article as ContentIcon,
   History as HistoryIcon,
+  CalendarToday as CalendarIcon,
   LightMode,
   DarkMode,
 } from '@mui/icons-material';
@@ -50,6 +51,7 @@ export default function Layout({ children }) {
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
     { text: 'Users', icon: <PeopleIcon />, path: '/users' },
+    { text: 'Bookings', icon: <CalendarIcon />, path: '/bookings' },
     { text: 'Services', icon: <ContentIcon />, path: '/services' },
     { text: 'Verifications', icon: <VerifiedIcon />, path: '/verifications' },
     { text: 'KYC Verification', icon: <VerifiedIcon />, path: '/kyc-verification' },

@@ -1,4 +1,3 @@
-import React from 'react';
 import PropTypes from 'prop-types';
 import { colors, typography, spacing } from '../../theme/tokens';
 // Fallback icon removed as unused

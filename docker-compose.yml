@@ -19,6 +19,12 @@ services:
       - mongodb_data:/data/db
     networks:
       - savitara-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
   # Redis Cache
   redis:
@@ -31,6 +37,11 @@ services:
       - redis_data:/data
     networks:
       - savitara-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Elasticsearch (Advanced Search)
   elasticsearch:
@@ -48,6 +59,11 @@ services:
       - elasticsearch_data:/usr/share/elasticsearch/data
     networks:
       - savitara-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   # Backend API
   backend:
@@ -59,14 +75,13 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # TODO: Change these credentials in production and use environment variables
       - MONGO_URI=mongodb://admin:${MONGO_ADMIN_PASSWORD:-savitara_admin_pass}@mongodb:27017/savitara?authSource=admin
       - REDIS_URL=redis://redis:6379
     depends_on:
-      - mongodb
-      - redis
-    volumes:
-      - ./backend:/app
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - savitara-network
 
@@ -75,14 +90,12 @@ services:
     build:
       context: ./admin-savitara-web
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
     container_name: savitara-admin-web
     restart: unless-stopped
     ports:
       - "3001:3001"
-    environment:
-      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
-    depends_on:
-      - backend
     networks:
       - savitara-network
 
@@ -91,14 +104,12 @@ services:
     build:
       context: ./savitara-web
       dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api/v1}
     container_name: savitara-web
     restart: unless-stopped
     ports:
-      - "3000:3000"
-    environment:
-      - VITE_API_BASE_URL=http://localhost:8000/api/v1
-    depends_on:
-      - backend
+      - "3000:80"
     networks:
       - savitara-network
 

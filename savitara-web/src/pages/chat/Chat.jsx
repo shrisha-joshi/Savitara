@@ -1,59 +1,121 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import PropTypes from 'prop-types';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Box, 
-  Container, 
   Paper, 
   TextField, 
   Button, 
   Typography, 
   Avatar, 
   IconButton,
-  CircularProgress
+  CircularProgress,
+  Alert,
+  Skeleton,
+  Fab,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import SearchIcon from '@mui/icons-material/Search';
+import CloseIcon from '@mui/icons-material/Close';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import DeleteIcon from '@mui/icons-material/Delete';
+import DoneIcon from '@mui/icons-material/Done';
+import DoneAllIcon from '@mui/icons-material/DoneAll';
 import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
+import MessageSkeleton from '../../components/MessageSkeleton';
 
-const Chat = () => {
-  const { conversationId, recipientId } = useParams(); // Should handle both URL params based on route
+const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
+  const { conversationId: urlConversationId, recipientId } = useParams(); // Should handle both URL params based on route
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { socket, isConnected, messages: socketMessages, sendMessage: sendSocketMessage } = useSocket();
+  const { messages: socketMessages, sendTypingIndicator } = useSocket();
+  
+  // Use prop conversationId if provided (for layout mode), otherwise use URL param
+  const conversationId = propConversationId || urlConversationId;
   
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
   const [recipient, setRecipient] = useState(null);
+  const [activeConversationId, setActiveConversationId] = useState(conversationId || null);
+  const [isTyping, setIsTyping] = useState(false); // Remote user typing state
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [selectedMessage, setSelectedMessage] = useState(null);
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
   useEffect(() => {
     const fetchChatData = async () => {
       try {
-        let endpoint = '';
-        if (conversationId) {
-          endpoint = `/chat/conversations/${conversationId}/messages`;
-        } else if (recipientId) {
-          // If starting new chat with verify user via recipientId
-          // This usually requires creating conversation first or fetching existing one
-          const convRes = await api.post('/chat/verify-conversation', { recipient_id: recipientId });
-          if(convRes.data.conversation_id) {
-             // Redirect to conversation view to keep logic simple
-             navigate(`/chat/${convRes.data.conversation_id}`, { replace: true });
-             return;
+        setError(null);
+        let currentConvId = conversationId;
+        
+        if (!currentConvId && recipientId) {
+          // Starting new chat - verify/create conversation first
+          try {
+            const convRes = await api.post('/chat/verify-conversation', { recipient_id: recipientId });
+            // Backend wraps in StandardResponse: { success, data: { conversation_id, recipient } }
+            const convData = convRes.data?.data || convRes.data;
+            currentConvId = convData.conversation_id;
+            
+            if (convData.recipient) {
+              setRecipient(convData.recipient);
+            }
+            
+            if (currentConvId) {
+              setActiveConversationId(currentConvId);
+              navigate(`/chat/${currentConvId}`, { replace: true });
+            }
+          } catch (err) {
+            if (err.response?.status === 404) {
+              setError('User not found or unavailable');
+            } else {
+              setError('Failed to start conversation');
+            }
+            setLoading(false);
+            return;
           }
-          // Otherwise handle new conversation logic here (less likely for this MVP step)
         }
 
-        if (endpoint) {
-          const res = await api.get(endpoint);
-          setMessages(res.data.messages);
-          setRecipient(res.data.recipient); // Assuming backend returns recipient info
+        if (currentConvId) {
+          setActiveConversationId(currentConvId);
+          const res = await api.get(`/chat/conversations/${currentConvId}/messages?page=1&limit=50`);
+          // Backend wraps in StandardResponse: { success, data: { messages, recipient, pagination } }
+          const msgData = res.data?.data || res.data;
+          setMessages(msgData.messages || []);
+          
+          // Set pagination info
+          if (msgData.pagination) {
+            setHasMore(msgData.pagination.has_more || false);
+            setPage(1);
+          }
+          
+          // Backend now returns recipient info in messages endpoint
+          if (msgData.recipient) {
+            setRecipient(msgData.recipient);
+          }
         }
       } catch (err) {
         console.error("Failed to load chat", err);
+        const errorMsg = err.response?.data?.error?.message || err.response?.data?.message || 'Failed to load chat';
+        setError(errorMsg);
       } finally {
         setLoading(false);
       }
@@ -64,71 +126,373 @@ const Chat = () => {
     }
   }, [conversationId, recipientId, user, navigate]);
 
-  // Listen for real-time messages
+  // Handle socket messages - both chat messages and real-time events
   useEffect(() => {
     if (socketMessages.length > 0) {
       const lastMsg = socketMessages[socketMessages.length - 1];
-      // Check if message belongs to current conversation
-      if (lastMsg.conversation_id === conversationId || lastMsg.sender_id === recipient?._id) {
-         setMessages(prev => [...prev, lastMsg]);
+      
+      // Handle typing indicator events
+      if (lastMsg.type === 'typing_indicator' && lastMsg.conversation_id === activeConversationId) {
+        setIsTyping(lastMsg.is_typing);
+        
+        // Clear typing indicator after 3 seconds if no update
+        if (lastMsg.is_typing) {
+          if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+          }
+          typingTimeoutRef.current = setTimeout(() => {
+            setIsTyping(false);
+          }, 3000);
+        }
+        return;
+      }
+      
+      // Handle read receipt events
+      if (lastMsg.type === 'message_read' && lastMsg.conversation_id === activeConversationId) {
+        // Update message status to 'read'
+        setMessages(prev => prev.map(msg => 
+          msg.id === lastMsg.message_id || msg._id === lastMsg.message_id
+            ? { ...msg, status: 'read', read_at: lastMsg.read_at }
+            : msg
+        ));
+        return;
+      }
+      
+      // Handle regular chat messages
+      if (lastMsg.conversation_id === activeConversationId) {
+        // Dedupe - don't add if already exists
+        setMessages(prev => {
+          const exists = prev.some(m => (m.id || m._id) === (lastMsg.id || lastMsg._id));
+          if (exists) return prev;
+          
+          // Mark message as delivered if it's from remote user
+          const messageWithStatus = lastMsg.sender_id !== user?.id 
+            ? { ...lastMsg, status: lastMsg.status || 'delivered' }
+            : lastMsg;
+          
+          return [...prev, messageWithStatus];
+        });
       }
     }
-  }, [socketMessages, conversationId, recipient]);
+  }, [socketMessages, activeConversationId, user?.id]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    setShowScrollButton(false);
   };
+
+  // Handle scroll event to show/hide scroll button
+  const handleScroll = useCallback(() => {
+    if (!messagesContainerRef.current) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    
+    setShowScrollButton(!isNearBottom);
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
+  // Debounced typing indicator
+  const typingDebounceRef = useRef(null);
+  const handleTyping = useCallback(() => {
+    const receiverId = recipient?.id || recipient?._id || recipientId;
+    if (!receiverId || !sendTypingIndicator) return;
+    
+    // Send "is typing" immediately
+    sendTypingIndicator(receiverId, true);
+    
+    // Clear previous debounce timeout
+    if (typingDebounceRef.current) {
+      clearTimeout(typingDebounceRef.current);
+    }
+    
+    // Send "stopped typing" after 2 seconds of inactivity
+    typingDebounceRef.current = setTimeout(() => {
+      sendTypingIndicator(receiverId, false);
+    }, 2000);
+  }, [recipient, recipientId, sendTypingIndicator]);
+
+  // Mark messages as read when conversation is active
+  useEffect(() => {
+    const markMessagesAsRead = async () => {
+      if (!activeConversationId || !user?.id) return;
+      
+      // Find unread messages from the other user
+      const unreadMessages = messages.filter(msg => 
+        msg.sender_id !== user.id && 
+        msg.status !== 'read' && 
+        !msg.read_at
+      );
+      
+      if (unreadMessages.length === 0) return;
+      
+      try {
+        // Mark each message as read
+        for (const msg of unreadMessages) {
+          await api.post(`/chat/messages/${msg.id || msg._id}/read`);
+        }
+      } catch (err) {
+        console.error('Failed to mark messages as read:', err);
+      }
+    };
+    
+    // Mark as read after 1 second (debounce)
+    const timer = setTimeout(markMessagesAsRead, 1000);
+    return () => clearTimeout(timer);
+  }, [messages, activeConversationId, user?.id]);
+
+  // Load more messages (pagination)
+  const loadMoreMessages = async () => {
+    if (!activeConversationId || !hasMore || loadingMore) return;
+    
+    try {
+      setLoadingMore(true);
+      const nextPage = page + 1;
+      const res = await api.get(`/chat/conversations/${activeConversationId}/messages?page=${nextPage}&limit=50`);
+      const msgData = res.data?.data || res.data;
+      
+      if (msgData.messages && msgData.messages.length > 0) {
+        setMessages(prev => [...msgData.messages, ...prev]); // Prepend older messages
+        setPage(nextPage);
+      }
+      
+      if (msgData.pagination) {
+        setHasMore(msgData.pagination.has_more || false);
+      } else {
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error('Failed to load more messages:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Context menu handlers
+  const handleContextMenu = (event, message) => {
+    event.preventDefault();
+    setContextMenu({
+      mouseX: event.clientX - 2,
+      mouseY: event.clientY - 4,
+    });
+    setSelectedMessage(message);
+  };
+
+  const handleCloseContextMenu = () => {
+    setContextMenu(null);
+    setSelectedMessage(null);
+  };
+
+  const handleCopyMessage = () => {
+    if (selectedMessage?.content) {
+      navigator.clipboard.writeText(selectedMessage.content);
+    }
+    handleCloseContextMenu();
+  };
+
+  const handleDeleteMessage = async () => {
+    if (!selectedMessage) return;
+    
+    try {
+      await api.delete(`/chat/messages/${selectedMessage.id || selectedMessage._id}`);
+      setMessages(prev => prev.filter(m => (m.id || m._id) !== (selectedMessage.id || selectedMessage._id)));
+    } catch (err) {
+      console.error('Failed to delete message:', err);
+      setError('Failed to delete message');
+    }
+    handleCloseContextMenu();
+  };
+
   const handleSend = async () => {
-    if (!newMessage.trim() || !recipient) return;
+    if (!newMessage.trim()) return;
+
+    // Need either a recipient or a conversation to send
+    const receiverId = recipient?.id || recipient?._id || recipientId;
+    if (!receiverId && !activeConversationId) {
+      setError('Cannot send message: recipient not found');
+      return;
+    }
 
     try {
-      // Send via REST API for persistence
+      setSending(true);
+      setError(null);
       const payload = {
-        receiver_id: recipient._id,
+        receiver_id: receiverId,
         content: newMessage
       };
       
       const res = await api.post('/chat/messages', payload);
+      // Backend wraps in StandardResponse: { success, data: { message_id, sender_id, content, ... } }
+      const sentMsg = res.data?.data || res.data;
       
-      // Optimistically add to UI
-      setMessages(prev => [...prev, res.data]);
+      // Add with 'sent' status initially
+      const messageWithStatus = { ...sentMsg, status: 'sent' };
+      
+      // Optimistically add to UI (dedupe against WebSocket)
+      setMessages(prev => {
+        const exists = prev.some(m => (m.id || m._id) === (sentMsg.id || sentMsg._id || sentMsg.message_id));
+        if (exists) return prev;
+        return [...prev, messageWithStatus];
+      });
       setNewMessage('');
+      
+      // Stop typing indicator after sending
+      if (sendTypingIndicator) {
+        sendTypingIndicator(receiverId, false);
+        if (typingDebounceRef.current) {
+          clearTimeout(typingDebounceRef.current);
+        }
+      }
       
     } catch (err) {
       console.error("Failed to send message", err);
+      
+      // Special handling for rate limiting
+      if (err.response?.status === 429) {
+        const retryAfter = err.response?.headers?.['retry-after'] || '60';
+        setError(`Too many messages. Please wait ${retryAfter} seconds before sending again.`);
+      } else {
+        const errorMsg = err.response?.data?.error?.message || err.response?.data?.message || 'Failed to send message';
+        setError(errorMsg);
+      }
+    } finally {
+      setSending(false);
     }
   };
 
-  if (loading) return <CircularProgress />;
+  if (loading) return (
+    <Box sx={{ height: inLayout ? '100%' : '85vh', display: 'flex', flexDirection: 'column' }}>
+      {/* Header skeleton */}
+      {!inLayout && (
+        <Paper elevation={1} sx={{ p: 2, display: 'flex', alignItems: 'center', mb: 2 }}>
+          <Skeleton variant="circular" width={40} height={40} sx={{ mr: 2 }} />
+          <Box>
+            <Skeleton variant="text" width={120} height={24} />
+            <Skeleton variant="text" width={60} height={16} />
+          </Box>
+        </Paper>
+      )}
+      
+      {/* Messages skeleton */}
+      <Paper elevation={0} sx={{ flex: 1, overflowY: 'auto', p: 2, bgcolor: '#f5f5f5', display: 'flex', flexDirection: 'column' }}>
+        <MessageSkeleton count={5} align="left" />
+        <MessageSkeleton count={3} align="right" />
+      </Paper>
+      
+      {/* Input skeleton */}
+      <Paper elevation={3} sx={{ p: 2, mt: inLayout ? 0 : 2 }}>
+        <Skeleton variant="rectangular" height={40} sx={{ borderRadius: 1 }} />
+      </Paper>
+    </Box>
+  );
+
+  if (error && !recipient) return (
+    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', flexDirection: 'column' }}>
+      <Typography variant="h6" color="error" gutterBottom>{error}</Typography>
+      <Button variant="contained" onClick={() => navigate('/chat')}>Back to Conversations</Button>
+    </Box>
+  );
 
   return (
-    <Container maxWidth="md" sx={{ mt: 2, height: '85vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
-      <Paper elevation={1} sx={{ p: 2, display: 'flex', alignItems: 'center', mb: 2 }}>
-        <IconButton onClick={() => navigate(-1)} sx={{ mr: 1 }}>
-          <ArrowBackIcon />
-        </IconButton>
-        <Avatar src={recipient?.profile_image} alt={recipient?.name} sx={{ mr: 2 }} />
-        <Box>
-           <Typography variant="h6">{recipient?.name || 'Loading...'}</Typography>
-           <Typography variant="caption" color={recipient?.is_online ? 'success.main' : 'text.secondary'}>
-             {recipient?.is_online ? 'Online' : 'Offline'}
-           </Typography>
-        </Box>
-      </Paper>
+    <Box sx={{ height: inLayout ? '100%' : '85vh', display: 'flex', flexDirection: 'column' }}>
+      {/* Header - only show when not in layout */}
+      {!inLayout && (
+        <Paper elevation={1} sx={{ p: 2, display: 'flex', alignItems: 'center', mb: 2 }}>
+          <IconButton onClick={() => navigate(-1)} sx={{ mr: 1 }}>
+            <ArrowBackIcon />
+          </IconButton>
+          <Avatar src={recipient?.profile_picture || recipient?.profile_image} alt={recipient?.name} sx={{ mr: 2 }} />
+          
+          {!showSearch ? (
+            <>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="h6">{recipient?.name || 'Chat'}</Typography>
+                <Typography variant="caption" color={recipient?.is_online ? 'success.main' : 'text.secondary'}>
+                  {recipient?.is_online ? 'Online' : 'Offline'}
+                </Typography>
+              </Box>
+              <IconButton onClick={() => setShowSearch(true)}>
+                <SearchIcon />
+              </IconButton>
+            </>
+          ) : (
+            <>
+              <TextField
+                autoFocus
+                fullWidth
+                size="small"
+                variant="outlined"
+                placeholder="Search messages..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                sx={{ flex: 1 }}
+              />
+              <IconButton onClick={() => { setShowSearch(false); setSearchQuery(''); }} sx={{ ml: 1 }}>
+                <CloseIcon />
+              </IconButton>
+            </>
+          )}
+        </Paper>
+      )}
 
       {/* Messages Area */}
-      <Paper elevation={0} sx={{ flex: 1, overflowY: 'auto', p: 2, bgcolor: '#f5f5f5', display: 'flex', flexDirection: 'column' }}>
-        {messages.map((msg, idx) => {
+      <Paper 
+        ref={messagesContainerRef}
+        elevation={0} 
+        onScroll={handleScroll}
+        sx={{ flex: 1, overflowY: 'auto', p: 2, bgcolor: '#f5f5f5', display: 'flex', flexDirection: 'column', position: 'relative' }}
+      >
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        
+        {/* Search info */}
+        {searchQuery && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Searching for: "{searchQuery}"
+          </Alert>
+        )}
+        
+        {/* Load More Button */}
+        {hasMore && messages.length >= 50 && !searchQuery && (
+          <Box sx={{ textAlign: 'center', mb: 2 }}>
+            <Button 
+              variant="outlined" 
+              size="small"
+              onClick={loadMoreMessages}
+              disabled={loadingMore}
+            >
+              {loadingMore ? <CircularProgress size={20} /> : 'Load Earlier Messages'}
+            </Button>
+          </Box>
+        )}
+        
+        {(() => {
+          // Filter messages if search is active
+          const filteredMessages = searchQuery 
+            ? messages.filter(msg => 
+                msg.content?.toLowerCase().includes(searchQuery.toLowerCase())
+              )
+            : messages;
+          
+          if (filteredMessages.length === 0 && searchQuery) {
+            return (
+              <Box sx={{ textAlign: 'center', p: 4 }}>
+                <Typography variant="body2" color="text.secondary">
+                  No messages found for "{searchQuery}"
+                </Typography>
+              </Box>
+            );
+          }
+          
+          return filteredMessages.map((msg) => {
           const isMe = msg.sender_id === user.id;
+          const msgTime = msg.created_at || msg.timestamp;
           return (
             <Box 
-              key={idx} 
+              key={msg.id || msg._id || `${msg.sender_id}-${msgTime}`}
+              onContextMenu={(e) => handleContextMenu(e, msg)}
               sx={{ 
                 alignSelf: isMe ? 'flex-end' : 'flex-start',
                 maxWidth: '70%',
@@ -137,34 +501,86 @@ const Chat = () => {
                 bgcolor: isMe ? 'primary.main' : 'white',
                 color: isMe ? 'white' : 'text.primary',
                 borderRadius: 2,
-                boxShadow: 1
+                boxShadow: 1,
+                cursor: 'context-menu'
               }}
             >
               <Typography variant="body1">{msg.content}</Typography>
-              <Typography variant="caption" sx={{ display: 'block', textAlign: 'right', mt: 0.5, opacity: 0.7 }}>
-                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', mt: 0.5, gap: 0.5 }}>
+                <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                  {msgTime ? new Date(msgTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                </Typography>
+                {isMe && (
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    {msg.status === 'read' && <DoneAllIcon sx={{ fontSize: 14, color: '#4fc3f7' }} />}
+                    {msg.status === 'delivered' && <DoneAllIcon sx={{ fontSize: 14, opacity: 0.7 }} />}
+                    {msg.status === 'sent' && <DoneIcon sx={{ fontSize: 14, opacity: 0.7 }} />}
+                    {!msg.status && <DoneIcon sx={{ fontSize: 14, opacity: 0.4 }} />}
+                  </Box>
+                )}
+              </Box>
             </Box>
           );
-        })}
+        });
+        })()}
+        
+        {isTyping && (
+          <Box 
+            sx={{ 
+              alignSelf: 'flex-start',
+              maxWidth: '70%',
+              mb: 1.5,
+              p: 1.5,
+              bgcolor: 'white',
+              borderRadius: 2,
+              boxShadow: 1
+            }}
+          >
+            <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
+              {recipient?.name || 'User'} is typing...
+            </Typography>
+          </Box>
+        )}
         <div ref={messagesEndRef} />
+        
+        {/* Scroll to bottom FAB */}
+        {showScrollButton && (
+          <Fab 
+            size="small" 
+            color="primary"
+            onClick={scrollToBottom}
+            sx={{
+              position: 'absolute',
+              bottom: 16,
+              right: 16,
+              zIndex: 10,
+              boxShadow: 3
+            }}
+          >
+            <KeyboardArrowDownIcon />
+          </Fab>
+        )}
       </Paper>
 
       {/* Input Area */}
-      <Paper elevation={3} sx={{ p: 2, mt: 2, display: 'flex', alignItems: 'center' }}>
+      <Paper elevation={3} sx={{ p: 2, mt: inLayout ? 0 : 2, display: 'flex', alignItems: 'flex-end', gap: 2 }}>
         <TextField
           fullWidth
+          multiline
+          maxRows={4}
           variant="outlined"
-          placeholder="Type a message..."
+          placeholder="Type a message... (Shift+Enter for new line)"
           value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
+          onChange={(e) => {
+            setNewMessage(e.target.value);
+            handleTyping();
+          }}
           onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   handleSend();
               }
           }}
-          disabled={!isConnected}
           size="small"
         />
         <Button 
@@ -172,14 +588,46 @@ const Chat = () => {
            color="primary" 
            endIcon={<SendIcon />} 
            onClick={handleSend}
-           sx={{ ml: 2, height: 40 }}
-           disabled={!newMessage.trim() || !isConnected}
+           sx={{ minWidth: 100, height: 40 }}
+           disabled={!newMessage.trim() || sending}
         >
-          Send
+          {sending ? 'Sending...' : 'Send'}
         </Button>
       </Paper>
-    </Container>
+      
+      {/* Context Menu for message actions */}
+      <Menu
+        open={contextMenu !== null}
+        onClose={handleCloseContextMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenu !== null
+            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+            : undefined
+        }
+      >
+        <MenuItem onClick={handleCopyMessage}>
+          <ListItemIcon>
+            <ContentCopyIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Copy Message</ListItemText>
+        </MenuItem>
+        {selectedMessage && selectedMessage.sender_id === user?.id && (
+          <MenuItem onClick={handleDeleteMessage}>
+            <ListItemIcon>
+              <DeleteIcon fontSize="small" color="error" />
+            </ListItemIcon>
+            <ListItemText>Delete Message</ListItemText>
+          </MenuItem>
+        )}
+      </Menu>
+    </Box>
   );
+};
+
+Chat.propTypes = {
+  inLayout: PropTypes.bool,
+  conversationId: PropTypes.string
 };
 
 export default Chat;

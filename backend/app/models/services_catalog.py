@@ -21,29 +21,43 @@ HINDU_SERVICES_CATALOG = [
             "Attracts positive cosmic energies",
             "Receives blessings from ancestors and deities",
             "Protects child from evil eye and negative influences",
-            "Strengthens family bonds through collective celebration"
+            "Strengthens family bonds through collective celebration",
         ],
         "requirements": [
             "Baby should be bathed and dressed in new clothes",
             "Father or grandfather writes the name on rice or turmeric plate",
             "Honey, ghee, dates for the child's first taste (if applicable)",
             "Fresh flowers, fruits, and sweets for offerings",
-            "Silver or gold pen for writing (optional but auspicious)"
+            "Silver or gold pen for writing (optional but auspicious)",
         ],
         "duration_minutes": 90,
         "muhurta_required": "mandatory",
-        "best_tithis": ["Shukla Paksha (waxing moon)", "Panchami", "Ashtami", "Ekadashi"],
+        "best_tithis": [
+            "Shukla Paksha (waxing moon)",
+            "Panchami",
+            "Ashtami",
+            "Ekadashi",
+        ],
         "best_nakshatras": ["Rohini", "Mrigashira", "Pushya", "Hasta", "Anuradha"],
         "avoid_days": ["Amavasya", "Rikta Tithis", "Inauspicious Nakshatras"],
         "muhurta_consultation_price": 199.0,
         "full_service_base_price": 3100.0,
         "custom_acharya_base_price": 2500.0,
-        "platform_provides": ["Puja samagri kit", "Sacred thread", "Red cloth", "Kalash", "Experienced Acharya"],
-        "customer_provides": ["Baby's new clothes", "Family heirloom jewelry (if any)", "Sweets for distribution"],
+        "platform_provides": [
+            "Puja samagri kit",
+            "Sacred thread",
+            "Red cloth",
+            "Kalash",
+            "Experienced Acharya",
+        ],
+        "customer_provides": [
+            "Baby's new clothes",
+            "Family heirloom jewelry (if any)",
+            "Sweets for distribution",
+        ],
         "acharya_experience_required": "5+ years in Sanskar ceremonies",
-        "icon": "baby"
+        "icon": "baby",
     },
-    
     {
         "name_english": "Griha Pravesh",
         "name_sanskrit": "गृह प्रवेश",
@@ -57,7 +71,7 @@ HINDU_SERVICES_CATALOG = [
             "Establishes positive vibrations in every room",
             "Protects family from accidents and misfortunes",
             "Creates harmony among family members",
-            "Invokes blessings of Vastu Purusha and deities"
+            "Invokes blessings of Vastu Purusha and deities",
         ],
         "requirements": [
             "Home should be cleaned thoroughly",
@@ -65,22 +79,45 @@ HINDU_SERVICES_CATALOG = [
             "Kalash (water pot) with coconut",
             "New broom for symbolic sweeping",
             "Cow/milk for first entry (traditional)",
-            "Boil milk and let it overflow (prosperity symbol)"
+            "Boil milk and let it overflow (prosperity symbol)",
         ],
         "duration_minutes": 180,
         "muhurta_required": "mandatory",
         "best_tithis": [SHUKLA_PAKSHA, "Dwitiya", "Tritiya", "Panchami", "Ekadashi"],
-        "best_nakshatras": ["Rohini", "Mrigashira", "Pushya", "Uttara", "Hasta", "Swati", "Anuradha"],
-        "avoid_days": ["Amavasya", "Krishna Paksha Ashtami", "Saturdays (debatable)", "Solar/Lunar eclipse days"],
+        "best_nakshatras": [
+            "Rohini",
+            "Mrigashira",
+            "Pushya",
+            "Uttara",
+            "Hasta",
+            "Swati",
+            "Anuradha",
+        ],
+        "avoid_days": [
+            "Amavasya",
+            "Krishna Paksha Ashtami",
+            "Saturdays (debatable)",
+            "Solar/Lunar eclipse days",
+        ],
         "muhurta_consultation_price": 299.0,
         "full_service_base_price": 5100.0,
         "custom_acharya_base_price": 4000.0,
-        "platform_provides": ["Complete Vastu Puja kit", "Navagraha materials", "Yagna samagri", "Kalash with accessories", "Expert Vastu-trained Acharya"],
-        "customer_provides": ["New broom", "Milk for boiling", "Fruits and sweets", "Cow (if following traditional method)"],
+        "platform_provides": [
+            "Complete Vastu Puja kit",
+            "Navagraha materials",
+            "Yagna samagri",
+            "Kalash with accessories",
+            "Expert Vastu-trained Acharya",
+        ],
+        "customer_provides": [
+            "New broom",
+            "Milk for boiling",
+            "Fruits and sweets",
+            "Cow (if following traditional method)",
+        ],
         "acharya_experience_required": "10+ years, Vastu expertise required",
-        "icon": "home"
+        "icon": "home",
     },
-    
     {
         "name_english": "Vivaha (Wedding Ceremony)",
         "name_sanskrit": "विवाह संस्कार",
@@ -94,7 +131,7 @@ HINDU_SERVICES_CATALOG = [
             "Creation of a sacred household (Grihastha Ashram)",
             "Karmic bonding for mutual evolution",
             "Ancestral blessings for progeny",
-            "Social and family harmony"
+            "Social and family harmony",
         ],
         "requirements": [
             "Mandap decorated with flowers and fabric",
@@ -102,22 +139,48 @@ HINDU_SERVICES_CATALOG = [
             "Wedding attire for bride and groom",
             "Mangalsutra, sindoor, wedding rings",
             "Coconut, rice, flowers for rituals",
-            "Garlands for Varmala ceremony"
+            "Garlands for Varmala ceremony",
         ],
         "duration_minutes": 240,
         "muhurta_required": "mandatory",
         "best_tithis": ["Shukla Paksha only", "Dwitiya to Dashami (avoid Ekadashi)"],
-        "best_nakshatras": ["Rohini", "Mrigashira", "Uttara Phalguni", "Hasta", "Swati", "Anuradha", "Uttara Ashadha", "Uttara Bhadrapada", "Revati"],
-        "avoid_days": ["Amavasya", "Krishna Paksha", "Malamas (inauspicious month)", "Kharmas", "Eclipse days"],
+        "best_nakshatras": [
+            "Rohini",
+            "Mrigashira",
+            "Uttara Phalguni",
+            "Hasta",
+            "Swati",
+            "Anuradha",
+            "Uttara Ashadha",
+            "Uttara Bhadrapada",
+            "Revati",
+        ],
+        "avoid_days": [
+            "Amavasya",
+            "Krishna Paksha",
+            "Malamas (inauspicious month)",
+            "Kharmas",
+            "Eclipse days",
+        ],
         "muhurta_consultation_price": 499.0,
         "full_service_base_price": 11000.0,
         "custom_acharya_base_price": 8000.0,
-        "platform_provides": ["Complete wedding puja kit", "Mandap setup assistance", "Vedic Acharya with wedding expertise", "Printed wedding mantras booklet"],
-        "customer_provides": ["Venue", "Mandap decoration", "Wedding attire", "Gold/jewelry for rituals", "Feast arrangements"],
+        "platform_provides": [
+            "Complete wedding puja kit",
+            "Mandap setup assistance",
+            "Vedic Acharya with wedding expertise",
+            "Printed wedding mantras booklet",
+        ],
+        "customer_provides": [
+            "Venue",
+            "Mandap decoration",
+            "Wedding attire",
+            "Gold/jewelry for rituals",
+            "Feast arrangements",
+        ],
         "acharya_experience_required": "15+ years, Wedding specialist",
-        "icon": "rings"
+        "icon": "rings",
     },
-    
     {
         "name_english": "Upanayana (Sacred Thread)",
         "name_sanskrit": "उपनयन संस्कार",
@@ -131,7 +194,7 @@ HINDU_SERVICES_CATALOG = [
             "Protection from negative karmic influences",
             "Development of self-discipline and devotion",
             "Ancestral blessings for knowledge and wisdom",
-            "Entry into the sacred Brahmacharya Ashram"
+            "Entry into the sacred Brahmacharya Ashram",
         ],
         "requirements": [
             "Boy should be clean-shaven (traditional)",
@@ -139,22 +202,38 @@ HINDU_SERVICES_CATALOG = [
             "Wooden staff (Danda) and deer skin (optional)",
             "Yagnopavita (sacred thread) - 3 or 5 strand",
             "Materials for Homa (fire ceremony)",
-            "Guru Dakshina for the Acharya"
+            "Guru Dakshina for the Acharya",
         ],
         "duration_minutes": 180,
         "muhurta_required": "mandatory",
         "best_tithis": [SHUKLA_PAKSHA, "Panchami to Dashami"],
-        "best_nakshatras": ["Rohini", "Mrigashira", "Pushya", "Hasta", "Chitra", "Anuradha"],
+        "best_nakshatras": [
+            "Rohini",
+            "Mrigashira",
+            "Pushya",
+            "Hasta",
+            "Chitra",
+            "Anuradha",
+        ],
         "avoid_days": ["Amavasya", "Purnima", "Krishna Paksha", "Rahu Kaal"],
         "muhurta_consultation_price": 299.0,
         "full_service_base_price": 5500.0,
         "custom_acharya_base_price": 4500.0,
-        "platform_provides": ["Sacred thread (Yagnopavita)", PUJA_SAMAGRI, "Homa materials", "Brahmin Acharya with Vedic knowledge"],
-        "customer_provides": ["Boy's white dhoti", "Wooden staff (Danda)", "Sweets for guests", "Guru Dakshina"],
+        "platform_provides": [
+            "Sacred thread (Yagnopavita)",
+            PUJA_SAMAGRI,
+            "Homa materials",
+            "Brahmin Acharya with Vedic knowledge",
+        ],
+        "customer_provides": [
+            "Boy's white dhoti",
+            "Wooden staff (Danda)",
+            "Sweets for guests",
+            "Guru Dakshina",
+        ],
         "acharya_experience_required": "Vedic scholar with 10+ years experience",
-        "icon": "thread"
+        "icon": "thread",
     },
-    
     # ========== WORSHIP & PUJAS ==========
     {
         "name_english": "Satyanarayan Puja",
@@ -169,7 +248,7 @@ HINDU_SERVICES_CATALOG = [
             "Fulfills heartfelt wishes",
             "Protects from negative energies",
             "Strengthens family bonds",
-            "Brings peace and contentment"
+            "Brings peace and contentment",
         ],
         "requirements": [
             "Silver or copper kalash",
@@ -177,7 +256,7 @@ HINDU_SERVICES_CATALOG = [
             "Fruits (especially banana)",
             "Panchamrit (milk, curd, honey, ghee, sugar)",
             "Tulsi leaves",
-            "Incense, lamp, camphor"
+            "Incense, lamp, camphor",
         ],
         "duration_minutes": 120,
         "muhurta_required": "recommended",
@@ -187,12 +266,20 @@ HINDU_SERVICES_CATALOG = [
         "muhurta_consultation_price": 99.0,
         "full_service_base_price": 2500.0,
         "custom_acharya_base_price": 2000.0,
-        "platform_provides": ["Complete puja kit", "Prasad ingredients", "Katha booklet", "Experienced Acharya"],
-        "customer_provides": ["Fresh fruits", "Sweets for prasad", "Silver/copper kalash (if available)"],
+        "platform_provides": [
+            "Complete puja kit",
+            "Prasad ingredients",
+            "Katha booklet",
+            "Experienced Acharya",
+        ],
+        "customer_provides": [
+            "Fresh fruits",
+            "Sweets for prasad",
+            "Silver/copper kalash (if available)",
+        ],
         "acharya_experience_required": "5+ years in puja rituals",
-        "icon": "lotus"
+        "icon": "lotus",
     },
-    
     {
         "name_english": "Ganesh Puja",
         "name_sanskrit": "गणेश पूजा",
@@ -206,7 +293,7 @@ HINDU_SERVICES_CATALOG = [
             "Enhances intelligence and wisdom",
             "Attracts prosperity and good fortune",
             "Protects from evil eye and negativity",
-            "Grants harmony in relationships"
+            "Grants harmony in relationships",
         ],
         "requirements": [
             "Ganesh idol or picture",
@@ -214,7 +301,7 @@ HINDU_SERVICES_CATALOG = [
             "Durva grass (special offering to Ganesha)",
             "Red flowers (hibiscus preferred)",
             "Sindoor (vermillion)",
-            "Coconut, fruits, and sweets"
+            "Coconut, fruits, and sweets",
         ],
         "duration_minutes": 60,
         "muhurta_required": "recommended",
@@ -224,12 +311,16 @@ HINDU_SERVICES_CATALOG = [
         "muhurta_consultation_price": 99.0,
         "full_service_base_price": 1800.0,
         "custom_acharya_base_price": 1500.0,
-        "platform_provides": ["Ganesh idol (clay/reusable)", PUJA_SAMAGRI, "Modak preparation guidance", "Acharya with Ganesh Upasana knowledge"],
+        "platform_provides": [
+            "Ganesh idol (clay/reusable)",
+            PUJA_SAMAGRI,
+            "Modak preparation guidance",
+            "Acharya with Ganesh Upasana knowledge",
+        ],
         "customer_provides": ["Fresh flowers", "Fruits", "Homemade modaks (optional)"],
         "acharya_experience_required": "3+ years",
-        "icon": "ganesh"
+        "icon": "ganesh",
     },
-    
     {
         "name_english": "Lakshmi Puja",
         "name_sanskrit": "लक्ष्मी पूजा",
@@ -243,7 +334,7 @@ HINDU_SERVICES_CATALOG = [
             "Brings success in business and career",
             "Enhances beauty and grace",
             "Creates harmony in family",
-            "Improves luck and fortune"
+            "Improves luck and fortune",
         ],
         "requirements": [
             "Clean and decorated altar",
@@ -252,7 +343,7 @@ HINDU_SERVICES_CATALOG = [
             "Gold or silver coins for offerings",
             "Kumkum, turmeric, rice",
             "Oil lamps (ghee diyas)",
-            "Sweets and dry fruits"
+            "Sweets and dry fruits",
         ],
         "duration_minutes": 90,
         "muhurta_required": "recommended",
@@ -262,12 +353,20 @@ HINDU_SERVICES_CATALOG = [
         "muhurta_consultation_price": 149.0,
         "full_service_base_price": 2200.0,
         "custom_acharya_base_price": 1800.0,
-        "platform_provides": ["Lakshmi puja kit", "Oil lamps (diyas)", PUJA_SAMAGRI, "Acharya experienced in Lakshmi Upasana"],
-        "customer_provides": ["Fresh flowers", "Sweets and dry fruits", "Gold/silver coins for offering"],
+        "platform_provides": [
+            "Lakshmi puja kit",
+            "Oil lamps (diyas)",
+            PUJA_SAMAGRI,
+            "Acharya experienced in Lakshmi Upasana",
+        ],
+        "customer_provides": [
+            "Fresh flowers",
+            "Sweets and dry fruits",
+            "Gold/silver coins for offering",
+        ],
         "acharya_experience_required": "5+ years",
-        "icon": "lotus-coin"
+        "icon": "lotus-coin",
     },
-    
     # ========== REMEDIAL SERVICES ==========
     {
         "name_english": "Navagraha Puja",
@@ -283,7 +382,7 @@ HINDU_SERVICES_CATALOG = [
             "Resolves marriage and relationship issues",
             "Protects from accidents and misfortunes",
             "Enhances overall luck and prosperity",
-            "Reduces anxiety and mental stress"
+            "Reduces anxiety and mental stress",
         ],
         "requirements": [
             "Nine colored clothes for each planet",
@@ -291,7 +390,7 @@ HINDU_SERVICES_CATALOG = [
             "Nine gemstones or rudraksha (optional)",
             "Til oil lamps for Shani",
             "White flowers for Chandra, red for Mangal, etc.",
-            "Horoscope/birth chart for personalized puja"
+            "Horoscope/birth chart for personalized puja",
         ],
         "duration_minutes": 150,
         "muhurta_required": "mandatory",
@@ -301,12 +400,16 @@ HINDU_SERVICES_CATALOG = [
         "muhurta_consultation_price": 299.0,
         "full_service_base_price": 4500.0,
         "custom_acharya_base_price": 3500.0,
-        "platform_provides": ["Complete Navagraha kit", "Nine-colored items", "Japa mala", "Astrologer + Acharya (combined expertise)"],
+        "platform_provides": [
+            "Complete Navagraha kit",
+            "Nine-colored items",
+            "Japa mala",
+            "Astrologer + Acharya (combined expertise)",
+        ],
         "customer_provides": ["Birth chart/horoscope", "Any family-specific mantras"],
         "acharya_experience_required": "Vedic astrology knowledge + 10+ years ritual experience",
-        "icon": "planets"
+        "icon": "planets",
     },
-    
     {
         "name_english": "Vastu Shanti Puja",
         "name_sanskrit": "वास्तु शांति पूजा",
@@ -321,7 +424,7 @@ HINDU_SERVICES_CATALOG = [
             "Attracts wealth and prosperity",
             "Reduces conflicts and arguments",
             "Protects from accidents and calamities",
-            "Enhances career and business success"
+            "Enhances career and business success",
         ],
         "requirements": [
             "Detailed Vastu analysis of property",
@@ -329,7 +432,7 @@ HINDU_SERVICES_CATALOG = [
             "64 types of grains and herbs",
             "Coconuts for each direction",
             "Kalash with sacred water",
-            "Floor plan of the building"
+            "Floor plan of the building",
         ],
         "duration_minutes": 180,
         "muhurta_required": "mandatory",
@@ -339,12 +442,20 @@ HINDU_SERVICES_CATALOG = [
         "muhurta_consultation_price": 499.0,
         "full_service_base_price": 6500.0,
         "custom_acharya_base_price": 5000.0,
-        "platform_provides": ["Vastu consultant + Acharya", "Complete puja materials", "Vastu report", "Remedial recommendations"],
-        "customer_provides": ["Building floor plan", "Access to all rooms", "Cleaning before ceremony"],
+        "platform_provides": [
+            "Vastu consultant + Acharya",
+            "Complete puja materials",
+            "Vastu report",
+            "Remedial recommendations",
+        ],
+        "customer_provides": [
+            "Building floor plan",
+            "Access to all rooms",
+            "Cleaning before ceremony",
+        ],
         "acharya_experience_required": "Vastu expert with 15+ years experience",
-        "icon": "compass"
+        "icon": "compass",
     },
-    
     {
         "name_english": "Rudrabhishek",
         "name_sanskrit": "रुद्राभिषेक",
@@ -359,7 +470,7 @@ HINDU_SERVICES_CATALOG = [
             "Protects from enemies and evil forces",
             "Fulfills righteous desires",
             "Brings prosperity and success",
-            "Aids in spiritual awakening"
+            "Aids in spiritual awakening",
         ],
         "requirements": [
             "Shiva Linga (can be provided)",
@@ -367,22 +478,31 @@ HINDU_SERVICES_CATALOG = [
             "Bilva leaves (essential for Shiva)",
             "Sacred water (Ganga jal preferred)",
             "Dhatura flowers (offered from distance)",
-            "Rudraksha mala for chanting"
+            "Rudraksha mala for chanting",
         ],
         "duration_minutes": 120,
         "muhurta_required": "recommended",
-        "best_tithis": ["Pradosh (13th day)", "Monday", "Maha Shivratri", "Shravan month"],
+        "best_tithis": [
+            "Pradosh (13th day)",
+            "Monday",
+            "Maha Shivratri",
+            "Shravan month",
+        ],
         "best_nakshatras": ["Rohini", "Ardra", "Pushya"],
         "avoid_days": ["None specifically, Mondays most auspicious"],
         "muhurta_consultation_price": 149.0,
         "full_service_base_price": 3500.0,
         "custom_acharya_base_price": 2800.0,
-        "platform_provides": ["Shiva Linga", "Abhishek materials", "Bilva leaves", "Rudram chanting Acharya"],
+        "platform_provides": [
+            "Shiva Linga",
+            "Abhishek materials",
+            "Bilva leaves",
+            "Rudram chanting Acharya",
+        ],
         "customer_provides": ["Fresh milk", "Flowers", "Fruits for offering"],
         "acharya_experience_required": "Vedic scholar, Rudram expert, 10+ years",
-        "icon": "shiva"
+        "icon": "shiva",
     },
-    
     # ========== ANCESTRAL RITES ==========
     {
         "name_english": "Shradh (Pitru Paksha)",
@@ -398,7 +518,7 @@ HINDU_SERVICES_CATALOG = [
             "Improves family harmony and wealth",
             "Helps ancestors attain higher realms",
             "Protects family from curses and obstacles",
-            "Ensures peace for departed souls"
+            "Ensures peace for departed souls",
         ],
         "requirements": [
             "Exact death date (Tithi) of ancestors",
@@ -407,22 +527,34 @@ HINDU_SERVICES_CATALOG = [
             "Darbha grass (sacred grass)",
             "Food for Brahmin or charity",
             "Crows feeding (traditional)",
-            "Kusha grass and silver vessel"
+            "Kusha grass and silver vessel",
         ],
         "duration_minutes": 120,
         "muhurta_required": "mandatory",
-        "best_tithis": ["Tithi of ancestor's death", "Pitru Paksha (Ashwin Krishna Paksha)", "Mahalaya Amavasya"],
+        "best_tithis": [
+            "Tithi of ancestor's death",
+            "Pitru Paksha (Ashwin Krishna Paksha)",
+            "Mahalaya Amavasya",
+        ],
         "best_nakshatras": ["Death Nakshatra of ancestor preferred"],
         "avoid_days": ["Shukla Paksha generally not recommended"],
         "muhurta_consultation_price": 199.0,
         "full_service_base_price": 3500.0,
         "custom_acharya_base_price": 2800.0,
-        "platform_provides": ["Shradh samagri kit", "Darbha grass", "Pind ingredients", "Brahmin Acharya experienced in Pitru karma"],
-        "customer_provides": ["Ancestor's details (name, tithi)", "Food for feeding", "Donation (Dakshina)"],
+        "platform_provides": [
+            "Shradh samagri kit",
+            "Darbha grass",
+            "Pind ingredients",
+            "Brahmin Acharya experienced in Pitru karma",
+        ],
+        "customer_provides": [
+            "Ancestor's details (name, tithi)",
+            "Food for feeding",
+            "Donation (Dakshina)",
+        ],
         "acharya_experience_required": "Brahmin with Pitru karma expertise, 10+ years",
-        "icon": "ancestor"
+        "icon": "ancestor",
     },
-    
     # ========== SPECIAL OCCASIONS ==========
     {
         "name_english": "Mundan Sanskar (First Haircut)",
@@ -437,7 +569,7 @@ HINDU_SERVICES_CATALOG = [
             "Enhances brain development and intelligence",
             "Cools the head and improves blood circulation",
             "Brings divine blessings for child's future",
-            "Strengthens spiritual connection"
+            "Strengthens spiritual connection",
         ],
         "requirements": [
             "Professional barber or priest for shaving",
@@ -445,7 +577,7 @@ HINDU_SERVICES_CATALOG = [
             "Tilak materials (kumkum, turmeric)",
             "Coconut and sweets for offerings",
             "Container for collecting hair",
-            "Arrangements for immersing hair in holy river (optional)"
+            "Arrangements for immersing hair in holy river (optional)",
         ],
         "duration_minutes": 60,
         "muhurta_required": "recommended",
@@ -455,12 +587,19 @@ HINDU_SERVICES_CATALOG = [
         "muhurta_consultation_price": 149.0,
         "full_service_base_price": 2200.0,
         "custom_acharya_base_price": 1800.0,
-        "platform_provides": [PUJA_SAMAGRI, "Acharya for rituals", "Muhurta calculation"],
-        "customer_provides": ["Professional barber", "Child's new clothes", "Sweets for distribution"],
+        "platform_provides": [
+            PUJA_SAMAGRI,
+            "Acharya for rituals",
+            "Muhurta calculation",
+        ],
+        "customer_provides": [
+            "Professional barber",
+            "Child's new clothes",
+            "Sweets for distribution",
+        ],
         "acharya_experience_required": "5+ years in Sanskar ceremonies",
-        "icon": "scissors"
+        "icon": "scissors",
     },
-    
     {
         "name_english": "Annaprashan (First Food Ceremony)",
         "name_sanskrit": "अन्नप्राशन संस्कार",
@@ -474,7 +613,7 @@ HINDU_SERVICES_CATALOG = [
             "Promotes physical and mental development",
             "Protects child from food-related ailments",
             "Strengthens immunity",
-            "Provides insights into child's future interests"
+            "Provides insights into child's future interests",
         ],
         "requirements": [
             "Freshly cooked rice pudding (kheer) or sweet rice",
@@ -482,21 +621,33 @@ HINDU_SERVICES_CATALOG = [
             "Silver bowl and spoon (traditional)",
             "Various symbolic objects (book, pen, money, etc.) for child to choose",
             "Fresh flowers and fruits",
-            "Baby's new clothes"
+            "Baby's new clothes",
         ],
         "duration_minutes": 60,
         "muhurta_required": "recommended",
-        "best_tithis": [SHUKLA_PAKSHA, "Even months for boys, odd for girls (traditional)"],
+        "best_tithis": [
+            SHUKLA_PAKSHA,
+            "Even months for boys, odd for girls (traditional)",
+        ],
         "best_nakshatras": ["Rohini", "Mrigashira", "Pushya", "Hasta", "Swati"],
         "avoid_days": ["Amavasya", "Inauspicious Nakshatras"],
         "muhurta_consultation_price": 149.0,
         "full_service_base_price": 2200.0,
         "custom_acharya_base_price": 1800.0,
-        "platform_provides": [PUJA_SAMAGRI, "Guidance for ceremony", "Acharya for rituals"],
-        "customer_provides": ["Kheer preparation", "Symbolic objects", "Baby's outfit", "Sweets for guests"],
+        "platform_provides": [
+            PUJA_SAMAGRI,
+            "Guidance for ceremony",
+            "Acharya for rituals",
+        ],
+        "customer_provides": [
+            "Kheer preparation",
+            "Symbolic objects",
+            "Baby's outfit",
+            "Sweets for guests",
+        ],
         "acharya_experience_required": "3+ years in Sanskar ceremonies",
-        "icon": "bowl"
-    }
+        "icon": "bowl",
+    },
 ]
 
 

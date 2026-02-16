@@ -3,16 +3,16 @@ Pydantic Models for Database Documents
 SonarQube: S1192 - No string duplication
 SonarQube: S117 - Proper naming conventions
 """
-from pydantic import BaseModel, Field, field_validator, EmailStr, GetCoreSchemaHandler, ConfigDict
+from pydantic import BaseModel, Field, EmailStr, GetCoreSchemaHandler, ConfigDict
 from pydantic_core import CoreSchema, core_schema
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from enum import Enum
 from bson import ObjectId
 
+
 def utcnow():
     return datetime.now(timezone.utc)
-
 
 
 class PyObjectId(ObjectId):
@@ -24,13 +24,17 @@ class PyObjectId(ObjectId):
     ) -> CoreSchema:
         return core_schema.json_or_python_schema(
             json_schema=core_schema.str_schema(),
-            python_schema=core_schema.union_schema([
-                core_schema.is_instance_schema(ObjectId),
-                core_schema.chain_schema([
-                    core_schema.str_schema(),
-                    core_schema.no_info_plain_validator_function(cls.validate),
-                ]),
-            ]),
+            python_schema=core_schema.union_schema(
+                [
+                    core_schema.is_instance_schema(ObjectId),
+                    core_schema.chain_schema(
+                        [
+                            core_schema.str_schema(),
+                            core_schema.no_info_plain_validator_function(cls.validate),
+                        ]
+                    ),
+                ]
+            ),
             serialization=core_schema.plain_serializer_function_ser_schema(
                 lambda x: str(x)
             ),
@@ -45,6 +49,7 @@ class PyObjectId(ObjectId):
 
 class UserRole(str, Enum):
     """User role enumeration"""
+
     GRIHASTA = "grihasta"
     ACHARYA = "acharya"
     ADMIN = "admin"
@@ -52,6 +57,7 @@ class UserRole(str, Enum):
 
 class UserStatus(str, Enum):
     """User status enumeration"""
+
     PENDING = "pending"
     ACTIVE = "active"
     VERIFIED = "verified"
@@ -61,6 +67,7 @@ class UserStatus(str, Enum):
 
 class BookingStatus(str, Enum):
     """Booking status enumeration"""
+
     PENDING_PAYMENT = "pending_payment"
     REQUESTED = "requested"
     CONFIRMED = "confirmed"
@@ -73,6 +80,7 @@ class BookingStatus(str, Enum):
 
 class PaymentStatus(str, Enum):
     """Payment status enumeration"""
+
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -82,6 +90,7 @@ class PaymentStatus(str, Enum):
 
 class Location(BaseModel):
     """Location model"""
+
     city: str
     state: Optional[str] = None
     country: str = "India"
@@ -91,6 +100,7 @@ class Location(BaseModel):
 
 class User(BaseModel):
     """Base user model"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     email: EmailStr
     google_id: Optional[str] = None
@@ -100,20 +110,26 @@ class User(BaseModel):
     onboarded: bool = False  # Track if user completed onboarding
     profile_picture: Optional[str] = None  # User's profile photo URL
     referral_code: Optional[str] = None  # Unique referral code for user
+    preferred_language: Optional[str] = "en"  # User's preferred language
+    terms_accepted_at: Optional[
+        datetime
+    ] = None  # When user accepted Terms & Conditions
+    privacy_accepted_at: Optional[datetime] = None  # When user accepted Privacy Policy
+    acharya_agreement_accepted_at: Optional[
+        datetime
+    ] = None  # For Acharyas: Service Provider Agreement
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
     last_login: Optional[datetime] = None
     device_tokens: List[str] = []
     credits: int = 0
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class GrihastaProfile(BaseModel):
     """Grihasta (Seeker) profile model"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     user_id: str  # Store as string for consistent querying
     name: str
@@ -124,15 +140,13 @@ class GrihastaProfile(BaseModel):
     referred_by: Optional[str] = None  # Changed to str
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class AvailabilitySlot(BaseModel):
     """Availability slot model"""
+
     date: str  # YYYY-MM-DD format
     time_slots: List[Dict[str, str]]  # [{"start": "09:00", "end": "12:00"}]
     is_blocked: bool = False
@@ -140,6 +154,7 @@ class AvailabilitySlot(BaseModel):
 
 class AcharyaProfile(BaseModel):
     """Acharya (Scholar) profile model"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     user_id: str  # Store as string for consistent querying
     name: str
@@ -153,26 +168,21 @@ class AcharyaProfile(BaseModel):
     location: Location
     availability: List[AvailabilitySlot] = []
     verification_documents: List[str] = []  # URLs to documents
-    kyc_status: str = "pending" # pending, verified, rejected
+    kyc_status: str = "pending"  # pending, verified, rejected
     referred_by: Optional[str] = None  # Changed to str
     referral_code: Optional[str] = None
-    ratings: Dict[str, float] = {
-        "average": 0.0,
-        "count": 0
-    }
+    ratings: Dict[str, float] = {"average": 0.0, "count": 0}
     bio: Optional[str] = None
     profile_picture: Optional[str] = None
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class Pooja(BaseModel):
     """Pooja (Service) model"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     name: str
     description: str
@@ -185,20 +195,18 @@ class Pooja(BaseModel):
     created_by: PyObjectId  # Admin who created
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class AttendanceConfirmation(BaseModel):
     """Two-way attendance confirmation"""
+
     grihasta_confirmed: bool = False
     acharya_confirmed: bool = False
     grihasta_timestamp: Optional[datetime] = None
     acharya_timestamp: Optional[datetime] = None
-    
+
     @property
     def is_fully_confirmed(self) -> bool:
         return self.grihasta_confirmed and self.acharya_confirmed
@@ -206,10 +214,12 @@ class AttendanceConfirmation(BaseModel):
 
 class Booking(BaseModel):
     """Booking model"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     grihasta_id: PyObjectId
     acharya_id: PyObjectId
-    pooja_id: PyObjectId
+    pooja_id: Optional[PyObjectId] = None
+    service_name: Optional[str] = None
     booking_type: str  # "only" or "with_samagri"
     booking_mode: str = "instant"  # "instant" or "request"
     requirements: Optional[str] = None  # User requirements for "request" mode
@@ -233,17 +243,15 @@ class Booking(BaseModel):
     notes: Optional[str] = None
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class Message(BaseModel):
     """Chat message model"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    conversation_id: PyObjectId
+    conversation_id: Optional[PyObjectId] = None  # None for open chat
     sender_id: PyObjectId
     receiver_id: Optional[PyObjectId] = None  # None for open chat
     content: str
@@ -251,30 +259,26 @@ class Message(BaseModel):
     expires_at: Optional[datetime] = None  # For 7-day auto-delete
     read: bool = False
     created_at: datetime = Field(default_factory=utcnow)
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class Conversation(BaseModel):
     """Conversation model"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     participants: List[PyObjectId]
     is_open_chat: bool = False
     expires_at: Optional[datetime] = None
     last_message_at: datetime = Field(default_factory=utcnow)
     created_at: datetime = Field(default_factory=utcnow)
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class Review(BaseModel):
     """Review model"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     booking_id: PyObjectId
     grihasta_id: PyObjectId
@@ -285,15 +289,13 @@ class Review(BaseModel):
     review_type: str  # "acharya", "pooja", "platform"
     is_public: bool = False  # Admin decides visibility
     created_at: datetime = Field(default_factory=utcnow)
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class Referral(BaseModel):
     """Referral model"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     referrer_id: PyObjectId
     code: str  # Unique referral code
@@ -301,15 +303,13 @@ class Referral(BaseModel):
     credits_earned: int = 0
     status: str = "active"  # active, inactive
     created_at: datetime = Field(default_factory=utcnow)
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class Notification(BaseModel):
     """Notification model"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     user_id: Optional[PyObjectId] = None  # None for broadcast
     title: str
@@ -318,15 +318,13 @@ class Notification(BaseModel):
     data: Dict[str, Any] = {}
     read: bool = False
     sent_at: datetime = Field(default_factory=utcnow)
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class PanchangaData(BaseModel):
     """Detailed Panchanga calculation data"""
+
     samvatsara: str = ""  # Hindu year name
     ayana: str = ""  # Uttarayana/Dakshinayana
     ritu: str = ""  # Season
@@ -352,6 +350,7 @@ class PanchangaData(BaseModel):
 
 class PanchangaCache(BaseModel):
     """Cached Panchanga data for quick retrieval"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     date: datetime
     region: str  # IN-KA, IN-TN, etc.
@@ -361,15 +360,13 @@ class PanchangaCache(BaseModel):
     panchanga_data: PanchangaData
     created_at: datetime = Field(default_factory=utcnow)
     expires_at: datetime  # Cache expires after 7 days
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class RegionConfig(BaseModel):
     """Region configuration for Panchanga calculations"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     region_code: str  # IN-KA, IN-TN, etc.
     region_name: str  # Karnataka, Tamil Nadu
@@ -381,15 +378,13 @@ class RegionConfig(BaseModel):
     language: str = "en"
     is_active: bool = True
     created_at: datetime = Field(default_factory=utcnow)
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class ScheduleSlot(BaseModel):
     """Individual time slot in Acharya's schedule"""
+
     start_time: datetime
     end_time: datetime
     status: str = "available"  # available, blocked, booked
@@ -401,6 +396,7 @@ class ScheduleSlot(BaseModel):
 
 class AcharyaSchedule(BaseModel):
     """Acharya's daily schedule with availability"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     acharya_id: PyObjectId
     date: datetime
@@ -411,15 +407,13 @@ class AcharyaSchedule(BaseModel):
     blocked_reason: str = ""
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class CalendarEventType(str, Enum):
     """Calendar event types"""
+
     BOOKING = "booking"
     PERSONAL = "personal"
     REMINDER = "reminder"
@@ -429,6 +423,7 @@ class CalendarEventType(str, Enum):
 
 class GrihastaCalendarEvent(BaseModel):
     """Grihasta's personal calendar event"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     user_id: PyObjectId
     event_type: CalendarEventType
@@ -444,15 +439,13 @@ class GrihastaCalendarEvent(BaseModel):
     color: str = "#F97316"  # Saffron default
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class PanchangaEvent(BaseModel):
     """Panchanga (Hindu calendar) event model - Legacy compatibility"""
+
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     date: str  # YYYY-MM-DD
     tithi: str
@@ -466,8 +459,5 @@ class PanchangaEvent(BaseModel):
     festivals: List[str] = []
     auspicious_timings: List[Dict[str, str]] = []
     bookings: List[PyObjectId] = []  # Bookings on this date
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)

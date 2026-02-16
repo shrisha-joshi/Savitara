@@ -2,14 +2,15 @@
 Calendar and Schedule Schemas
 Request/Response schemas for calendar functionality
 """
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel
+from typing import Optional, List, Dict
 from datetime import datetime
 from enum import Enum
 
 
 class CalendarEventType(str, Enum):
     """Calendar event types"""
+
     BOOKING = "booking"
     PERSONAL = "personal"
     REMINDER = "reminder"
@@ -19,6 +20,7 @@ class CalendarEventType(str, Enum):
 
 class SlotStatus(str, Enum):
     """Schedule slot status"""
+
     AVAILABLE = "available"
     BLOCKED = "blocked"
     BOOKED = "booked"
@@ -26,6 +28,7 @@ class SlotStatus(str, Enum):
 
 class ScheduleSlotCreate(BaseModel):
     """Create/Update schedule slot"""
+
     start_time: datetime
     end_time: datetime
     status: SlotStatus = SlotStatus.AVAILABLE
@@ -34,6 +37,7 @@ class ScheduleSlotCreate(BaseModel):
 
 class AcharyaScheduleUpdate(BaseModel):
     """Update Acharya's schedule"""
+
     date: datetime
     slots: List[ScheduleSlotCreate]
     working_hours: Optional[Dict[str, str]] = {"start": "09:00", "end": "18:00"}
@@ -43,6 +47,7 @@ class AcharyaScheduleUpdate(BaseModel):
 
 class BlockDatesRequest(BaseModel):
     """Block multiple dates"""
+
     dates: List[datetime]
     reason: str
     block_all_day: bool = True
@@ -50,6 +55,7 @@ class BlockDatesRequest(BaseModel):
 
 class CalendarEventCreate(BaseModel):
     """Create calendar event"""
+
     event_type: CalendarEventType
     title: str
     description: str = ""
@@ -63,6 +69,7 @@ class CalendarEventCreate(BaseModel):
 
 class CalendarEventUpdate(BaseModel):
     """Update calendar event"""
+
     title: Optional[str] = None
     description: Optional[str] = None
     start_time: Optional[datetime] = None
@@ -73,6 +80,7 @@ class CalendarEventUpdate(BaseModel):
 
 class PanchangaRequest(BaseModel):
     """Request Panchanga for date"""
+
     date: datetime
     latitude: float = 12.9716  # Bangalore
     longitude: float = 77.5946
@@ -82,6 +90,7 @@ class PanchangaRequest(BaseModel):
 
 class MonthCalendarRequest(BaseModel):
     """Request month calendar"""
+
     year: int
     month: int  # 1-12
     latitude: float = 12.9716
@@ -92,6 +101,7 @@ class MonthCalendarRequest(BaseModel):
 
 class AvailabilityCheckRequest(BaseModel):
     """Check Acharya availability"""
+
     acharya_id: str
     date: datetime
     duration_minutes: int = 60
@@ -99,6 +109,7 @@ class AvailabilityCheckRequest(BaseModel):
 
 class AuspiciousDaysRequest(BaseModel):
     """Find auspicious days"""
+
     start_date: datetime
     end_date: datetime
     activity_type: str = "general"  # marriage, grihapravesh, travel, etc.

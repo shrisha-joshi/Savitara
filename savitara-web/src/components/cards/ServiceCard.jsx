@@ -1,11 +1,10 @@
-import React from 'react';
 import { Box, Typography, Card, CardContent, IconButton } from '@mui/material';
 import { motion } from 'framer-motion';
 import { 
-  FaFire, FaOm, FaHeart, FaHome, FaStar, FaBook, FaCalendarAlt, 
-  FaMoon, FaSun, FaPray, FaHandsHelping, FaLeaf
+  FaFire, FaOm, FaHeart, FaHome, FaStar, FaBook, 
+  FaMoon, FaSun, FaPray
 } from 'react-icons/fa';
-import { GiTempleGate, GiLotus, GiPrayerBeads, GiIndianPalace } from 'react-icons/gi';
+import { GiLotus, GiPrayerBeads, GiIndianPalace } from 'react-icons/gi';
 
 // Icon mapping for services
 const serviceIcons = {

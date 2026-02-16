@@ -2,13 +2,14 @@
  * Dynamic Pricing Display Component (Amazon-style)
  * Shows base price, discounts, offers, and savings
  */
-import React, { useState, useEffect } from 'react';
-import { Box, Typography, Chip, LinearProgress, Tooltip, IconButton } from '@mui/material';
+import { useState, useEffect } from 'react';
+import { Box, Typography, Chip, LinearProgress } from '@mui/material';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import StarsIcon from '@mui/icons-material/Stars';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import InfoIcon from '@mui/icons-material/Info';
 import './PricingDisplay.css';
+import api from '../services/api';
 
 const PricingDisplay = ({
   baseAmount,
@@ -23,34 +24,30 @@ const PricingDisplay = ({
 
   useEffect(() => {
     calculatePrice();
-  }, [baseAmount, couponCode, useCoins]);
+  }, [baseAmount, couponCode, useCoins, serviceId]);
 
   const calculatePrice = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/v1/pricing/calculate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          base_amount: baseAmount,
-          service_id: serviceId,
-          coupon_code: couponCode,
-          use_coins: useCoins
-        })
+      const response = await api.post('/pricing/calculate', {
+        base_amount: baseAmount,
+        service_id: serviceId,
+        coupon_code: couponCode,
+        use_coins: useCoins
       });
 
-      if (response.ok) {
-        const data = await response.json();
+      const data = response?.data?.data || response?.data;
+      if (data) {
         setPriceData(data);
         if (onPriceCalculated) {
           onPriceCalculated(data);
         }
+      } else {
+        setPriceData(null);
       }
     } catch (error) {
       console.error('Price calculation failed:', error);
+      setPriceData(null);
     } finally {
       setLoading(false);
     }

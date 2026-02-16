@@ -1,4 +1,11 @@
 # .dockerignore for Backend
+.git
+.gitignore
+Dockerfile
+docker-compose.yml
+sonar-project.properties
+README.md
+
 __pycache__/
 *.py[cod]
 *$py.class
@@ -20,3 +27,5 @@ build/
 .DS_Store
 .vscode/
 .idea/
+pip-log.txt
+pip-delete-this-directory.txt

@@ -158,7 +158,7 @@ const ProfileScreen = () => {
           location: editData.location,
           parampara: editData.parampara,
           gotra: editData.gotra,
-          experience_years: parseInt(editData.experience_years) || 0,
+          experience_years: Number.parseInt(editData.experience_years, 10) || 0,
           study_place: editData.study_place,
           specializations: editData.specializations,
           languages: editData.languages,

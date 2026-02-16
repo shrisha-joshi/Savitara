@@ -1,4 +1,10 @@
 # .dockerignore for Admin Dashboard
+.git
+.gitignore
+Dockerfile
+sonar-project.properties
+README.md
+
 node_modules/
 .next/
 out/

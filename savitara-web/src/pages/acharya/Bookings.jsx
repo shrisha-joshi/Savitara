@@ -98,15 +98,21 @@ export default function AcharyaBookings() {
         case 'accept':
           endpoint = `/bookings/${selectedBooking._id}/status`
           successMessage = 'Booking request accepted'
+          // For request mode bookings, go directly to confirmed status
+          // Amount can be set later when creating payment
           data = { 
-            status: 'pending_payment',
-            amount: amount ? Number.parseFloat(amount) : undefined
+            status: 'confirmed',
+            amount: amount ? Number.parseFloat(amount) : undefined,
+            notes: 'Request approved by Acharya'
           }
           break
         case 'reject':
           endpoint = `/bookings/${selectedBooking._id}/status`
           successMessage = 'Booking request declined'
-          data = { status: 'rejected' }
+          data = { 
+            status: 'cancelled',
+            notes: 'Request declined by Acharya'
+          }
           break
         case 'start':
           endpoint = `/bookings/${selectedBooking._id}/start`
@@ -175,11 +181,18 @@ export default function AcharyaBookings() {
     { value: 'completed', label: 'Completed', count: bookings.filter(b => b.status === 'completed').length }
   ]
 
-  const dialogTitle = actionDialog.type === 'accept' ? 'Accept Booking Request?' :
-             actionDialog.type === 'reject' ? 'Decline Booking Request?' :
-             actionDialog.type === 'start' ? 'Start Booking Session?' :
-             actionDialog.type === 'complete' ? 'Complete Booking?' :
-             actionDialog.type === 'cancel' ? 'Cancel Booking?' : ''
+  const getDialogTitle = (type) => {
+    const titles = {
+      accept: 'Accept Booking Request?',
+      reject: 'Decline Booking Request?',
+      start: 'Start Booking Session?',
+      complete: 'Complete Booking?',
+      cancel: 'Cancel Booking?'
+    }
+    return titles[type] || ''
+  }
+
+  const dialogTitle = getDialogTitle(actionDialog.type)
 
   return (
     <Layout>

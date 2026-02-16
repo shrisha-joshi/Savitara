@@ -2,14 +2,15 @@
 Gamification Models for Savitara Platform
 Includes: Coins, Points, Vouchers, Coupons, Loyalty Tiers, Pricing Rules
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import Optional, List, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
 
 
 class RewardType(str, Enum):
     """Types of rewards in the system"""
+
     COINS = "coins"
     POINTS = "points"
     VOUCHER = "voucher"
@@ -19,6 +20,7 @@ class RewardType(str, Enum):
 
 class CouponType(str, Enum):
     """Types of coupons"""
+
     PERCENTAGE = "percentage"  # 20% off
     FIXED = "fixed"  # ₹100 off
     FREE_SHIPPING = "free_shipping"
@@ -27,6 +29,7 @@ class CouponType(str, Enum):
 
 class VoucherCategory(str, Enum):
     """Voucher categories"""
+
     BOOKING_DISCOUNT = "booking_discount"
     POOJA_ITEMS = "pooja_items"
     PREMIUM_FEATURES = "premium_features"
@@ -35,6 +38,7 @@ class VoucherCategory(str, Enum):
 
 class LoyaltyTier(str, Enum):
     """Loyalty tiers for users"""
+
     BRONZE = "bronze"  # 0-999
     SILVER = "silver"  # 1,000-4,999
     GOLD = "gold"  # 5,000-9,999
@@ -43,6 +47,7 @@ class LoyaltyTier(str, Enum):
 
 class AcharyaTier(str, Enum):
     """Acharya performance tiers"""
+
     RISING_STAR = "rising_star"  # 0-999
     ESTABLISHED = "established"  # 1,000-4,999
     MASTER = "master"  # 5,000-9,999
@@ -51,6 +56,7 @@ class AcharyaTier(str, Enum):
 
 class ActionType(str, Enum):
     """Actions that earn rewards"""
+
     # User actions
     SIGNUP = "signup"
     COMPLETE_PROFILE = "complete_profile"
@@ -65,7 +71,7 @@ class ActionType(str, Enum):
     LOGIN_STREAK_7 = "login_streak_7"
     MONTHLY_BOOKING = "monthly_booking"
     MILESTONE_5_BOOKINGS = "milestone_5_bookings"
-    
+
     # Acharya actions
     COMPLETE_KYC = "complete_kyc"
     FIRST_ACHARYA_BOOKING = "first_acharya_booking"
@@ -80,8 +86,10 @@ class ActionType(str, Enum):
 
 # ==================== Coins System ====================
 
+
 class CoinTransaction(BaseModel):
     """Coin transaction model"""
+
     id: Optional[str] = Field(alias="_id")
     user_id: str
     transaction_type: str  # "earned", "redeemed", "expired", "transferred"
@@ -90,33 +98,33 @@ class CoinTransaction(BaseModel):
     description: str
     reference_id: Optional[str]  # Booking ID, Referral ID, etc.
     balance_after: int
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: Optional[datetime]  # Coins expire after 1 year
     metadata: Optional[Dict] = {}
 
-    class Config:
-        use_enum_values = True
-        populate_by_name = True
+    model_config = ConfigDict(use_enum_values=True, populate_by_name=True)
 
 
 class UserCoins(BaseModel):
     """User's coin balance"""
+
     id: Optional[str] = Field(alias="_id")
     user_id: str
     total_earned: int = 0
     total_redeemed: int = 0
     current_balance: int = 0
     lifetime_balance: int = 0  # Never decreases, for achievements
-    last_updated: datetime = Field(default_factory=datetime.utcnow)
-    
-    class Config:
-        populate_by_name = True
+    last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # ==================== Points & Loyalty System ====================
 
+
 class PointsTransaction(BaseModel):
     """Points transaction model"""
+
     id: Optional[str] = Field(alias="_id")
     user_id: str
     amount: int
@@ -124,16 +132,15 @@ class PointsTransaction(BaseModel):
     description: str
     reference_id: Optional[str]
     balance_after: int
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Optional[Dict] = {}
 
-    class Config:
-        use_enum_values = True
-        populate_by_name = True
+    model_config = ConfigDict(use_enum_values=True, populate_by_name=True)
 
 
 class UserLoyalty(BaseModel):
     """User's loyalty status"""
+
     id: Optional[str] = Field(alias="_id")
     user_id: str
     role: str  # "grihasta" or "acharya"
@@ -144,17 +151,18 @@ class UserLoyalty(BaseModel):
     tier_benefits: List[str] = []
     discount_percentage: int = 0
     coin_multiplier: float = 1.0
-    last_updated: datetime = Field(default_factory=datetime.utcnow)
+    last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     tier_upgraded_at: Optional[datetime]
-    
-    class Config:
-        populate_by_name = True
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # ==================== Vouchers System ====================
 
+
 class Voucher(BaseModel):
     """Voucher model"""
+
     id: Optional[str] = Field(alias="_id")
     code: str  # e.g., "NEXT20", "POOJA50"
     name: str
@@ -174,34 +182,34 @@ class Voucher(BaseModel):
     is_active: bool = True
     terms_conditions: List[str] = []
     created_by: str  # Admin ID
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    class Config:
-        use_enum_values = True
-        populate_by_name = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = ConfigDict(use_enum_values=True, populate_by_name=True)
 
 
 class UserVoucher(BaseModel):
     """User's voucher ownership"""
+
     id: Optional[str] = Field(alias="_id")
     user_id: str
     voucher_id: str
     voucher_code: str
     earned_via: str  # "milestone", "referral", "admin_gift", etc.
-    earned_at: datetime = Field(default_factory=datetime.utcnow)
+    earned_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_used: bool = False
     used_at: Optional[datetime]
     used_in_booking: Optional[str]  # Booking ID
     expires_at: datetime
-    
-    class Config:
-        populate_by_name = True
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # ==================== Coupons System ====================
 
+
 class Coupon(BaseModel):
     """Coupon code model (promotional codes)"""
+
     id: Optional[str] = Field(alias="_id")
     code: str  # e.g., "FIRST50", "GANESH50"
     name: str
@@ -222,31 +230,31 @@ class Coupon(BaseModel):
     is_active: bool = True
     terms_conditions: List[str] = []
     created_by: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    class Config:
-        use_enum_values = True
-        populate_by_name = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = ConfigDict(use_enum_values=True, populate_by_name=True)
 
 
 class CouponUsage(BaseModel):
     """Track coupon usage by users"""
+
     id: Optional[str] = Field(alias="_id")
     coupon_id: str
     coupon_code: str
     user_id: str
     booking_id: str
     discount_applied: float
-    used_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    class Config:
-        populate_by_name = True
+    used_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # ==================== Pricing Rules ====================
 
+
 class PricingRule(BaseModel):
     """Dynamic pricing rules set by admin"""
+
     id: Optional[str] = Field(alias="_id")
     name: str
     service_id: Optional[str]  # None = applies to all
@@ -263,15 +271,15 @@ class PricingRule(BaseModel):
     priority: int = 0  # Higher priority rules apply first
     is_active: bool = True
     created_by: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    class Config:
-        populate_by_name = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class PriceDisplay(BaseModel):
     """Calculated price display for frontend"""
+
     base_price: float
     display_price: float  # Crossed out
     discount_percentage: float
@@ -288,8 +296,10 @@ class PriceDisplay(BaseModel):
 
 # ==================== Referral System ====================
 
+
 class Referral(BaseModel):
     """Referral tracking"""
+
     id: Optional[str] = Field(alias="_id")
     referrer_id: str  # User who referred
     referrer_role: str  # "grihasta" or "acharya"
@@ -303,14 +313,14 @@ class Referral(BaseModel):
     signed_up_at: Optional[datetime]
     first_booking_at: Optional[datetime]
     rewarded_at: Optional[datetime]
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    class Config:
-        populate_by_name = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ReferralLeaderboard(BaseModel):
     """Monthly referral leaderboard"""
+
     id: Optional[str] = Field(alias="_id")
     month: str  # "2026-02"
     user_id: str
@@ -320,16 +330,17 @@ class ReferralLeaderboard(BaseModel):
     successful_referrals: int = 0  # Completed bookings
     rank: int
     prize: Optional[Dict]  # {"amount": 5000, "description": "Top referrer"}
-    last_updated: datetime = Field(default_factory=datetime.utcnow)
-    
-    class Config:
-        populate_by_name = True
+    last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # ==================== Daily Rewards ====================
 
+
 class DailyReward(BaseModel):
     """Daily reward tracking"""
+
     id: Optional[str] = Field(alias="_id")
     user_id: str
     date: str  # "2026-02-04"
@@ -339,40 +350,39 @@ class DailyReward(BaseModel):
     claimed: bool = False
     claimed_at: Optional[datetime]
     streak_count: int  # Total consecutive days
-    
-    class Config:
-        use_enum_values = True
-        populate_by_name = True
+
+    model_config = ConfigDict(use_enum_values=True, populate_by_name=True)
 
 
 class UserStreak(BaseModel):
     """User's login streak"""
+
     id: Optional[str] = Field(alias="_id")
     user_id: str
     current_streak: int = 0
     longest_streak: int = 0
-    last_login: datetime = Field(default_factory=datetime.utcnow)
+    last_login: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     streak_active: bool = True
     total_logins: int = 0
-    
-    class Config:
-        populate_by_name = True
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # ==================== Milestone Tracking ====================
 
+
 class Milestone(BaseModel):
     """Milestone achievements"""
+
     id: Optional[str] = Field(alias="_id")
     user_id: str
     milestone_type: str  # "bookings", "referrals", "reviews", "earnings"
     milestone_count: int  # 1, 5, 10, 25, 50, 100
-    achieved_at: datetime = Field(default_factory=datetime.utcnow)
+    achieved_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     rewards: List[Dict] = []  # [{"type": "coins", "amount": 1000}]
     rewarded: bool = False
-    
-    class Config:
-        populate_by_name = True
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # ==================== Gamification Config ====================
@@ -409,14 +419,19 @@ LOYALTY_TIERS = {
     LoyaltyTier.BRONZE: {"min": 0, "max": 999, "discount": 5, "multiplier": 1.0},
     LoyaltyTier.SILVER: {"min": 1000, "max": 4999, "discount": 10, "multiplier": 2.0},
     LoyaltyTier.GOLD: {"min": 5000, "max": 9999, "discount": 15, "multiplier": 3.0},
-    LoyaltyTier.PLATINUM: {"min": 10000, "max": float('inf'), "discount": 20, "multiplier": 5.0},
+    LoyaltyTier.PLATINUM: {
+        "min": 10000,
+        "max": float("inf"),
+        "discount": 20,
+        "multiplier": 5.0,
+    },
 }
 
 ACHARYA_TIERS = {
     AcharyaTier.RISING_STAR: {"min": 0, "max": 999, "commission_reduction": 0},
     AcharyaTier.ESTABLISHED: {"min": 1000, "max": 4999, "commission_reduction": 2},
     AcharyaTier.MASTER: {"min": 5000, "max": 9999, "commission_reduction": 5},
-    AcharyaTier.GURU: {"min": 10000, "max": float('inf'), "commission_reduction": 10},
+    AcharyaTier.GURU: {"min": 10000, "max": float("inf"), "commission_reduction": 10},
 }
 
 # Coin conversion rate

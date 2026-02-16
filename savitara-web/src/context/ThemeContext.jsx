@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import PropTypes from 'prop-types';
 import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
@@ -145,28 +146,142 @@ const createAppTheme = (mode) => {
       saffron: SAFFRON,
       amber: AMBER,
     },
+    // ============================================
+    // TYPOGRAPHY SCALE - Design System Compliant
+    // Base: 16px, Scale follows 4px grid
+    // ============================================
     typography: {
-      fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      h1: { fontFamily: '"Poppins", sans-serif', fontWeight: 700, letterSpacing: '-0.025em' },
-      h2: { fontFamily: '"Poppins", sans-serif', fontWeight: 600, letterSpacing: '-0.025em' },
-      h3: { fontFamily: '"Poppins", sans-serif', fontWeight: 600, letterSpacing: '-0.02em' },
-      h4: { fontFamily: '"Poppins", sans-serif', fontWeight: 600, letterSpacing: '-0.02em' },
-      h5: { fontFamily: '"Poppins", sans-serif', fontWeight: 500 },
-      h6: { fontFamily: '"Poppins", sans-serif', fontWeight: 500 },
-      button: { fontFamily: '"Inter", sans-serif', fontWeight: 600, letterSpacing: '0.01em' },
+      fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
+      fontSize: 16, // Base size
+      h1: { 
+        fontFamily: '"Poppins", sans-serif', 
+        fontSize: '3rem', // 48px
+        fontWeight: 700, 
+        lineHeight: 1.2,
+        letterSpacing: '-0.025em',
+        '@media (max-width:600px)': {
+          fontSize: '2.25rem', // 36px on mobile
+        }
+      },
+      h2: { 
+        fontFamily: '"Poppins", sans-serif', 
+        fontSize: '2.25rem', // 36px
+        fontWeight: 600, 
+        lineHeight: 1.25,
+        letterSpacing: '-0.025em',
+        '@media (max-width:600px)': {
+          fontSize: '1.75rem', // 28px on mobile
+        }
+      },
+      h3: { 
+        fontFamily: '"Poppins", sans-serif', 
+        fontSize: '1.75rem', // 28px
+        fontWeight: 600, 
+        lineHeight: 1.3,
+        letterSpacing: '-0.02em',
+        '@media (max-width:600px)': {
+          fontSize: '1.5rem', // 24px on mobile
+        }
+      },
+      h4: { 
+        fontFamily: '"Poppins", sans-serif', 
+        fontSize: '1.5rem', // 24px
+        fontWeight: 600, 
+        lineHeight: 1.35,
+        letterSpacing: '-0.02em' 
+      },
+      h5: { 
+        fontFamily: '"Poppins", sans-serif', 
+        fontSize: '1.25rem', // 20px
+        fontWeight: 500,
+        lineHeight: 1.4
+      },
+      h6: { 
+        fontFamily: '"Poppins", sans-serif', 
+        fontSize: '1.125rem', // 18px
+        fontWeight: 500,
+        lineHeight: 1.45
+      },
+      body1: { 
+        fontSize: '1rem', // 16px
+        lineHeight: 1.6,
+        fontWeight: 400
+      },
+      body2: { 
+        fontSize: '0.875rem', // 14px
+        lineHeight: 1.5,
+        fontWeight: 400
+      },
+      caption: { 
+        fontSize: '0.75rem', // 12px
+        lineHeight: 1.4,
+        fontWeight: 400
+      },
+      button: { 
+        fontFamily: '"Inter", sans-serif', 
+        fontSize: '1rem', // 16px
+        fontWeight: 600, 
+        letterSpacing: '0.01em',
+        textTransform: 'none'
+      },
+      overline: {
+        fontSize: '0.75rem', // 12px
+        fontWeight: 700,
+        letterSpacing: '0.125em', // 2px
+        textTransform: 'uppercase',
+        lineHeight: 1.6
+      }
     },
+    // ============================================
+    // SPACING SYSTEM - 4px Grid
+    // Usage: theme.spacing(2) = 8px, theme.spacing(4) = 16px
+    // ============================================
+    spacing: 4, // Base unit: 4px
+    // ============================================
+    // BREAKPOINTS - Mobile First
+    // ============================================
+    breakpoints: {
+      values: {
+        xs: 0,      // Mobile portrait
+        sm: 600,    // Mobile landscape / Tablet portrait
+        md: 960,    // Tablet landscape
+        lg: 1280,   // Desktop
+        xl: 1920    // Large desktop
+      }
+    },
+    // ============================================
+    // SHAPE & BORDER RADIUS
+    // ============================================
     shape: {
-      borderRadius: 12,
+      borderRadius: 12, // Default: 12px
     },
+    // ============================================
+    // SHADOWS - 3-Level System (sm, md, lg)
+    // Design System: shadow-sm (2), shadow-md (8), shadow-lg (20)
+    // ============================================
     shadows: [
       'none',
-      isDark ? '0 1px 2px rgba(0,0,0,0.3)' : '0 1px 2px rgba(0,0,0,0.05)',
-      isDark ? '0 4px 6px -1px rgba(0,0,0,0.4)' : '0 4px 6px -1px rgba(0,0,0,0.1)',
-      isDark ? '0 10px 15px -3px rgba(0,0,0,0.4)' : '0 10px 15px -3px rgba(0,0,0,0.1)',
-      isDark ? '0 20px 25px -5px rgba(0,0,0,0.4)' : '0 20px 25px -5px rgba(0,0,0,0.1)',
-      isDark ? '0 25px 50px -12px rgba(0,0,0,0.5)' : '0 25px 50px -12px rgba(0,0,0,0.25)',
-      ...Array(19).fill('none'),
+      // [1] Minimal - rarely used
+      isDark ? '0 1px 2px 0 rgba(0,0,0,0.3)' : '0 1px 2px 0 rgba(0,0,0,0.05)',
+      // [2] Small - Cards at rest (shadow-sm)
+      isDark ? '0 2px 8px 0 rgba(0,0,0,0.25)' : '0 2px 8px 0 rgba(0,0,0,0.08)',
+      // [3-7] Rarely used
+      isDark ? '0 4px 12px -2px rgba(0,0,0,0.3)' : '0 4px 12px -2px rgba(0,0,0,0.1)',
+      isDark ? '0 6px 16px -4px rgba(0,0,0,0.35)' : '0 6px 16px -4px rgba(0,0,0,0.12)',
+      isDark ? '0 8px 20px -4px rgba(0,0,0,0.4)' : '0 8px 20px -4px rgba(0,0,0,0.14)',
+      isDark ? '0 10px 24px -4px rgba(0,0,0,0.45)' : '0 10px 24px -4px rgba(0,0,0,0.16)',
+      isDark ? '0 12px 28px -8px rgba(0,0,0,0.5)' : '0 12px 28px -8px rgba(0,0,0,0.18)',
+      // [8] Medium - Hover, Modals (shadow-md)
+      isDark ? '0 8px 24px -4px rgba(249,115,22,0.3)' : '0 8px 24px -4px rgba(0,0,0,0.12)',
+      // [9-19] Higher elevations
+      ...new Array(11).fill('none'),
+      // [20] Large - Floating elements (shadow-lg)
+      isDark ? '0 20px 40px -8px rgba(249,115,22,0.25)' : '0 20px 40px -8px rgba(0,0,0,0.16)',
+      ...new Array(4).fill('none'),
     ],
+    // ============================================
+    // COMPONENT OVERRIDES - Design System Alignment
+    // ============================================
     components: {
       MuiCssBaseline: {
         styleOverrides: {
@@ -175,7 +290,17 @@ const createAppTheme = (mode) => {
             backgroundImage: colors.background.gradient,
             backgroundAttachment: 'fixed',
             minHeight: '100vh',
+            // Respect reduced motion preference
+            '@media (prefers-reduced-motion: reduce)': {
+              transition: 'none',
+              animation: 'none',
+              '& *': {
+                transition: 'none !important',
+                animation: 'none !important',
+              }
+            }
           },
+          // Custom scrollbar styling
           '::-webkit-scrollbar': {
             width: '8px',
             height: '8px',
@@ -186,59 +311,229 @@ const createAppTheme = (mode) => {
           '::-webkit-scrollbar-thumb': {
             background: isDark ? SAFFRON[700] : SAFFRON[300],
             borderRadius: '4px',
+            transition: 'background 0.2s',
             '&:hover': {
               background: isDark ? SAFFRON[600] : SAFFRON[400],
             },
           },
+          // Focus visible for accessibility
+          '*:focus-visible': {
+            outline: `2px solid ${SAFFRON[500]}`,
+            outlineOffset: '2px',
+          }
         },
       },
+      // ========================================
+      // BUTTONS - Primary, Secondary, Tertiary
+      // ========================================
       MuiButton: {
+        defaultProps: {
+          disableElevation: false,
+        },
         styleOverrides: {
           root: {
             textTransform: 'none',
             borderRadius: 10,
-            padding: '8px 20px',
             fontWeight: 600,
-            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-            '&:hover': {
-              transform: 'translateY(-1px)',
-            },
+            fontSize: '1rem',
+            padding: '10px 24px',
+            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            '&:focus-visible': {
+              outline: `2px solid ${SAFFRON[500]}`,
+              outlineOffset: '2px',
+            }
           },
+          // Size variants
+          sizeSmall: {
+            padding: '6px 16px',
+            fontSize: '0.875rem',
+            height: '32px',
+          },
+          sizeMedium: {
+            padding: '10px 24px',
+            fontSize: '1rem',
+            height: '40px',
+          },
+          sizeLarge: {
+            padding: '14px 32px',
+            fontSize: '1.125rem',
+            height: '48px',
+          },
+          // Primary Button
           containedPrimary: {
             background: `linear-gradient(135deg, ${SAFFRON[500]} 0%, ${SAFFRON[600]} 100%)`,
             boxShadow: `0 4px 14px ${isDark ? 'rgba(249, 115, 22, 0.4)' : 'rgba(249, 115, 22, 0.25)'}`,
+            color: '#FFFFFF',
             '&:hover': {
               background: `linear-gradient(135deg, ${SAFFRON[400]} 0%, ${SAFFRON[500]} 100%)`,
-              boxShadow: `0 6px 20px ${isDark ? 'rgba(249, 115, 22, 0.5)' : 'rgba(249, 115, 22, 0.35)'}`,
+              boxShadow: `0 8px 20px ${isDark ? 'rgba(249, 115, 22, 0.5)' : 'rgba(249, 115, 22, 0.35)'}`,
+              transform: 'translateY(-2px)',
             },
+            '&:active': {
+              transform: 'translateY(0)',
+              boxShadow: `0 2px 8px ${isDark ? 'rgba(249, 115, 22, 0.3)' : 'rgba(249, 115, 22, 0.2)'}`,
+            },
+            '&:disabled': {
+              background: isDark ? '#333' : '#E0E0E0',
+              color: isDark ? '#666' : '#999',
+              boxShadow: 'none',
+            }
           },
+          // Outlined Button (Secondary)
+          outlined: {
+            borderWidth: '2px',
+            '&:hover': {
+              borderWidth: '2px',
+              transform: 'translateY(-1px)',
+            }
+          },
+          outlinedPrimary: {
+            borderColor: SAFFRON[500],
+            color: SAFFRON[600],
+            '&:hover': {
+              borderColor: SAFFRON[600],
+              backgroundColor: isDark ? 'rgba(249, 115, 22, 0.1)' : 'rgba(249, 115, 22, 0.08)',
+            }
+          },
+          // Text Button (Tertiary)
+          text: {
+            '&:hover': {
+              backgroundColor: isDark ? 'rgba(249, 115, 22, 0.12)' : 'rgba(249, 115, 22, 0.08)',
+            }
+          }
         },
       },
+      // ========================================
+      // CARDS - Glassmorphism Effect
+      // ========================================
       MuiCard: {
+        defaultProps: {
+          elevation: 0,
+        },
         styleOverrides: {
           root: {
             borderRadius: 16,
             backgroundImage: 'none',
             backgroundColor: isDark ? 'rgba(28, 25, 23, 0.6)' : 'rgba(255, 255, 255, 0.8)',
-            backdropFilter: 'blur(12px)',
+            backdropFilter: 'blur(12px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
             border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}`,
+            boxShadow: isDark ? '0 2px 8px 0 rgba(0,0,0,0.25)' : '0 2px 8px 0 rgba(0,0,0,0.08)',
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             '&:hover': {
-              transform: 'translateY(-2px)',
+              transform: 'translateY(-4px)',
               boxShadow: isDark 
-                ? '0 20px 40px -10px rgba(249, 115, 22, 0.15)'
-                : '0 20px 40px -10px rgba(249, 115, 22, 0.12)',
+                ? '0 20px 40px -8px rgba(249, 115, 22, 0.25)'
+                : '0 20px 40px -8px rgba(0, 0, 0, 0.12)',
+              borderColor: isDark ? 'rgba(249, 115, 22, 0.3)' : 'rgba(249, 115, 22, 0.2)',
             },
           },
         },
       },
+      // ========================================
+      // APP BAR / NAVIGATION
+      // ========================================
       MuiAppBar: {
+        defaultProps: {
+          elevation: 0,
+        },
         styleOverrides: {
           root: {
+            backgroundColor: isDark ? 'rgba(28, 25, 23, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+            backdropFilter: 'blur(12px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
             boxShadow: isDark 
-              ? '0 4px 30px rgba(249, 115, 22, 0.15)'
-              : '0 4px 30px rgba(249, 115, 22, 0.15)',
-            borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)'}`,
+              ? '0 4px 30px rgba(249, 115, 22, 0.15)' 
+              : '0 4px 30px rgba(249, 115, 22, 0.08)',
+            borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}`,
+          },
+        },
+      },
+      // ========================================
+      // INPUTS - Text Fields
+      // ========================================
+      MuiTextField: {
+        defaultProps: {
+          variant: 'outlined',
+        },
+        styleOverrides: {
+          root: {
+            '& .MuiOutlinedInput-root': {
+              borderRadius: 10,
+              transition: 'all 0.2s',
+              '&:hover .MuiOutlinedInput-notchedOutline': {
+                borderColor: SAFFRON[400],
+              },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                borderColor: SAFFRON[500],
+                borderWidth: '2px',
+              },
+            },
+          },
+        },
+      },
+      // ========================================
+      // PAPER - Elevated sections
+      // ========================================
+      MuiPaper: {
+        styleOverrides: {
+          root: {
+            backgroundImage: 'none',
+          },
+          rounded: {
+            borderRadius: 12,
+          },
+          elevation1: {
+            boxShadow: isDark ? '0 2px 8px 0 rgba(0,0,0,0.25)' : '0 2px 8px 0 rgba(0,0,0,0.08)',
+          },
+          elevation2: {
+            boxShadow: isDark ? '0 8px 24px -4px rgba(249,115,22,0.3)' : '0 8px 24px -4px rgba(0,0,0,0.12)',
+          },
+          elevation3: {
+            boxShadow: isDark ? '0 20px 40px -8px rgba(249,115,22,0.25)' : '0 20px 40px -8px rgba(0,0,0,0.16)',
+          },
+        },
+      },
+      // ========================================
+      // CHIP - Tags, Badges
+      // ========================================
+      MuiChip: {
+        styleOverrides: {
+          root: {
+            borderRadius: 8,
+            fontWeight: 500,
+          },
+          colorPrimary: {
+            backgroundColor: isDark ? SAFFRON[700] : SAFFRON[100],
+            color: isDark ? SAFFRON[50] : SAFFRON[800],
+          },
+        },
+      },
+      // ========================================
+      // DIVIDER - Section separators
+      // ========================================
+      MuiDivider: {
+        styleOverrides: {
+          root: {
+            borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+          },
+        },
+      },
+      // ========================================
+      // TOOLTIP
+      // ========================================
+      MuiTooltip: {
+        styleOverrides: {
+          tooltip: {
+            backgroundColor: isDark ? '#1C1917' : '#0C0A09',
+            color: '#FAFAF9', // Always light text for readability
+            fontSize: '0.875rem',
+            padding: '8px 12px',
+            borderRadius: 8,
+            boxShadow: '0 8px 24px -4px rgba(0,0,0,0.25)',
+          },
+          arrow: {
+            color: isDark ? '#1C1917' : '#0C0A09',
           },
         },
       },
@@ -248,29 +543,32 @@ const createAppTheme = (mode) => {
 
 // Theme Provider Component
 export const ThemeContextProvider = ({ children }) => {
-  // Initialize from localStorage - Default to light mode always
-  const [mode, setMode] = useState(() => {
-    const savedMode = localStorage.getItem('savitara-theme');
-    // Return saved mode if exists, otherwise always default to light
-    return savedMode || 'light';
+  // Initialize from localStorage - Default to system
+  const [themePreference, setThemePreference] = useState(() => {
+    const savedPref = localStorage.getItem('savitara-theme-preference');
+    return savedPref || 'system';
   });
 
-  // Save to localStorage when mode changes
+  const [systemMode, setSystemMode] = useState(() => {
+    return globalThis.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
+
+  // Determine actual mode based on preference
+  const mode = themePreference === 'system' ? systemMode : themePreference;
+
+  // Save preference to localStorage when it changes
   useEffect(() => {
-    localStorage.setItem('savitara-theme', mode);
+    localStorage.setItem('savitara-theme-preference', themePreference);
     
-    // Update document class for global CSS
-    document.documentElement.setAttribute('data-theme', mode);
-  }, [mode]);
+    // Update document class for global CSS  
+    document.documentElement.dataset.theme = mode;
+  }, [themePreference, mode]);
 
   // Listen for system theme changes
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const mediaQuery = globalThis.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = (e) => {
-      const savedMode = localStorage.getItem('savitara-theme');
-      if (!savedMode) {
-        setMode(e.matches ? 'dark' : 'light');
-      }
+      setSystemMode(e.matches ? 'dark' : 'light');
     };
     
     mediaQuery.addEventListener('change', handleChange);
@@ -278,20 +576,34 @@ export const ThemeContextProvider = ({ children }) => {
   }, []);
 
   const toggleTheme = () => {
-    setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
+    setThemePreference((prevPref) => (prevPref === 'light' ? 'dark' : 'light'));
+  };
+
+  const setThemeMode = (newMode) => {
+    if (['light', 'dark', 'system'].includes(newMode)) {
+      setThemePreference(newMode);
+    }
   };
 
   const theme = useMemo(() => createAppTheme(mode), [mode]);
 
-  const themeColors = mode === 'dark' ? darkColors : lightColors;
+  const themeColors = useMemo(
+    () => (mode === 'dark' ? darkColors : lightColors),
+    [mode]
+  );
 
-  const value = {
-    mode,
-    toggleTheme,
-    isDark: mode === 'dark',
-    isLight: mode === 'light',
-    colors: themeColors,
-  };
+  const value = useMemo(
+    () => ({
+      mode,
+      themePreference,
+      toggleTheme,
+      setThemeMode,
+      isDark: mode === 'dark',
+      isLight: mode === 'light',
+      colors: themeColors,
+    }),
+    [mode, themePreference, themeColors]
+  );
 
   return (
     <ThemeContext.Provider value={value}>
@@ -301,6 +613,10 @@ export const ThemeContextProvider = ({ children }) => {
       </MuiThemeProvider>
     </ThemeContext.Provider>
   );
+};
+
+ThemeContextProvider.propTypes = {
+  children: PropTypes.node.isRequired,
 };
 
 // Custom hook to use theme

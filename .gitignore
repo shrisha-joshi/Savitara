@@ -45,8 +45,26 @@ pip-delete-this-directory.txt
 MANIFEST
 
 # ===========================
-# Environment Variables
+# Documentation and Logs
 # ===========================
+*.log
+*.txt
+*.md
+!README.md
+!CHANGELOG.md
+
+# ===========================
+# Temporary Scripts
+# ===========================
+check_*.py
+test_*.py
+fix_*.py
+debug_*.py
+list_*.py
+setup_*.py
+update_files.js
+deploy.py
+
 .env
 .env.local
 .env.development.local

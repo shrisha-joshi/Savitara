@@ -61,7 +61,7 @@ const OnboardingScreen = () => {
           location: formData.location,
           parampara: formData.parampara,
           gotra: formData.gotra,
-          experience_years: parseInt(formData.experience_years) || 0,
+          experience_years: Number.parseInt(formData.experience_years, 10) || 0,
           study_place: formData.study_place,
           specializations: formData.specializations,
           languages: formData.languages,

@@ -1,18 +1,30 @@
-import { AppBar, Toolbar, Typography, Button, IconButton, Box, Avatar, Menu, MenuItem, Container, Tooltip, useTheme as useMuiTheme, alpha } from '@mui/material'
-import { Menu as MenuIcon, AccountCircle, Logout, Dashboard, Person, LightMode, DarkMode, Search as SearchIcon, Event as EventIcon, Wallet as WalletIcon, Chat as ChatIcon } from '@mui/icons-material'
-import { useState } from 'react'
+import { AppBar, Toolbar, Typography, Button, IconButton, Box, Avatar, Menu, MenuItem, Container, Tooltip, useTheme as useMuiTheme, alpha, ListItemIcon, ListItemText, Chip } from '@mui/material'
+import { Logout, Dashboard, Person, Search as SearchIcon, Event as EventIcon, Wallet as WalletIcon, Chat as ChatIcon, MoreVert, CalendarMonth, Category, Info, Handshake, MonetizationOn } from '@mui/icons-material'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
+import api from '../services/api'
 // Make getInitials, generateAvatarColor optional or mock if missing, assuming they exist
 import { getInitials, generateAvatarColor } from '../utils/helpers'
 
 export default function Navbar() {
   const [anchorEl, setAnchorEl] = useState(null)
+  const [moreAnchorEl, setMoreAnchorEl] = useState(null)
+  const [coinBalance, setCoinBalance] = useState(0)
   const { user, logout } = useAuth()
-  const { isDark, toggleTheme } = useTheme()
+  const { isDark } = useTheme()
   const navigate = useNavigate()
   const muiTheme = useMuiTheme()
+
+  // Fetch coin balance when user is logged in
+  useEffect(() => {
+    if (user) {
+      api.get('/api/v1/gamification/coins/balance')
+        .then(res => setCoinBalance(res.data.balance))
+        .catch(err => console.error('Failed to fetch coin balance:', err))
+    }
+  }, [user])
 
   const handleMenu = (event) => {
     setAnchorEl(event.currentTarget)
@@ -20,6 +32,14 @@ export default function Navbar() {
 
   const handleClose = () => {
     setAnchorEl(null)
+  }
+
+  const handleMoreMenu = (event) => {
+    setMoreAnchorEl(event.currentTarget)
+  }
+
+  const handleMoreClose = () => {
+    setMoreAnchorEl(null)
   }
 
   const handleLogout = async () => {
@@ -113,25 +133,83 @@ export default function Navbar() {
               >
                 Chat
               </Button>
+              
+              {/* More Menu - Desktop */}
+              <Button 
+                color="inherit" 
+                startIcon={<MoreVert />}
+                onClick={handleMoreMenu}
+                sx={{ borderRadius: 'var(--radius-lg)', textTransform: 'none', fontSize: '1rem' }}
+              >
+                More
+              </Button>
+              <Menu
+                anchorEl={moreAnchorEl}
+                open={Boolean(moreAnchorEl)}
+                onClose={handleMoreClose}
+                PaperProps={{
+                  elevation: 0,
+                  sx: {
+                    overflow: 'visible',
+                    filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.32))',
+                    mt: 1.5,
+                    bgcolor: isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                    backdropFilter: 'blur(10px)',
+                    minWidth: 200
+                  },
+                }}
+              >
+                <MenuItem onClick={() => { navigate('/services'); handleMoreClose(); }}>
+                  <ListItemIcon><Category fontSize="small" /></ListItemIcon>
+                  <ListItemText>Services</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={() => { navigate('/panchanga'); handleMoreClose(); }}>
+                  <ListItemIcon><CalendarMonth fontSize="small" /></ListItemIcon>
+                  <ListItemText>Panchanga</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={() => { navigate('/about'); handleMoreClose(); }}>
+                  <ListItemIcon><Info fontSize="small" /></ListItemIcon>
+                  <ListItemText>About Us</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={() => { navigate('/privacy'); handleMoreClose(); }}>
+                  <ListItemIcon><Handshake fontSize="small" /></ListItemIcon>
+                  <ListItemText>Privacy Policy</ListItemText>
+                </MenuItem>
+              </Menu>
             </Box>
           )}
 
           {/* Right Side Actions */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 2 }}>
-            
-            {/* Theme Toggle */}
-            <Tooltip title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
-              <IconButton 
-                onClick={toggleTheme} 
-                sx={{ 
-                  color: 'common.white',
-                  bgcolor: alpha(muiTheme.palette.common.white, 0.1),
-                  '&:hover': { bgcolor: alpha(muiTheme.palette.common.white, 0.2) }
-                }}
-              >
-                {isDark ? <LightMode /> : <DarkMode />}
-              </IconButton>
-            </Tooltip>
+
+            {/* Coin Balance Widget */}
+            {user && (
+              <Tooltip title="Your Savitara Coins - Earn & redeem for discounts!">
+                <Chip 
+                  icon={<MonetizationOn sx={{ color: '#000 !important' }} />}
+                  label={`${coinBalance.toLocaleString()} Coins`}
+                  onClick={() => navigate('/rewards')}
+                  sx={{ 
+                    background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 100%)',
+                    color: '#000',
+                    fontWeight: 700,
+                    fontSize: '0.9rem',
+                    px: 0.5,
+                    cursor: 'pointer',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    boxShadow: '0 2px 8px rgba(255, 215, 0, 0.3)',
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #FFA500 0%, #FFD700 100%)',
+                      transform: 'scale(1.05)',
+                      boxShadow: '0 4px 12px rgba(255, 215, 0, 0.5)',
+                    },
+                    '& .MuiChip-icon': {
+                      color: '#000'
+                    }
+                  }}
+                />
+              </Tooltip>
+            )}
 
             {/* User Menu */}
             {user ? (
@@ -205,13 +283,15 @@ export default function Navbar() {
             ) : (
               <Button 
                 variant="contained" 
-                color="secondary"
+                size="large"
                 onClick={() => navigate('/login')}
                 sx={{ 
-                  borderRadius: 'var(--radius-full)',
-                  px: 3,
+                  borderRadius: 10, // Design system: 10px for buttons
+                  px: 4,
+                  py: 1.5,
                   fontWeight: 600,
-                  boxShadow: 'var(--shadow-glow)'
+                  fontSize: '1rem',
+                  // Gradient and shadow handled by theme
                 }}
               >
                 Login

@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
-import { Container, Box, Typography, Grid, Card, CardContent, Paper, Avatar, Rating, Chip, Button, useTheme as useMuiTheme } from '@mui/material'
+import { Container, Box, Typography, Grid, Card, CardContent, Paper, Rating, Chip, Button } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
 import { Star, VerifiedUser, Schedule, Payments, FormatQuote, ArrowForward } from '@mui/icons-material'
 import Layout from '../components/Layout'
@@ -7,7 +7,6 @@ import HeroSection from '../components/hero/HeroSection'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import api from '../services/api'
-import { motion } from 'framer-motion' // Use simple animation wrapper if available, or just CSS
 
 // Default testimonials (fallback if API fails)
 const defaultTestimonials = [
@@ -71,7 +70,6 @@ export default function Home() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { isDark } = useTheme()
-  const muiTheme = useMuiTheme()
   const scrollRef = useRef(null)
   const [testimonials, setTestimonials] = useState(defaultTestimonials)
 
@@ -85,6 +83,7 @@ export default function Home() {
         }
       } catch (error) {
         // Silently use default testimonials when backend is unavailable
+        console.warn('Failed to fetch testimonials, using defaults:', error.message)
       }
     }
     fetchTestimonials()
@@ -169,81 +168,157 @@ export default function Home() {
          <HeroSection height="calc(100vh - 64px)" /> 
       </Box>
 
-      {/* Features Section */}
-      <Container maxWidth="lg" sx={{ my: 12 }}>
-        <Box textAlign="center" mb={8}>
-          <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 2 }}>
+      {/* Features Section - Spacing: 96px vertical */}
+      <Container maxWidth="lg" component="section" sx={{ py: 12 }}>
+        {/* Section Header - Clear visual hierarchy */}
+        <Box textAlign="center" sx={{ mb: 10 }}>
+          <Typography 
+            variant="overline" 
+            sx={{ 
+              color: 'primary.main', 
+              fontWeight: 700, 
+              letterSpacing: 2,
+              display: 'block',
+              mb: 1
+            }}
+          >
             WHY CHOOSE US
           </Typography>
-          <Typography variant="h3" fontWeight={700} className="gradient-text" sx={{ mb: 2 }}>
+          <Typography 
+            variant="h2" 
+            component="h2"
+            fontWeight={700} 
+            sx={{ mb: 2 }}
+          >
             Savitara Advantage
           </Typography>
-          <Typography variant="h6" color="text.secondary" >
-            Experience the best spiritual services with our platform
+          <Typography 
+            variant="h6" 
+            color="text.secondary"
+            sx={{ 
+              maxWidth: 600, 
+              mx: 'auto',
+              lineHeight: 1.6 
+            }}
+          >
+            Experience trusted spiritual guidance with verified Acharyas
           </Typography>
-          <Box sx={{ width: 80, height: 4, bgcolor: 'primary.main', mx: 'auto', mt: 3, borderRadius: 2 }} className="glow" />
+          {/* Decorative accent line */}
+          <Box 
+            sx={{ 
+              width: 80, 
+              height: 4, 
+              bgcolor: 'primary.main', 
+              mx: 'auto', 
+              mt: 4, 
+              borderRadius: 2 
+            }} 
+          />
         </Box>
 
+        {/* Feature Cards - 4-column grid on desktop */}
         <Grid container spacing={4}>
           {features.map((feature, index) => (
             <Grid item xs={12} sm={6} md={3} key={index}>
               <Card
-                className="glass-card"
                 elevation={0}
                 sx={{
                   height: '100%',
                   textAlign: 'center',
-                  bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.7)',
-                  transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                  border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.5)',
-                  '&:hover': { 
-                    transform: 'translateY(-10px)',
-                    boxShadow: '0 20px 40px rgba(0,0,0,0.1)',
-                    borderColor: 'primary.main'
-                  },
+                  p: 4,
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                  cursor: 'default',
+                  // Card uses glassmorphism from theme
                 }}
               >
-                <CardContent sx={{ py: 5, px: 3 }}>
-                  <Box 
-                    sx={{ 
-                      mb: 3, 
-                      p: 2, 
-                      display: 'inline-block', 
-                      borderRadius: '50%',
-                      bgcolor: isDark ? 'rgba(249, 115, 22, 0.1)' : 'rgba(249, 115, 22, 0.1)'
-                    }}
-                    className="animate-pulse"
-                  >
-                    {feature.icon}
-                  </Box>
-                  <Typography variant="h6" gutterBottom fontWeight={600}>
-                    {feature.title}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-                    {feature.description}
-                  </Typography>
-                </CardContent>
+                {/* Icon with circular background */}
+                <Box 
+                  sx={{ 
+                    mb: 3, 
+                    p: 2, 
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '50%',
+                    bgcolor: 'primary.main',
+                    color: 'white',
+                    width: 80,
+                    height: 80,
+                    mx: 'auto',
+                  }}
+                  role="img"
+                  aria-label={feature.title}
+                >
+                  {feature.icon}
+                </Box>
+                {/* Feature title */}
+                <Typography 
+                  variant="h6" 
+                  component="h3"
+                  gutterBottom 
+                  fontWeight={600}
+                  sx={{ mb: 2 }}
+                >
+                  {feature.title}
+                </Typography>
+                {/* Feature description */}
+                <Typography 
+                  variant="body2" 
+                  color="text.secondary" 
+                  sx={{ lineHeight: 1.6 }}
+                >
+                  {feature.description}
+                </Typography>
               </Card>
             </Grid>
           ))}
         </Grid>
       </Container>
 
-      {/* Services Section */}
-      <Box sx={{ 
-        position: 'relative',
-        py: 12, 
-        background: isDark 
-          ? 'linear-gradient(to bottom, #111827 0%, #1F2937 100%)' 
-          : 'linear-gradient(to bottom, #FFF7ED 0%, #FFFFFF 100%)'
-      }}>
+      {/* Services Section - Alternate background */}
+      <Box 
+        component="section"
+        sx={{ 
+          position: 'relative',
+          py: 16, // Increased spacing: 128px
+          background: isDark 
+            ? 'linear-gradient(to bottom, #0C0A09 0%, #1C1917 100%)' 
+            : 'linear-gradient(to bottom, #FFF8F0 0%, #FFFFFF 100%)'
+        }}
+      >
         <Container maxWidth="lg">
-           <Box textAlign="center" mb={10}>
-            <Typography variant="overline" sx={{ color: 'secondary.main', fontWeight: 700, letterSpacing: 2 }}>
+          {/* Section Header */}
+          <Box textAlign="center" sx={{ mb: 12 }}>
+            <Typography 
+              variant="overline" 
+              sx={{ 
+                color: 'secondary.main', 
+                fontWeight: 700, 
+                letterSpacing: 2,
+                display: 'block',
+                mb: 1
+              }}
+            >
               OUR OFFERINGS
             </Typography>
-            <Typography variant="h3" fontWeight={700} sx={{ mb: 2 }}>
-              Divine <span className="savitara-brand" style={{ color: '#F97316' }}>Services</span>
+            <Typography 
+              variant="h2" 
+              component="h2"
+              fontWeight={700} 
+              sx={{ mb: 2 }}
+            >
+              Divine <Box component="span" sx={{ color: 'primary.main' }}>Services</Box>
+            </Typography>
+            <Typography 
+              variant="h6" 
+              color="text.secondary"
+              sx={{ 
+                maxWidth: 600, 
+                mx: 'auto',
+                lineHeight: 1.6 
+              }}
+            >
+              Comprehensive spiritual services for all your sacred needs
             </Typography>
           </Box>
           
@@ -339,17 +414,19 @@ export default function Home() {
             ))}
           </Grid>
           
-          <Box textAlign="center" mt={8}>
+          {/* CTA Button */}
+          <Box textAlign="center" sx={{ mt: 10 }}>
             <Button 
               variant="outlined" 
+              size="large"
               endIcon={<ArrowForward />}
               onClick={() => navigate('/services')}
               sx={{ 
-                borderRadius: 'var(--radius-full)', 
-                px: 4, 
+                borderRadius: 10, 
+                px: 5, 
                 py: 1.5,
-                borderWidth: 2,
-                '&:hover': { borderWidth: 2 }
+                fontSize: '1rem',
+                fontWeight: 600,
               }}
             >
               View All Services
@@ -358,15 +435,49 @@ export default function Home() {
         </Container>
       </Box>
 
-      {/* Testimonials Section - Auto-sliding Horizontal Scroll */}
-      <Box sx={{ py: 12, bgcolor: isDark ? '#000' : '#FFF8F0', overflow: 'hidden' }}>
-        <Container maxWidth="lg" sx={{ mb: 6 }}>
+      {/* Testimonials Section - Social proof */}
+      <Box 
+        component="section"
+        sx={{ 
+          py: 16, 
+          bgcolor: isDark ? '#0C0A09' : '#FFF8F0', 
+          overflow: 'hidden' 
+        }}
+      >
+        <Container maxWidth="lg" sx={{ mb: 8 }}>
+          {/* Section Header */}
           <Box textAlign="center">
-            <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 2 }}>
+            <Typography 
+              variant="overline" 
+              sx={{ 
+                color: 'primary.main', 
+                fontWeight: 700, 
+                letterSpacing: 2,
+                display: 'block',
+                mb: 1
+              }}
+            >
               TESTIMONIALS
             </Typography>
-            <Typography variant="h3" fontWeight={700} gutterBottom>
+            <Typography 
+              variant="h2" 
+              component="h2"
+              fontWeight={700} 
+              gutterBottom
+              sx={{ mb: 2 }}
+            >
               Devotee Experiences
+            </Typography>
+            <Typography 
+              variant="h6" 
+              color="text.secondary"
+              sx={{ 
+                maxWidth: 600, 
+                mx: 'auto',
+                lineHeight: 1.6 
+              }}
+            >
+              Hear from thousands of satisfied devotees across India
             </Typography>
           </Box>
         </Container>
@@ -483,49 +594,95 @@ export default function Home() {
 
       {/* CTA Section - Only show when user is NOT logged in */}
       {!user && (
-        <Container maxWidth="md" sx={{ my: 12, textAlign: 'center' }}>
+        <Container 
+          maxWidth="md" 
+          component="section"
+          sx={{ py: 16, textAlign: 'center' }}
+        >
           <Box 
-            className="glass-card glow"
             sx={{ 
-              p: 8, 
-              background: 'linear-gradient(135deg, #F97316 0%, #C2410C 100%)',
+              p: { xs: 6, md: 10 }, 
+              background: 'linear-gradient(135deg, #F97316 0%, #EA580C 100%)',
               color: 'white',
-              borderRadius: 5,
+              borderRadius: 4,
               position: 'relative',
-              overflow: 'hidden'
+              overflow: 'hidden',
+              boxShadow: '0 20px 60px rgba(249, 115, 22, 0.3)'
             }}
           >
-             {/* Decorative circles */}
-            <Box sx={{ position: 'absolute', top: -50, right: -50, width: 200, height: 200, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.1)' }} />
-            <Box sx={{ position: 'absolute', bottom: -30, left: -30, width: 150, height: 150, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.1)' }} />
+            {/* Decorative circles - visual interest */}
+            <Box 
+              sx={{ 
+                position: 'absolute', 
+                top: -50, 
+                right: -50, 
+                width: 200, 
+                height: 200, 
+                borderRadius: '50%', 
+                bgcolor: 'rgba(255,255,255,0.1)',
+                pointerEvents: 'none'
+              }} 
+            />
+            <Box 
+              sx={{ 
+                position: 'absolute', 
+                bottom: -30, 
+                left: -30, 
+                width: 150, 
+                height: 150, 
+                borderRadius: '50%', 
+                bgcolor: 'rgba(255,255,255,0.1)',
+                pointerEvents: 'none'
+              }} 
+            />
             
-            <Typography variant="h3" gutterBottom fontWeight={800} sx={{ position: 'relative' }}>
+            {/* CTA Content */}
+            <Typography 
+              variant="h2" 
+              component="h2"
+              gutterBottom 
+              fontWeight={700} 
+              sx={{ position: 'relative', mb: 3 }}
+            >
               Begin Your Spiritual Journey
             </Typography>
-            <Typography variant="h6" paragraph sx={{ opacity: 0.9, position: 'relative', mb: 4 }}>
-              Join thousands of devotees who trust Savitara for their spiritual needs.
+            <Typography 
+              variant="h6" 
+              paragraph 
+              sx={{ 
+                opacity: 0.95, 
+                position: 'relative', 
+                mb: 5,
+                maxWidth: 500,
+                mx: 'auto',
+                lineHeight: 1.6
+              }}
+            >
+              Join thousands of devotees who trust Savitara for their spiritual guidance and sacred ceremonies.
             </Typography>
+            
+            {/* Primary CTA Button */}
             <Button
               variant="contained"
               size="large"
-              sx={{ 
-                bgcolor: 'white', 
-                color: '#C2410C', 
-                fontWeight: 700,
-                fontSize: '1.1rem',
-                px: 6,
-                py: 2,
-                borderRadius: 'var(--radius-full)',
-                position: 'relative',
-                boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
-                '&:hover': { 
-                  bgcolor: '#FFF7ED', 
-                  transform: 'translateY(-3px)',
-                  boxShadow: '0 15px 35px rgba(0,0,0,0.3)'
-                } 
-              }}
               onClick={() => navigate('/login')}
               endIcon={<ArrowForward />}
+              sx={{ 
+                bgcolor: 'white', 
+                color: 'primary.dark', 
+                fontWeight: 700,
+                fontSize: '1.125rem',
+                px: 6,
+                py: 2,
+                borderRadius: 10,
+                position: 'relative',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                '&:hover': { 
+                  bgcolor: '#FFF8F0', 
+                  transform: 'translateY(-2px)',
+                  boxShadow: '0 12px 32px rgba(0,0,0,0.2)'
+                } 
+              }}
             >
               Get Started Now
             </Button>

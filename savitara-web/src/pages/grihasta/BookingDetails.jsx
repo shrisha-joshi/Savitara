@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { 
   Container, 
@@ -16,7 +16,6 @@ import {
   FaCalendarAlt, 
   FaClock, 
   FaVideo, 
-  FaComment, 
   FaArrowLeft 
 } from 'react-icons/fa'
 import Layout from '../../components/Layout'
@@ -24,7 +23,7 @@ import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 
 export default function BookingDetails() {
-  const { id } = useParams()
+  const { bookingId } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
   
@@ -35,7 +34,7 @@ export default function BookingDetails() {
   useEffect(() => {
     const fetchBooking = async () => {
       try {
-        const response = await api.get(`/bookings/${id}`)
+        const response = await api.get(`/bookings/${bookingId}`)
         if (response.data.success) {
           setBooking(response.data.data)
         }
@@ -47,10 +46,10 @@ export default function BookingDetails() {
       }
     }
 
-    if (id) {
+    if (bookingId) {
       fetchBooking()
     }
-  }, [id])
+  }, [bookingId])
 
   if (loading) {
     return (
@@ -77,7 +76,8 @@ export default function BookingDetails() {
 
   const isAcharya = user?.role === 'acharya'
   // Correctly identify the "other" party based on current user role
-  const otherPartyId = isAcharya ? booking.user_id : booking.acharya_id
+  const acharyaChatId = booking.acharya_user_id || booking.acharya_userid || booking.acharya_id
+  const otherPartyId = isAcharya ? booking.user_id : acharyaChatId
   const otherPartyName = isAcharya ? booking.user_name : booking.acharya_name
 
   const formatStatus = (status) => {
@@ -98,7 +98,8 @@ export default function BookingDetails() {
   const formatDate = (dateStr) => {
     try {
       return new Date(dateStr).toLocaleDateString()
-    } catch (e) {
+    } catch (err) {
+      console.warn('Invalid date format:', dateStr, err)
       return dateStr
     }
   }
@@ -126,7 +127,7 @@ export default function BookingDetails() {
                       onClick={() => navigate(`/chat/u/${otherPartyId}`)}
                       sx={{ mr: 1 }}
                     >
-                      Message Acharya
+                      Message {isAcharya ? 'Grihasta' : 'Acharya'}
                     </Button>
                     {formatStatus(booking.status)}
                   </Box>
@@ -140,7 +141,7 @@ export default function BookingDetails() {
                   Service / Pooja
                 </Typography>
                 <Typography variant="h6">
-                  {booking.pooja_name || 'General Consultation'}
+                  {booking.pooja_name || booking.service_name || 'General Consultation'}
                 </Typography>
               </Box>
               
@@ -193,7 +194,7 @@ export default function BookingDetails() {
                     color="secondary"
                     startIcon={<FaVideo />}
                     sx={{ py: 1.5 }}
-                    onClick={() => navigate(`/video-call/${id}`)} 
+                    onClick={() => navigate(`/video-call/${bookingId}`)} 
                   >
                     Join Video Call
                   </Button>

@@ -18,7 +18,7 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => { throw error; }
 );
 
 // Response interceptor for handling errors
@@ -28,9 +28,9 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('adminToken');
       localStorage.removeItem('adminUser');
-      window.location.href = '/login';
+      globalThis.location.href = '/login';
     }
-    return Promise.reject(error);
+    throw error;
   }
 );
 
@@ -83,6 +83,10 @@ export const adminAPI = {
   listAdmins: () => api.get('/admin/auth/admins'),
   addAdmin: (data) => api.post('/admin/auth/add-admin', data),
   removeAdmin: (email) => api.delete('/admin/auth/remove-admin', { data: { email } }),
+  
+  // Booking Management
+  getBookings: (params) => api.get('/admin/bookings', { params }),
+  updateBookingStatus: (bookingId, data) => api.put(`/bookings/${bookingId}/status`, data),
 };
 
 // Admin Auth APIs (Email/Password based)

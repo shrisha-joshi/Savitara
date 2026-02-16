@@ -309,7 +309,7 @@ const CalendarScreen = () => {
               <TextInput
                 value={(editingSlot ? editingSlot.max_bookings : newSlot.max_bookings).toString()}
                 onChangeText={(value) => {
-                  const num = parseInt(value) || 1
+                  const num = Number.parseInt(value, 10) || 1
                   if (editingSlot) {
                     setEditingSlot({ ...editingSlot, max_bookings: num })
                   } else {

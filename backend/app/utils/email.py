@@ -22,13 +22,13 @@ settings = get_settings()
 
 class EmailService:
     """Email service supporting SMTP and SendGrid"""
-    
+
     def __init__(self):
         """Initialize email service"""
         self.provider = settings.EMAIL_PROVIDER  # 'smtp' or 'sendgrid'
         self.from_email = settings.EMAIL_FROM
         self.from_name = settings.EMAIL_FROM_NAME
-        
+
         # Initialize template engine
         template_path = Path(__file__).parent.parent / "templates" / "email"
         if template_path.exists():
@@ -36,19 +36,19 @@ class EmailService:
         else:
             self.template_env = None
             logger.warning(f"Email template directory not found: {template_path}")
-    
+
     def _render_template(self, template_name: str, context: Dict[str, Any]) -> str:
         """Render email template with context"""
         if not self.template_env:
             return context.get("body", "")
-        
+
         try:
             template = self.template_env.get_template(f"{template_name}.html")
             return template.render(**context)
         except Exception as e:
             logger.error(f"Template rendering error: {e}")
             return context.get("body", "")
-    
+
     async def send_email(
         self,
         to_email: str,
@@ -60,11 +60,11 @@ class EmailService:
         cc: Optional[List[str]] = None,
         bcc: Optional[List[str]] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
-        reply_to: Optional[str] = None
+        reply_to: Optional[str] = None,
     ) -> bool:
         """
         Send email using configured provider
-        
+
         Args:
             to_email: Recipient email address
             subject: Email subject
@@ -76,7 +76,7 @@ class EmailService:
             bcc: BCC recipients (optional)
             attachments: List of attachments (optional)
             reply_to: Reply-to address (optional)
-            
+
         Returns:
             True if email sent successfully
         """
@@ -84,7 +84,7 @@ class EmailService:
             # Render template if provided
             if template and template_context:
                 html_body = self._render_template(template, template_context)
-            
+
             if self.provider == "sendgrid":
                 return await self._send_via_sendgrid(
                     to_email, subject, body, html_body, cc, bcc, attachments, reply_to
@@ -96,7 +96,7 @@ class EmailService:
         except Exception as e:
             logger.error(f"Email sending failed: {e}", exc_info=True)
             return False
-    
+
     def _build_message(
         self,
         to_email: str,
@@ -104,42 +104,43 @@ class EmailService:
         body: str,
         html_body: Optional[str] = None,
         cc: Optional[List[str]] = None,
-        reply_to: Optional[str] = None
+        reply_to: Optional[str] = None,
     ) -> MIMEMultipart:
         """Build email message with headers and body"""
         msg = MIMEMultipart("alternative")
         msg["From"] = f"{self.from_name} <{self.from_email}>"
         msg["To"] = to_email
         msg["Subject"] = subject
-        
+
         if cc:
             msg["Cc"] = ", ".join(cc)
         if reply_to:
             msg["Reply-To"] = reply_to
-        
+
         msg.attach(MIMEText(body, "plain"))
         if html_body:
             msg.attach(MIMEText(html_body, "html"))
-        
+
         return msg
-    
-    def _add_attachments(self, msg: MIMEMultipart, attachments: List[Dict[str, Any]]) -> None:
+
+    def _add_attachments(
+        self, msg: MIMEMultipart, attachments: List[Dict[str, Any]]
+    ) -> None:
         """Add attachments to email message"""
         for attachment in attachments:
             part = MIMEBase("application", "octet-stream")
             part.set_payload(attachment["content"])
             encoders.encode_base64(part)
             part.add_header(
-                "Content-Disposition",
-                f"attachment; filename={attachment['filename']}"
+                "Content-Disposition", f"attachment; filename={attachment['filename']}"
             )
             msg.attach(part)
-    
+
     def _collect_recipients(
         self,
         to_email: str,
         cc: Optional[List[str]] = None,
-        bcc: Optional[List[str]] = None
+        bcc: Optional[List[str]] = None,
     ) -> List[str]:
         """Collect all email recipients"""
         recipients = [to_email]
@@ -148,7 +149,7 @@ class EmailService:
         if bcc:
             recipients.extend(bcc)
         return recipients
-    
+
     async def _send_via_smtp(
         self,
         to_email: str,
@@ -158,36 +159,38 @@ class EmailService:
         cc: Optional[List[str]] = None,
         bcc: Optional[List[str]] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
-        reply_to: Optional[str] = None
+        reply_to: Optional[str] = None,
     ) -> bool:
         """Send email via SMTP using async executor for non-blocking operation"""
         import asyncio
-        
+
         def _sync_send():
             """Synchronous SMTP send operation"""
             try:
-                msg = self._build_message(to_email, subject, body, html_body, cc, reply_to)
-                
+                msg = self._build_message(
+                    to_email, subject, body, html_body, cc, reply_to
+                )
+
                 if attachments:
                     self._add_attachments(msg, attachments)
-                
+
                 recipients = self._collect_recipients(to_email, cc, bcc)
-                
+
                 with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
                     server.starttls()
                     server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
                     server.sendmail(self.from_email, recipients, msg.as_string())
-                
+
                 logger.info(f"Email sent via SMTP to {to_email}")
                 return True
             except Exception as e:
                 logger.error(f"SMTP email error: {e}", exc_info=True)
                 return False
-        
+
         # Run synchronous SMTP in executor
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _sync_send)
-    
+
     async def _send_via_sendgrid(
         self,
         to_email: str,
@@ -197,53 +200,51 @@ class EmailService:
         cc: Optional[List[str]] = None,
         bcc: Optional[List[str]] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
-        reply_to: Optional[str] = None
+        reply_to: Optional[str] = None,
     ) -> bool:
         """Send email via SendGrid API"""
         try:
             payload = {
-                "personalizations": [{
-                    "to": [{"email": to_email}]
-                }],
-                "from": {
-                    "email": self.from_email,
-                    "name": self.from_name
-                },
+                "personalizations": [{"to": [{"email": to_email}]}],
+                "from": {"email": self.from_email, "name": self.from_name},
                 "subject": subject,
-                "content": [
-                    {"type": "text/plain", "value": body}
-                ]
+                "content": [{"type": "text/plain", "value": body}],
             }
-            
+
             # Add HTML content
             if html_body:
                 payload["content"].append({"type": "text/html", "value": html_body})
-            
+
             # Add CC
             if cc:
-                payload["personalizations"][0]["cc"] = [{"email": email} for email in cc]
-            
+                payload["personalizations"][0]["cc"] = [
+                    {"email": email} for email in cc
+                ]
+
             # Add BCC
             if bcc:
-                payload["personalizations"][0]["bcc"] = [{"email": email} for email in bcc]
-            
+                payload["personalizations"][0]["bcc"] = [
+                    {"email": email} for email in bcc
+                ]
+
             # Add reply-to
             if reply_to:
                 payload["reply_to"] = {"email": reply_to}
-            
+
             # Add attachments
             if attachments:
                 import base64
+
                 payload["attachments"] = [
                     {
                         "content": base64.b64encode(att["content"]).decode(),
                         "filename": att["filename"],
                         "type": att.get("type", "application/octet-stream"),
-                        "disposition": "attachment"
+                        "disposition": "attachment",
                     }
                     for att in attachments
                 ]
-            
+
             # Send via SendGrid API
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -251,23 +252,27 @@ class EmailService:
                     json=payload,
                     headers={
                         "Authorization": f"Bearer {settings.SENDGRID_API_KEY}",
-                        "Content-Type": "application/json"
-                    }
+                        "Content-Type": "application/json",
+                    },
                 )
-                
+
                 if response.status_code in (200, 202):
                     logger.info(f"Email sent via SendGrid to {to_email}")
                     return True
                 else:
-                    logger.error(f"SendGrid error: {response.status_code} - {response.text}")
+                    logger.error(
+                        f"SendGrid error: {response.status_code} - {response.text}"
+                    )
                     return False
-                    
+
         except Exception as e:
             logger.error(f"SendGrid email error: {e}", exc_info=True)
             return False
-    
+
     # Pre-defined email templates
-    async def send_booking_confirmation(self, to_email: str, booking_data: Dict[str, Any]) -> bool:
+    async def send_booking_confirmation(
+        self, to_email: str, booking_data: Dict[str, Any]
+    ) -> bool:
         """Send booking confirmation email"""
         subject = f"Booking Confirmed - {booking_data.get('pooja_name', 'Pooja')}"
         body = f"""
@@ -296,10 +301,12 @@ Team Savitara
             subject=subject,
             body=body,
             template="booking_confirmation",
-            template_context=booking_data
+            template_context=booking_data,
         )
-    
-    async def send_payment_receipt(self, to_email: str, payment_data: Dict[str, Any]) -> bool:
+
+    async def send_payment_receipt(
+        self, to_email: str, payment_data: Dict[str, Any]
+    ) -> bool:
         """Send payment receipt email"""
         subject = f"Payment Receipt - ₹{payment_data.get('amount')}"
         body = f"""
@@ -326,15 +333,11 @@ Team Savitara
             subject=subject,
             body=body,
             template="payment_receipt",
-            template_context=payment_data
+            template_context=payment_data,
         )
-    
+
     async def send_acharya_verification_status(
-        self, 
-        to_email: str, 
-        name: str, 
-        status: str, 
-        reason: Optional[str] = None
+        self, to_email: str, name: str, status: str, reason: Optional[str] = None
     ) -> bool:
         """Send Acharya verification status email"""
         if status == "approved":
@@ -374,16 +377,16 @@ We look forward to having you on the platform.
 Om Namah Shivaya
 Team Savitara
             """
-        
-        return await self.send_email(
-            to_email=to_email,
-            subject=subject,
-            body=body
-        )
-    
-    async def send_booking_reminder(self, to_email: str, booking_data: Dict[str, Any]) -> bool:
+
+        return await self.send_email(to_email=to_email, subject=subject, body=body)
+
+    async def send_booking_reminder(
+        self, to_email: str, booking_data: Dict[str, Any]
+    ) -> bool:
         """Send booking reminder email"""
-        subject = f"Reminder: Upcoming Pooja Tomorrow - {booking_data.get('pooja_name')}"
+        subject = (
+            f"Reminder: Upcoming Pooja Tomorrow - {booking_data.get('pooja_name')}"
+        )
         body = f"""
 Namaste!
 
@@ -402,16 +405,12 @@ Contact the Acharya through the app if you have any questions.
 Om Namah Shivaya
 Team Savitara
         """
-        return await self.send_email(
-            to_email=to_email,
-            subject=subject,
-            body=body
-        )
-    
+        return await self.send_email(to_email=to_email, subject=subject, body=body)
+
     async def send_welcome_email(self, to_email: str, name: str, role: str) -> bool:
         """Send welcome email to new users"""
         subject = "Welcome to Savitara - Your Spiritual Journey Begins!"
-        
+
         if role == "grihasta":
             body = f"""
 Namaste {name} ji!
@@ -450,13 +449,9 @@ Thank you for joining the Savitara family!
 Om Namah Shivaya
 Team Savitara
             """
-        
-        return await self.send_email(
-            to_email=to_email,
-            subject=subject,
-            body=body
-        )
-    
+
+        return await self.send_email(to_email=to_email, subject=subject, body=body)
+
     async def send_otp_email(self, to_email: str, otp: str, purpose: str) -> bool:
         """Send OTP verification email"""
         subject = f"Your Savitara OTP - {purpose}"
@@ -472,11 +467,7 @@ If you did not request this OTP, please ignore this email or contact support.
 Om Namah Shivaya
 Team Savitara
         """
-        return await self.send_email(
-            to_email=to_email,
-            subject=subject,
-            body=body
-        )
+        return await self.send_email(to_email=to_email, subject=subject, body=body)
 
 
 # Create singleton instance

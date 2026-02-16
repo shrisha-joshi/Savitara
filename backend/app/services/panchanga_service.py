@@ -3,10 +3,9 @@ Panchanga (Hindu Calendar) Service for Savitara
 Provides Tithi, Nakshatra, Muhurat, and Festival information
 """
 import logging
-from typing import Dict, Any, List, Optional
-from datetime import datetime, date, timedelta, timezone
+from typing import Dict, Any, List
+from datetime import date, timedelta
 from enum import Enum
-import httpx
 
 from app.core.config import get_settings
 from app.core.exceptions import ExternalServiceError
@@ -17,26 +16,28 @@ settings = get_settings()
 
 class Tithi(Enum):
     """Lunar day (Tithi) names"""
+
     PRATIPADA = 1  # First day
-    DWITIYA = 2    # Second day
-    TRITIYA = 3    # Third day
+    DWITIYA = 2  # Second day
+    TRITIYA = 3  # Third day
     CHATURTHI = 4  # Fourth day
-    PANCHAMI = 5   # Fifth day
-    SHASHTHI = 6   # Sixth day
-    SAPTAMI = 7    # Seventh day
-    ASHTAMI = 8    # Eighth day
-    NAVAMI = 9     # Ninth day
-    DASHAMI = 10   # Tenth day
+    PANCHAMI = 5  # Fifth day
+    SHASHTHI = 6  # Sixth day
+    SAPTAMI = 7  # Seventh day
+    ASHTAMI = 8  # Eighth day
+    NAVAMI = 9  # Ninth day
+    DASHAMI = 10  # Tenth day
     EKADASHI = 11  # Eleventh day
     DWADASHI = 12  # Twelfth day
-    TRAYODASHI = 13 # Thirteenth day
-    CHATURDASHI = 14 # Fourteenth day
-    PURNIMA = 15   # Full moon
+    TRAYODASHI = 13  # Thirteenth day
+    CHATURDASHI = 14  # Fourteenth day
+    PURNIMA = 15  # Full moon
     AMAVASYA = 30  # New moon
 
 
 class Nakshatra(Enum):
     """27 Nakshatras (Lunar mansions)"""
+
     ASHWINI = 1
     BHARANI = 2
     KRITTIKA = 3
@@ -68,6 +69,7 @@ class Nakshatra(Enum):
 
 class Yoga(Enum):
     """27 Yogas"""
+
     VISHKUMBHA = 1
     PRITI = 2
     AYUSHMAN = 3
@@ -99,6 +101,7 @@ class Yoga(Enum):
 
 class Karana(Enum):
     """11 Karanas (half-Tithi)"""
+
     BAVA = 1
     BALAVA = 2
     KAULAVA = 3
@@ -114,15 +117,16 @@ class Karana(Enum):
 
 class MuhuratType(Enum):
     """Types of Muhurat"""
-    ABHIJIT = "abhijit"           # Best muhurat for all activities
-    BRAHMA = "brahma"             # First hour after sunrise
-    VIJAYA = "vijaya"             # Victory muhurat
-    AMRIT = "amrit"               # Nectar muhurat
-    SHUBH = "shubh"               # Auspicious muhurat
-    LABH = "labh"                 # Gain muhurat
-    RAHU_KALAM = "rahu_kalam"     # Inauspicious period
-    YAMAGANDAM = "yamagandam"     # Inauspicious period
-    GULIKA_KALAM = "gulika_kalam" # Inauspicious period
+
+    ABHIJIT = "abhijit"  # Best muhurat for all activities
+    BRAHMA = "brahma"  # First hour after sunrise
+    VIJAYA = "vijaya"  # Victory muhurat
+    AMRIT = "amrit"  # Nectar muhurat
+    SHUBH = "shubh"  # Auspicious muhurat
+    LABH = "labh"  # Gain muhurat
+    RAHU_KALAM = "rahu_kalam"  # Inauspicious period
+    YAMAGANDAM = "yamagandam"  # Inauspicious period
+    GULIKA_KALAM = "gulika_kalam"  # Inauspicious period
 
 
 # Tithi names in Sanskrit and English
@@ -142,7 +146,7 @@ TITHI_NAMES = {
     13: ("Trayodashi", "Thirteenth day"),
     14: ("Chaturdashi", "Fourteenth day"),
     15: ("Purnima", "Full Moon"),
-    30: ("Amavasya", "New Moon")
+    30: ("Amavasya", "New Moon"),
 }
 
 # Nakshatra names
@@ -173,29 +177,66 @@ NAKSHATRA_NAMES = {
     24: ("Shatabhisha", "शतभिषा"),
     25: ("Purva Bhadrapada", "पूर्व भाद्रपद"),
     26: ("Uttara Bhadrapada", "उत्तर भाद्रपद"),
-    27: ("Revati", "रेवती")
+    27: ("Revati", "रेवती"),
 }
 
 # Major Hindu festivals with dates (approximate, actual dates vary by year)
 MAJOR_FESTIVALS = [
-    {"name": "Makar Sankranti", "month": 1, "day": 14, "description": "Harvest festival marking sun's transition to Capricorn"},
-    {"name": "Basant Panchami", "month": 2, "description": "Saraswati Puja - Spring festival"},
+    {
+        "name": "Makar Sankranti",
+        "month": 1,
+        "day": 14,
+        "description": "Harvest festival marking sun's transition to Capricorn",
+    },
+    {
+        "name": "Basant Panchami",
+        "month": 2,
+        "description": "Saraswati Puja - Spring festival",
+    },
     {"name": "Maha Shivaratri", "month": 2, "description": "Great night of Lord Shiva"},
     {"name": "Holi", "month": 3, "description": "Festival of colors"},
     {"name": "Ugadi/Gudi Padwa", "month": 3, "description": "Hindu New Year"},
     {"name": "Ram Navami", "month": 4, "description": "Birth of Lord Rama"},
     {"name": "Hanuman Jayanti", "month": 4, "description": "Birth of Lord Hanuman"},
-    {"name": "Akshaya Tritiya", "month": 5, "description": "Auspicious day for new beginnings"},
-    {"name": "Guru Purnima", "month": 7, "description": "Day to honor gurus and teachers"},
-    {"name": "Raksha Bandhan", "month": 8, "description": "Festival celebrating brother-sister bond"},
+    {
+        "name": "Akshaya Tritiya",
+        "month": 5,
+        "description": "Auspicious day for new beginnings",
+    },
+    {
+        "name": "Guru Purnima",
+        "month": 7,
+        "description": "Day to honor gurus and teachers",
+    },
+    {
+        "name": "Raksha Bandhan",
+        "month": 8,
+        "description": "Festival celebrating brother-sister bond",
+    },
     {"name": "Krishna Janmashtami", "month": 8, "description": "Birth of Lord Krishna"},
     {"name": "Ganesh Chaturthi", "month": 9, "description": "Birth of Lord Ganesha"},
-    {"name": "Navratri", "month": 10, "description": "Nine nights celebrating divine feminine"},
-    {"name": "Dussehra/Vijayadashami", "month": 10, "description": "Victory of good over evil"},
-    {"name": "Karwa Chauth", "month": 10, "description": "Married women fast for husband's longevity"},
+    {
+        "name": "Navratri",
+        "month": 10,
+        "description": "Nine nights celebrating divine feminine",
+    },
+    {
+        "name": "Dussehra/Vijayadashami",
+        "month": 10,
+        "description": "Victory of good over evil",
+    },
+    {
+        "name": "Karwa Chauth",
+        "month": 10,
+        "description": "Married women fast for husband's longevity",
+    },
     {"name": "Diwali", "month": 11, "description": "Festival of lights"},
     {"name": "Govardhan Puja", "month": 11, "description": "Day after Diwali"},
-    {"name": "Bhai Dooj", "month": 11, "description": "Festival celebrating brother-sister bond"},
+    {
+        "name": "Bhai Dooj",
+        "month": 11,
+        "description": "Festival celebrating brother-sister bond",
+    },
     {"name": "Kartik Purnima", "month": 11, "description": "Holy dip in sacred rivers"},
 ]
 
@@ -220,36 +261,42 @@ TITHI_ACTIVITIES = {
     13: ["Mixed results", "Good for remedial measures"],
     14: [AVOID_AUSPICIOUS, "Good for Shiva worship"],
     15: ["Satyanarayan Puja", "Pitru Karma", "Full moon rituals"],
-    30: ["Pitru Tarpan", "Ancestor rituals", "Meditation"]
+    30: ["Pitru Tarpan", "Ancestor rituals", "Meditation"],
 }
 
 
 class PanchangaService:
     """Panchanga (Hindu Calendar) Service"""
-    
+
     def __init__(self):
         """Initialize Panchanga service"""
-        self.api_url = settings.PANCHANGA_API_URL if hasattr(settings, 'PANCHANGA_API_URL') else None
-    
-    def calculate_tithi(self, date_obj: date, latitude: float = 28.6139, longitude: float = 77.2090) -> Dict[str, Any]:
+        self.api_url = (
+            settings.PANCHANGA_API_URL
+            if hasattr(settings, "PANCHANGA_API_URL")
+            else None
+        )
+
+    def calculate_tithi(
+        self, date_obj: date, latitude: float = 28.6139, longitude: float = 77.2090
+    ) -> Dict[str, Any]:
         """
         Calculate Tithi for a given date
         Note: This is a simplified calculation. For precise values, use astronomical APIs
-        
+
         Args:
             date_obj: Date to calculate for
             latitude: Location latitude (default: Delhi)
             longitude: Location longitude (default: Delhi)
-            
+
         Returns:
             Tithi information
         """
         # Simplified tithi calculation based on lunar cycle (~29.5 days)
         # Reference new moon date (approximate)
         reference_new_moon = date(2024, 1, 11)  # Known new moon date
-        
+
         days_since_new_moon = (date_obj - reference_new_moon).days % 30
-        
+
         if days_since_new_moon == 0:
             tithi_num = 30  # Amavasya
         elif days_since_new_moon == 15:
@@ -258,11 +305,11 @@ class PanchangaService:
             tithi_num = days_since_new_moon
         else:
             tithi_num = days_since_new_moon - 15
-        
+
         paksha = "Shukla" if days_since_new_moon < 15 else "Krishna"
-        
+
         tithi_name = TITHI_NAMES.get(tithi_num, ("Unknown", "Unknown"))
-        
+
         return {
             "number": tithi_num,
             "name_sanskrit": tithi_name[0],
@@ -272,28 +319,28 @@ class PanchangaService:
             "auspicious_activities": TITHI_ACTIVITIES.get(tithi_num, []),
             "is_ekadashi": tithi_num == 11,
             "is_full_moon": tithi_num == 15,
-            "is_new_moon": tithi_num == 30
+            "is_new_moon": tithi_num == 30,
         }
-    
+
     def calculate_nakshatra(self, date_obj: date) -> Dict[str, Any]:
         """
         Calculate Nakshatra for a given date
-        
+
         Args:
             date_obj: Date to calculate for
-            
+
         Returns:
             Nakshatra information
         """
         # Simplified calculation (actual calculation requires precise moon position)
         reference_date = date(2024, 1, 1)
         days_passed = (date_obj - reference_date).days
-        
+
         # Moon travels through all 27 nakshatras in ~27.3 days
         nakshatra_num = (days_passed % 27) + 1
-        
+
         nakshatra_name = NAKSHATRA_NAMES.get(nakshatra_num, ("Unknown", "Unknown"))
-        
+
         # Nakshatra qualities
         qualities = {
             1: "Swift, beginning",
@@ -322,18 +369,18 @@ class PanchangaService:
             24: "Healing, hundred medicines",
             25: "Burning, heat",
             26: "Warrior, protection",
-            27: "Prosperity, nourishment"
+            27: "Prosperity, nourishment",
         }
-        
+
         return {
             "number": nakshatra_num,
             "name_english": nakshatra_name[0],
             "name_sanskrit": nakshatra_name[1],
             "quality": qualities.get(nakshatra_num, ""),
             "pada": ((days_passed % 4) + 1),  # Simplified pada calculation
-            "lord": self._get_nakshatra_lord(nakshatra_num)
+            "lord": self._get_nakshatra_lord(nakshatra_num),
         }
-    
+
     def _get_nakshatra_lord(self, nakshatra_num: int) -> str:
         """Get ruling deity/planet for nakshatra"""
         lords = {
@@ -363,14 +410,14 @@ class PanchangaService:
             24: "Varuna",
             25: "Aja Ekapada",
             26: "Ahir Budhnya",
-            27: "Pushan"
+            27: "Pushan",
         }
         return lords.get(nakshatra_num, "Unknown")
-    
+
     def calculate_rahu_kalam(self, date_obj: date) -> Dict[str, Any]:
         """
         Calculate Rahu Kalam (inauspicious period) for a given date
-        
+
         Rahu Kalam varies by day of week:
         Sunday: 4:30 PM - 6:00 PM
         Monday: 7:30 AM - 9:00 AM
@@ -382,7 +429,7 @@ class PanchangaService:
         """
         # Get day of week (0=Monday, 6=Sunday)
         weekday = date_obj.weekday()
-        
+
         # Rahu Kalam periods (approximate for 6 AM sunrise, 6 PM sunset)
         rahu_periods = {
             0: ("07:30", "09:00"),  # Monday
@@ -393,25 +440,27 @@ class PanchangaService:
             5: ("09:00", "10:30"),  # Saturday
             6: ("16:30", "18:00"),  # Sunday
         }
-        
+
         start, end = rahu_periods[weekday]
-        
+
         return {
             "start": start,
             "end": end,
             "duration_minutes": 90,
-            "warning": "Avoid starting new activities during Rahu Kalam"
+            "warning": "Avoid starting new activities during Rahu Kalam",
         }
-    
-    def get_daily_panchanga(self, date_obj: date, latitude: float = 28.6139, longitude: float = 77.2090) -> Dict[str, Any]:
+
+    def get_daily_panchanga(
+        self, date_obj: date, latitude: float = 28.6139, longitude: float = 77.2090
+    ) -> Dict[str, Any]:
         """
         Get complete daily Panchanga
-        
+
         Args:
             date_obj: Date to get panchanga for
             latitude: Location latitude
             longitude: Location longitude
-            
+
         Returns:
             Complete Panchanga information
         """
@@ -419,19 +468,19 @@ class PanchangaService:
             tithi = self.calculate_tithi(date_obj, latitude, longitude)
             nakshatra = self.calculate_nakshatra(date_obj)
             rahu_kalam = self.calculate_rahu_kalam(date_obj)
-            
+
             # Calculate other elements (simplified)
             days_passed = (date_obj - date(2024, 1, 1)).days
             yoga_num = (days_passed % 27) + 1
             karana_num = ((days_passed * 2) % 11) + 1
-            
+
             # Check for festivals
             festivals_today = self.get_festivals_for_date(date_obj)
-            
+
             # Calculate sunrise/sunset (simplified - actual calculation needs location)
             sunrise = "06:15"
             sunset = "18:30"
-            
+
             return {
                 "date": date_obj.isoformat(),
                 "day_of_week": date_obj.strftime("%A"),
@@ -442,11 +491,11 @@ class PanchangaService:
                 "nakshatra": nakshatra,
                 "yoga": {
                     "number": yoga_num,
-                    "name": list(Yoga)[yoga_num - 1].name.replace("_", " ").title()
+                    "name": list(Yoga)[yoga_num - 1].name.replace("_", " ").title(),
                 },
                 "karana": {
                     "number": karana_num,
-                    "name": list(Karana)[karana_num - 1].name.title()
+                    "name": list(Karana)[karana_num - 1].name.title(),
                 },
                 "rahu_kalam": rahu_kalam,
                 "festivals": festivals_today,
@@ -454,16 +503,15 @@ class PanchangaService:
                 "inauspicious_periods": {
                     "rahu_kalam": rahu_kalam,
                     "yamagandam": self._calculate_yamagandam(date_obj),
-                    "gulika_kalam": self._calculate_gulika_kalam(date_obj)
-                }
+                    "gulika_kalam": self._calculate_gulika_kalam(date_obj),
+                },
             }
         except Exception as e:
             logger.error(f"Panchanga calculation error: {e}", exc_info=True)
             raise ExternalServiceError(
-                service_name="Panchanga",
-                details={"error": str(e)}
+                service_name="Panchanga", details={"error": str(e)}
             )
-    
+
     def _get_hindi_day(self, weekday: int) -> str:
         """Get Hindi name for day of week"""
         days = {
@@ -476,7 +524,7 @@ class PanchangaService:
             6: "रविवार",  # Sunday
         }
         return days.get(weekday, "")
-    
+
     def _calculate_yamagandam(self, date_obj: date) -> Dict[str, Any]:
         """Calculate Yamagandam period"""
         weekday = date_obj.weekday()
@@ -491,7 +539,7 @@ class PanchangaService:
         }
         start, end = periods[weekday]
         return {"start": start, "end": end}
-    
+
     def _calculate_gulika_kalam(self, date_obj: date) -> Dict[str, Any]:
         """Calculate Gulika Kalam period"""
         weekday = date_obj.weekday()
@@ -506,10 +554,10 @@ class PanchangaService:
         }
         start, end = periods[weekday]
         return {"start": start, "end": end}
-    
+
     def get_auspicious_muhurat(self, date_obj: date = None) -> List[Dict[str, Any]]:
         """Get auspicious muhurat timings for a date
-        
+
         Args:
             date_obj: Optional date parameter for future date-specific calculations
         """
@@ -522,82 +570,90 @@ class PanchangaService:
                 "start": "04:30",
                 "end": "05:18",
                 "good_for": ["Meditation", "Spiritual practices", "Study"],
-                "quality": "Most auspicious"
+                "quality": "Most auspicious",
             },
             {
                 "name": "Abhijit Muhurat",
                 "start": "11:45",
                 "end": "12:33",
                 "good_for": ["Starting new ventures", "Important meetings", "Travel"],
-                "quality": "Highly auspicious"
+                "quality": "Highly auspicious",
             },
             {
                 "name": "Vijaya Muhurat",
                 "start": "14:00",
                 "end": "14:48",
                 "good_for": ["Victory", "Competitions", "Legal matters"],
-                "quality": "Auspicious"
-            }
+                "quality": "Auspicious",
+            },
         ]
-        
+
         return muhurats
-    
+
     def get_festivals_for_date(self, date_obj: date) -> List[Dict[str, Any]]:
         """Get festivals for a specific date"""
         festivals = []
         for festival in MAJOR_FESTIVALS:
-            if festival.get("day") == date_obj.day and festival.get("month") == date_obj.month:
-                festivals.append({
-                    "name": festival["name"],
-                    "description": festival["description"]
-                })
+            if (
+                festival.get("day") == date_obj.day
+                and festival.get("month") == date_obj.month
+            ):
+                festivals.append(
+                    {"name": festival["name"], "description": festival["description"]}
+                )
         return festivals
-    
+
     def get_upcoming_festivals(self, count: int = 10) -> List[Dict[str, Any]]:
         """Get upcoming festivals"""
         today = date.today()
         upcoming = []
-        
+
         for festival in MAJOR_FESTIVALS:
             if "day" in festival:
                 festival_date = date(today.year, festival["month"], festival["day"])
                 if festival_date < today:
-                    festival_date = date(today.year + 1, festival["month"], festival["day"])
-                
-                upcoming.append({
-                    "name": festival["name"],
-                    "date": festival_date.isoformat(),
-                    "description": festival["description"],
-                    "days_away": (festival_date - today).days
-                })
-        
+                    festival_date = date(
+                        today.year + 1, festival["month"], festival["day"]
+                    )
+
+                upcoming.append(
+                    {
+                        "name": festival["name"],
+                        "date": festival_date.isoformat(),
+                        "description": festival["description"],
+                        "days_away": (festival_date - today).days,
+                    }
+                )
+
         # Sort by date and return requested count
         upcoming.sort(key=lambda x: x["days_away"])
         return upcoming[:count]
-    
+
     def get_ekadashi_dates(self, year: int) -> List[Dict[str, Any]]:
         """Get all Ekadashi dates for a year"""
         ekadashis = []
         start_date = date(year, 1, 1)
         end_date = date(year, 12, 31)
-        
+
         current = start_date
         while current <= end_date:
             tithi = self.calculate_tithi(current)
             if tithi["number"] == 11:
-                ekadashis.append({
-                    "date": current.isoformat(),
-                    "paksha": tithi["paksha"],
-                    "name": f"{tithi['paksha']} Ekadashi"
-                })
+                ekadashis.append(
+                    {
+                        "date": current.isoformat(),
+                        "paksha": tithi["paksha"],
+                        "name": f"{tithi['paksha']} Ekadashi",
+                    }
+                )
             current += timedelta(days=1)
-        
+
         return ekadashis
-    
+
     def is_auspicious_for(self, date_obj: date, activity: str) -> Dict[str, Any]:
         """
         Check if a date is auspicious for a specific activity
-        
+
         Args:
             date_obj: Date to check
             activity: Activity type (e.g., 'marriage', 'grihapravesh', 'travel')
@@ -605,46 +661,63 @@ class PanchangaService:
         tithi = self.calculate_tithi(date_obj)
         nakshatra = self.calculate_nakshatra(date_obj)
         rahu_kalam = self.calculate_rahu_kalam(date_obj)
-        
+
         # Activities to avoid on certain tithis
         inauspicious_tithis = {
             "marriage": [4, 8, 9, 14, 30],
             "travel": [4, 8, 9, 14],
             "grihapravesh": [4, 8, 9, 14, 30],
             "business": [4, 8, 9, 14],
-            "purchase": [4, 8, 9, 14, 30]
+            "purchase": [4, 8, 9, 14, 30],
         }
-        
+
         is_auspicious = True
         reasons = []
         recommendations = []
-        
+
         # Check tithi
         bad_tithis = inauspicious_tithis.get(activity.lower(), [])
         if tithi["number"] in bad_tithis:
             is_auspicious = False
-            reasons.append(f"Tithi ({tithi['name_sanskrit']}) is not favorable for {activity}")
+            reasons.append(
+                f"Tithi ({tithi['name_sanskrit']}) is not favorable for {activity}"
+            )
         else:
             reasons.append(f"Tithi ({tithi['name_sanskrit']}) is favorable")
-        
+
         # Check for Rahu Kalam
-        recommendations.append(f"Avoid starting between {rahu_kalam['start']} - {rahu_kalam['end']} (Rahu Kalam)")
-        
+        recommendations.append(
+            f"Avoid starting between {rahu_kalam['start']} - {rahu_kalam['end']} (Rahu Kalam)"
+        )
+
         # Auspicious nakshtras for different activities
         auspicious_nakshatras = {
-            "marriage": [4, 7, 8, 11, 12, 13, 22, 27],  # Rohini, Punarvasu, Pushya, etc.
+            "marriage": [
+                4,
+                7,
+                8,
+                11,
+                12,
+                13,
+                22,
+                27,
+            ],  # Rohini, Punarvasu, Pushya, etc.
             "travel": [1, 5, 7, 13, 15, 22, 27],
             "grihapravesh": [2, 4, 7, 8, 11, 12, 13, 22],
             "business": [1, 4, 7, 8, 13, 15, 22, 27],
-            "purchase": [1, 4, 7, 8, 13, 15, 22]
+            "purchase": [1, 4, 7, 8, 13, 15, 22],
         }
-        
+
         good_nakshatras = auspicious_nakshatras.get(activity.lower(), [])
         if nakshatra["number"] in good_nakshatras:
-            reasons.append(f"Nakshatra ({nakshatra['name_english']}) is auspicious for {activity}")
+            reasons.append(
+                f"Nakshatra ({nakshatra['name_english']}) is auspicious for {activity}"
+            )
         elif good_nakshatras:
-            reasons.append(f"Nakshatra ({nakshatra['name_english']}) is neutral for {activity}")
-        
+            reasons.append(
+                f"Nakshatra ({nakshatra['name_english']}) is neutral for {activity}"
+            )
+
         return {
             "date": date_obj.isoformat(),
             "activity": activity,
@@ -654,7 +727,7 @@ class PanchangaService:
             "reasons": reasons,
             "recommendations": recommendations,
             "rahu_kalam": rahu_kalam,
-            "muhurat": self.get_auspicious_muhurat(date_obj)
+            "muhurat": self.get_auspicious_muhurat(date_obj),
         }
 
 

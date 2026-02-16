@@ -56,7 +56,9 @@ api.interceptors.response.use(
             originalRequest.headers.Authorization = `Bearer ${token}`
             return api(originalRequest)
           })
-          .catch((err) => Promise.reject(err))
+          .catch((err) => {
+            throw err
+          })
       }
 
       originalRequest._retry = true
@@ -89,20 +91,14 @@ api.interceptors.response.use(
         console.error('Token refresh failed:', refreshError)
         localStorage.removeItem('accessToken')
         localStorage.removeItem('refreshToken')
-        window.location.href = '/login'
-        return Promise.reject(refreshError)
+        globalThis.location.href = '/login'
+        throw refreshError
       } finally {
         isRefreshing = false
       }
     }
 
-    // Extract error message from backend response format
-    const errorMessage =
-      error.response?.data?.error?.message ||
-      error.response?.data?.detail ||
-      error.message ||
-      'An error occurred'
-
+    // Handle specific HTTP status codes
     if (error.response?.status === 403) {
       toast.error('Access denied')
     } else if (error.response?.status === 404) {
@@ -111,7 +107,7 @@ api.interceptors.response.use(
       toast.error('Server error. Please try again later.')
     }
 
-    return Promise.reject(error)
+    throw error
   }
 )
 

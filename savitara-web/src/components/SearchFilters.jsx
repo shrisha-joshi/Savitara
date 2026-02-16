@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box, Paper, Typography, Slider, FormControl, InputLabel,
   Select, MenuItem, Chip, Button, TextField, Rating, Grid,

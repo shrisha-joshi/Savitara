@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: Union[List[str], str] = [
         "http://localhost:3000",
         "https://savitara-web.vercel.app",
+        "https://admin-savitara-web.vercel.app",
     ]
 
     @field_validator("ALLOWED_ORIGINS", mode="before")

@@ -99,6 +99,10 @@ async def _connect_database():
 
 async def _connect_redis_services():
     """Connect Redis for rate limiting, caching, and WebSocket"""
+    if not settings.REDIS_URL:
+        logger.info("Redis services disabled (no REDIS_URL configured)")
+        return
+
     try:
         await rate_limiter.connect_redis()
     except Exception as e:
@@ -117,6 +121,10 @@ async def _connect_redis_services():
 
 async def _initialize_search():
     """Initialize Elasticsearch search service"""
+    if not settings.ENABLE_ELASTICSEARCH:
+        logger.info("Search service disabled")
+        return
+
     try:
         await search_service.create_index()
         logger.info("Search service initialized")
@@ -446,6 +454,51 @@ async def health_check():
         "environment": settings.APP_ENV,
         "components": {"database": db_status, "api": "healthy"},
     }
+
+
+# Temporary test endpoint for debugging database connection
+@app.get("/test-db", tags=["Debug"])
+async def test_database_connection():
+    """
+    Test database connection - TEMPORARY ENDPOINT FOR DEBUGGING
+    Remove this endpoint after fixing deployment issues
+    """
+    try:
+        if DatabaseManager.client is None:
+            return {
+                "status": "error",
+                "message": "Database client not initialized",
+                "mongodb_url": settings.MONGODB_URL[:50] + "..." if settings.MONGODB_URL else None
+            }
+
+        # Test connection
+        await DatabaseManager.client.admin.command("ping")
+
+        # Test database access
+        db = DatabaseManager.db
+        if db is None:
+            return {"status": "error", "message": "Database not initialized"}
+
+        # Get collection count
+        collections = await db.list_collection_names()
+        user_count = await db.users.count_documents({})
+
+        return {
+            "status": "success",
+            "message": "Database connection successful",
+            "database": settings.MONGODB_DB_NAME,
+            "collections": len(collections),
+            "user_count": user_count,
+            "mongodb_url": settings.MONGODB_URL[:50] + "..." if settings.MONGODB_URL else None
+        }
+
+    except Exception as e:
+        logger.error(f"Database test failed: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "message": f"Database connection failed: {str(e)}",
+            "mongodb_url": settings.MONGODB_URL[:50] + "..." if settings.MONGODB_URL else None
+        }
 
 
 # Simple readiness probe for Railway

@@ -123,7 +123,8 @@ const StatCard = ({ title, value, icon, growth, color, subtitle }) => (
               alignItems="center" 
               mt={1.5}
               sx={(theme) => {
-                const avatarBg = growth >= 0
+                const isPositive = growth >= 0;
+                const avatarBg = isPositive
                   ? alpha('#22C55E', theme.palette.mode === 'dark' ? 0.15 : 0.1)
                   : alpha('#EF4444', theme.palette.mode === 'dark' ? 0.15 : 0.1);
                 return {

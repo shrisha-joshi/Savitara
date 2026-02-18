@@ -3,9 +3,8 @@ Pytest Configuration and Fixtures
 """
 import pytest
 import asyncio
-from typing import AsyncGenerator, Generator
+from typing import AsyncGenerator
 from httpx import AsyncClient, ASGITransport
-from fastapi.testclient import TestClient
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.main import app
 from app.db.connection import DatabaseManager
@@ -58,14 +57,14 @@ async def test_db(monkeypatch) -> AsyncGenerator[AsyncIOMotorDatabase, None]:
 
 
 @pytest.fixture(scope="function")
-def client(test_db) -> Generator:
-    """Create test client with overridden dependencies"""
+async def client(test_db):
+    """Create async test client with overridden dependencies (replaces sync TestClient for httpx compatibility)"""
     from app.db.connection import get_db
     app.dependency_overrides[get_db] = lambda: test_db
-    
-    with TestClient(app) as c:
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
-    
+
     # Clear overrides
     app.dependency_overrides = {}
 
@@ -140,14 +139,14 @@ def mock_booking_data():
 async def authenticated_token(client, mock_user_data, test_db):
     """Get authentication token for tests"""
     # Mock Google OAuth response
-    response = client.post(
+    response = await client.post(
         "/api/v1/auth/google",
         json={
             "id_token": "mock_token",
             "role": "grihasta"
         }
     )
-    
+
     if response.status_code == 200:
         return response.json()["data"]["access_token"]
     return None

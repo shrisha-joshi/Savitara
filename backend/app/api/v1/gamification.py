@@ -5,6 +5,7 @@ Handles coins, points, vouchers, coupons, loyalty, referrals
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional, List
 from datetime import datetime, timezone
+from bson import ObjectId
 
 from app.core.security import get_current_user
 from app.core.constants import (
@@ -706,4 +707,247 @@ async def get_gamification_analytics(
             if total_referrals > 0
             else 0,
         },
+    }
+
+
+# ==================== Streaks & Daily Rewards Endpoints ====================
+
+
+@router.get("/streaks/my")
+async def get_my_streak(
+    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+):
+    """Get user's current login streak"""
+    service = GamificationService(db)
+    streak = await service.get_user_streak(str(current_user["_id"]))
+
+    if not streak:
+        # Create initial streak record
+        from app.models.gamification import UserStreak
+        from datetime import datetime, timezone
+
+        new_streak = UserStreak(
+            user_id=str(current_user["_id"]),
+            current_streak=1,
+            longest_streak=1,
+            last_login=datetime.now(timezone.utc),
+            streak_active=True,
+            total_logins=1,
+        )
+        await db.user_streaks.insert_one(
+            new_streak.model_dump(by_alias=True, exclude={"id"})
+        )
+        return {
+            "current_streak": 1,
+            "longest_streak": 1,
+            "last_login": new_streak.last_login,
+            "streak_active": True,
+            "total_logins": 1,
+        }
+
+    return streak
+
+
+@router.post("/streaks/checkin")
+async def daily_checkin(
+    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+):
+    """Record daily check-in and update streak"""
+    service = GamificationService(db)
+    result = await service.record_daily_checkin(str(current_user["_id"]))
+
+    return result
+
+
+@router.get("/streaks/leaderboard")
+async def get_streak_leaderboard(
+    limit: int = Query(10, le=50), db=Depends(get_db)
+):
+    """Get top users by streak"""
+    leaderboard = (
+        await db.user_streaks.find({"streak_active": True})
+        .sort("current_streak", -1)
+        .limit(limit)
+        .to_list(limit)
+    )
+
+    # Get user details
+    user_ids = [ObjectId(s["user_id"]) for s in leaderboard]
+    users = await db.users.find({"_id": {"$in": user_ids}}).to_list(None)
+    user_map = {str(u["_id"]): u for u in users}
+
+    result = []
+    for i, streak in enumerate(leaderboard):
+        user = user_map.get(streak["user_id"])
+        if user:
+            result.append(
+                {
+                    "rank": i + 1,
+                    "user_id": streak["user_id"],
+                    "user_name": user.get("name", "Anonymous"),
+                    "current_streak": streak["current_streak"],
+                    "longest_streak": streak["longest_streak"],
+                }
+            )
+
+    return {"leaderboard": result}
+
+
+# ==================== Achievements Endpoints ====================
+
+
+@router.get("/achievements/my")
+async def get_my_achievements(
+    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+):
+    """Get user's achieved milestones/achievements"""
+    user_id = str(current_user["_id"])
+
+    # Get all milestones
+    milestones = (
+        await db.milestones.find({"user_id": user_id})
+        .sort("achieved_at", -1)
+        .to_list(100)
+    )
+
+    # Get coins balance for lifetime achievements
+    user_coins = await db.user_coins.find_one({"user_id": user_id})
+
+    # Get booking count
+    booking_count = await db.bookings.count_documents(
+        {"grihasta_id": user_id, "status": "completed"}
+    )
+
+    # Get review count
+    review_count = await db.reviews.count_documents({"grihasta_id": user_id})
+
+    # Get referral count
+    referral_count = await db.referrals.count_documents(
+        {"referrer_id": user_id, "status": "completed_booking"}
+    )
+
+    return {
+        "milestones": milestones,
+        "achievements": {
+            "total_bookings": booking_count,
+            "total_reviews": review_count,
+            "total_referrals": referral_count,
+            "lifetime_coins": user_coins.get("lifetime_balance", 0) if user_coins else 0,
+        },
+        "next_milestones": [
+            {"type": "bookings", "target": booking_count + (5 - booking_count % 5)},
+            {"type": "reviews", "target": review_count + (10 - review_count % 10)},
+            {"type": "referrals", "target": referral_count + (5 - referral_count % 5)},
+        ],
+    }
+
+
+@router.get("/achievements/available")
+async def get_available_achievements_v2(current_user: dict = Depends(get_current_user)):
+    """Get all available achievements (alternative to /milestones/available)"""
+    return await get_available_milestones(current_user)
+
+
+# ==================== Daily Rewards Endpoints ====================
+
+
+@router.get("/rewards/daily")
+async def get_daily_rewards(
+    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+):
+    """Get daily reward calendar (last 7 days)"""
+    from datetime import datetime, timezone, timedelta
+
+    user_id = str(current_user["_id"])
+    today = datetime.now(timezone.utc).date()
+
+    # Get last 7 days of rewards
+    rewards = []
+    for i in range(7):
+        date = (today - timedelta(days=6 - i)).isoformat()
+        reward = await db.daily_rewards.find_one({"user_id": user_id, "date": date})
+
+        if reward:
+            rewards.append(
+                {
+                    "date": date,
+                    "day_number": reward.get("day_number", i + 1),
+                    "reward_type": reward.get("reward_type", "coins"),
+                    "reward_amount": reward.get("reward_amount", 0),
+                    "claimed": reward.get("claimed", False),
+                    "claimed_at": reward.get("claimed_at"),
+                }
+            )
+        else:
+            rewards.append(
+                {
+                    "date": date,
+                    "day_number": i + 1,
+                    "reward_type": None,
+                    "reward_amount": 0,
+                    "claimed": False,
+                    "claimed_at": None,
+                }
+            )
+
+    # Get current streak
+    streak = await db.user_streaks.find_one({"user_id": user_id})
+
+    return {
+        "rewards": rewards,
+        "current_streak": streak.get("current_streak", 0) if streak else 0,
+        "can_claim_today": any(
+            r["date"] == today.isoformat() and not r["claimed"] for r in rewards
+        ),
+    }
+
+
+@router.post("/rewards/claim")
+async def claim_daily_reward(
+    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+):
+    """Claim today's daily reward"""
+    from datetime import datetime, timezone
+
+    user_id = str(current_user["_id"])
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    # Check if reward exists and not claimed
+    reward = await db.daily_rewards.find_one({"user_id": user_id, "date": today})
+
+    if not reward:
+        raise HTTPException(status_code=404, detail="No reward available for today")
+
+    if reward.get("claimed", False):
+        raise HTTPException(
+            status_code=400, detail="Today's reward has already been claimed"
+        )
+
+    # Mark as claimed
+    await db.daily_rewards.update_one(
+        {"_id": reward["_id"]},
+        {
+            "$set": {
+                "claimed": True,
+                "claimed_at": datetime.now(timezone.utc),
+            }
+        },
+    )
+
+    # Award the reward
+    service = GamificationService(db)
+
+    if reward["reward_type"] == "coins":
+        await service.award_coins(
+            user_id=user_id,
+            action="DAILY_LOGIN",
+            custom_amount=reward["reward_amount"],
+            description=f"Day {reward['day_number']} daily reward",
+        )
+
+    return {
+        "success": True,
+        "reward_type": reward["reward_type"],
+        "reward_amount": reward["reward_amount"],
+        "message": f"Claimed {reward['reward_amount']} {reward['reward_type']}!",
     }

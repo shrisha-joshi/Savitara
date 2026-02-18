@@ -1,12 +1,15 @@
 import { useState } from 'react'
-import {useNavigate } from 'react-router-dom'
-import { Box, Container, Typography, TextField, Button, Radio, RadioGroup, FormControlLabel, FormControl, FormLabel, Paper, Chip, IconButton, CircularProgress, Alert, Checkbox, Link, Stepper, Step, StepLabel, Select, MenuItem } from '@mui/material'
+import { useNavigate } from 'react-router-dom'
+import { Box, Container, Typography, TextField, Button, Radio, RadioGroup, FormControlLabel, FormControl, FormLabel, Paper, Chip, IconButton, CircularProgress, Alert, Checkbox, Link, Stepper, Step, StepLabel, Select, MenuItem, LinearProgress } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import { motion, AnimatePresence } from 'framer-motion'
 import CascadingLocationSelect from '../components/CascadingLocationSelect'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
 import { toast } from 'react-toastify'
+import ConfettiCelebration from '../components/ConfettiCelebration'
 
 const LANGUAGES = [
   { code: 'en', name: 'English', nativeName: 'English' },
@@ -64,6 +67,7 @@ export default function Onboarding() {
   // KYC documents for Acharya
   const [kycDocuments, setKycDocuments] = useState([])
   const [uploadingDocs, setUploadingDocs] = useState(false)
+  const [showSuccess, setShowSuccess] = useState(false)
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -215,8 +219,14 @@ export default function Onboarding() {
         updateUser(userData)
       }
       
-      toast.success('Profile completed successfully!')
-      navigate('/dashboard')
+      // Show success animation
+      setShowSuccess(true)
+      toast.success('🎉 Profile completed successfully!')
+      
+      // Navigate after showing confetti
+      setTimeout(() => {
+        navigate('/dashboard')
+      }, 3000)
     } catch (error) {
       console.error('Onboarding error:', error.response?.data || error)
       toast.error(error.response?.data?.detail || error.response?.data?.message || 'Failed to complete onboarding')
@@ -227,24 +237,64 @@ export default function Onboarding() {
 
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
-      <Paper elevation={3} sx={{ p: 4 }}>
-        <Typography variant="h4" gutterBottom textAlign="center">
+      {showSuccess && <ConfettiCelebration trigger={true} type="celebration" duration={3000} />}
+      <Paper elevation={3} sx={{ p: { xs: 2, md: 4 }, borderRadius: 3 }}>
+        {/* Progress Bar */}
+        <Box sx={{ mb: 3 }}>
+          <LinearProgress 
+            variant="determinate" 
+            value={(activeStep / (steps.length - 1)) * 100} 
+            sx={{ 
+              height: 8, 
+              borderRadius: 4,
+              bgcolor: '#E5E5E5',
+              '& .MuiLinearProgress-bar': {
+                bgcolor: '#FF6B35',
+                borderRadius: 4,
+              }
+            }}
+          />
+          <Box display="flex" justifyContent="space-between" mt={1}>
+            <Typography variant="caption" color="text.secondary">
+              Step {activeStep + 1} of {steps.length}
+            </Typography>
+            <Typography variant="caption" fontWeight={600} color="primary">
+              {Math.round((activeStep / (steps.length - 1)) * 100)}% Complete
+            </Typography>
+          </Box>
+        </Box>
+
+        <Typography variant="h4" gutterBottom textAlign="center" fontWeight={700}>
           Complete Your Profile
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }} textAlign="center">
-          Tell us a bit more about yourself
+          {activeStep === 0 && '🌟 Let\'s get started! Choose your preferred language and role.'}
+          {activeStep === 1 && '📜 Review and accept our terms to continue.'}
+          {activeStep === 2 && '✨ Almost there! Tell us about yourself.'}
         </Typography>
 
         {/* Stepper */}
         <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
-          {steps.map((label) => (
-            <Step key={label}>
-              <StepLabel>{label}</StepLabel>
+          {steps.map((label, index) => (
+            <Step key={label} completed={activeStep > index}>
+              <StepLabel 
+                StepIconComponent={activeStep > index ? CheckCircleIcon : undefined}
+                sx={{
+                  '& .MuiStepIcon-root': {
+                    color: activeStep >= index ? '#FF6B35' : '#E5E5E5',
+                  },
+                  '& .Mui-completed': {
+                    color: '#34C759 !important',
+                  }
+                }}
+              >
+                {label}
+              </StepLabel>
             </Step>
           ))}
         </Stepper>
 
-        {/* Step 1: Language & Role Selection */}
+        {/* Animated Step Content */}
         {activeStep === 0 && (
           <Box>
             <FormControl fullWidth sx={{ mb: 3 }}>
@@ -518,7 +568,7 @@ export default function Onboarding() {
                     onChange={(e) => setNewSpec(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSpecialization())}
                   />
-                  <IconButton onClick={addSpecialization} color="primary"><AddIcon /></IconButton>
+                  <IconButton onClick={addSpecialization} color="primary" aria-label="Add specialization"><AddIcon /></IconButton>
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                   {specializations.map((s, i) => (
@@ -538,7 +588,7 @@ export default function Onboarding() {
                     onChange={(e) => setNewLang(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addLanguage())}
                   />
-                  <IconButton onClick={addLanguage} color="primary"><AddIcon /></IconButton>
+                  <IconButton onClick={addLanguage} color="primary" aria-label="Add language"><AddIcon /></IconButton>
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                   {languages.map((l, i) => (

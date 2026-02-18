@@ -22,6 +22,9 @@ import { CheckCircle, Cancel, LocalOffer, MonetizationOn } from '@mui/icons-mate
 import Layout from '../../components/Layout';
 import api from '../../services/api';
 import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
+import { TrustBadgeGroup } from '../../components/TrustBadge';
+import ConfettiCelebration from '../../components/ConfettiCelebration';
+import AnimatedButton from '../../components/AnimatedButton';
 
 const RAZORPAY_KEY = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_placeholder';
 
@@ -245,12 +248,29 @@ export default function Payment() {
   if (paymentStatus === 'success') {
     return (
       <Layout>
+        <ConfettiCelebration trigger={true} type="celebration" duration={3000} />
         <Container maxWidth="sm" sx={{ py: 6 }}>
           <Paper sx={{ p: 4, textAlign: 'center' }}>
-            <FaCheckCircle size={64} color="green" />
-            <Typography variant="h5" sx={{ mt: 2 }}>Payment Successful!</Typography>
-            <Typography color="text.secondary" sx={{ mt: 1 }}>
-              Your booking has been confirmed. Redirecting to bookings...
+            <Box
+              component="div"
+              sx={{
+                display: 'inline-flex',
+                p: 2,
+                borderRadius: '50%',
+                bgcolor: alpha('#34C759', 0.1),
+                mb: 2,
+              }}
+            >
+              <FaCheckCircle size={64} color="#34C759" />
+            </Box>
+            <Typography variant="h4" fontWeight={700} sx={{ mt: 2, mb: 1 }}>
+              🎉 Payment Successful!
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mt: 1, mb: 3 }}>
+              Your booking has been confirmed. Get ready for your spiritual consultation!
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Redirecting to bookings...
             </Typography>
           </Paper>
         </Container>
@@ -417,7 +437,23 @@ export default function Payment() {
                 </Paper>
               )}
 
-              <Button
+              {/* Payment Trust Signals */}
+              <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: alpha('#34C759', 0.05), border: '1px solid #34C759' }}>
+                <Box display="flex" alignItems="center" justifyContent="center" gap={3} flexWrap="wrap">
+                  <TrustBadgeGroup 
+                    badges={['secure', 'privacy-protected']} 
+                    size="small" 
+                    variant="inline"
+                    spacing={2}
+                  />
+                </Box>
+                <Typography variant="caption" color="text.secondary" textAlign="center" display="block" mt={1}>
+                  Powered by Razorpay • 100% Secure Payment • SSL Encrypted
+                </Typography>
+              </Paper>
+
+              <AnimatedButton
+                animation="glow"
                 variant="contained"
                 fullWidth
                 size="large"
@@ -428,11 +464,20 @@ export default function Payment() {
                   py: 1.5,
                   fontSize: '1.1rem',
                   bgcolor: '#FF6B00',
-                  '&:hover': { bgcolor: '#e55e00' }
+                  '&:hover': { bgcolor: '#e55e00' },
+                  fontWeight: 600,
                 }}
               >
                 {paying ? 'Processing...' : `Pay ₹${calculatedPrice?.final_amount || booking.total_amount || 0}`}
-              </Button>
+              </AnimatedButton>
+              
+              {/* Refund Policy */}
+              <Alert severity="info" icon={<FaCheckCircle />} sx={{ mt: 2 }}>
+                <Typography variant="body2" fontWeight={600}>100% Money-Back Guarantee</Typography>
+                <Typography variant="caption">
+                  Cancel up to 24 hours before booking for full refund. Payment held in escrow until session is confirmed by both parties.
+                </Typography>
+              </Alert>
               
               {calculatedPrice?.total_discount > 0 && (
                 <Alert severity="success" sx={{ mt: 2 }}>

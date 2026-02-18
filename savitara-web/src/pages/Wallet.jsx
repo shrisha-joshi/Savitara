@@ -298,7 +298,7 @@ export default function Wallet() {
               {user?.role === 'acharya' ? 'Manage your earnings and withdrawals' : 'Manage your wallet and payments'}
             </Typography>
           </Box>
-          <IconButton onClick={fetchWalletData} disabled={loading}>
+          <IconButton onClick={fetchWalletData} disabled={loading} aria-label="Refresh wallet balance">
             <Refresh />
           </IconButton>
         </Box>

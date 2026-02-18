@@ -55,9 +55,13 @@ jobs:
       env:
         MONGODB_URL: mongodb://localhost:27017
         MONGODB_DB_NAME: savitara_test
-        REDIS_URL: redis://localhost:6379
+        REDIS_URL: redis://localhost:6379/0
         SECRET_KEY: test-secret-key-minimum-32-characters-long
-        JWT_SECRET_KEY: test-jwt-secret-key-minimum-32-characters-long
+        JWT_SECRET: test-jwt-secret-key-minimum-32-characters-long
+        GOOGLE_CLIENT_ID: test-client-id
+        GOOGLE_CLIENT_SECRET: test-client-secret
+        RAZORPAY_KEY_ID: test-razorpay-key
+        RAZORPAY_KEY_SECRET: test-razorpay-secret
     
     - name: Check if coverage exists
       id: check_coverage

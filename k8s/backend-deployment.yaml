@@ -15,9 +15,11 @@ spec:
       labels:
         app: savitara-backend
     spec:
+      # Disable service account token automounting for security
+      automountServiceAccountToken: false
       containers:
       - name: backend
-        image: savitara/backend:latest
+        image: savitara/backend:v1.0.0
         ports:
         - containerPort: 8000
           name: http
@@ -59,13 +61,22 @@ spec:
             secretKeyRef:
               name: savitara-secrets
               key: sentry-dsn
+        - name: ELASTICSEARCH_URL
+          value: "http://elasticsearch-service:9200"
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: savitara-secrets
+              key: jwt-secret
         resources:
           requests:
             memory: "512Mi"
             cpu: "500m"
+            ephemeral-storage: "2Gi"
           limits:
             memory: "1Gi"
             cpu: "1000m"
+            ephemeral-storage: "4Gi"
         livenessProbe:
           httpGet:
             path: /health
@@ -91,9 +102,11 @@ spec:
           requests:
             memory: "256Mi"
             cpu: "250m"
+            ephemeral-storage: "1Gi"
           limits:
             memory: "512Mi"
             cpu: "500m"
+            ephemeral-storage: "2Gi"
         volumeMounts:
         - name: redis-data
           mountPath: /data

@@ -42,13 +42,72 @@ from app.core.exceptions import (
 )
 from app.db.connection import get_db
 from app.models.database import Booking, BookingStatus, PaymentStatus, UserRole
-from app.services.pricing_service import PricingService
+
 
 # Module-level constants
 BOOKING_COMPLETED = "Booking Completed"
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/bookings", tags=["Bookings"])
+
+from app.core.exceptions import ResourceNotFoundError
+
+@router.put(
+    "/{booking_id}/refer",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Refer/Pass Booking to Another Acharya",
+    description="Allows Acharya to refer/pass a booking to another Acharya by updating acharya_id.",
+)
+async def refer_booking(
+    booking_id: str,
+    new_acharya_id: str,
+    notes: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_acharya),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Refer/pass a booking to another Acharya (by Acharya)"""
+    booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+    if not booking:
+        raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
+
+    # Only the current assigned Acharya can refer
+    if str(booking["acharya_id"]) != current_user["id"]:
+        raise PermissionDeniedError(action="Refer booking")
+
+    # Validate new Acharya exists
+    new_acharya = await db.acharya_profiles.find_one({"_id": ObjectId(new_acharya_id)})
+    if not new_acharya:
+        raise ResourceNotFoundError(resource_type="Acharya", resource_id=new_acharya_id)
+
+    # Update booking's acharya_id and add note
+    update_doc = {
+        "acharya_id": ObjectId(new_acharya_id),
+        "status": BookingStatus.PENDING.value,  # Optionally reset status
+        "updated_at": datetime.now(timezone.utc),
+    }
+    if notes:
+        update_doc["notes"] = notes
+
+    await db.bookings.update_one({"_id": ObjectId(booking_id)}, {"$set": update_doc})
+
+    # Notify new Acharya (optional: and Grihasta)
+    try:
+        from app.services.notification_service import NotificationService
+        notification_service = NotificationService()
+        if new_acharya.get("fcm_token"):
+            notification_service.send_notification(
+                token=new_acharya["fcm_token"],
+                title="New Booking Assigned",
+                body="A booking has been referred to you.",
+                data={"type": "booking_referred", "booking_id": booking_id},
+            )
+    except Exception as e:
+        logger.warning(f"Failed to send referral notification: {e}")
+
+    return StandardResponse(success=True, message="Booking referred to new Acharya.")
+
+from app.services.pricing_service import PricingService
 
 
 def generate_otp(length: int = 6) -> str:

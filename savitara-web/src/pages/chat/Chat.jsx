@@ -27,6 +27,9 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DoneIcon from '@mui/icons-material/Done';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import ReportIcon from '@mui/icons-material/Report';
+import BlockIcon from '@mui/icons-material/Block';
 import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
@@ -57,6 +60,7 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
   const [showSearch, setShowSearch] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
+  const [userMenuAnchor, setUserMenuAnchor] = useState(null);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -306,7 +310,49 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
     handleCloseContextMenu();
   };
 
-  const handleSend = async () => {
+  // User menu handlers
+  const handleReportUser = async () => {
+    const recipientUserId = recipient?.id || recipient?._id || recipientId;
+    if (!recipientUserId) return;
+    
+    const reason = prompt('Please describe why you are reporting this user:');
+    if (!reason) return;
+    
+    try {
+      await api.post('/admin/reports', {
+        reported_user_id: recipientUserId,
+        reason,
+        report_type: 'user_behavior'
+      });
+      alert('Report submitted. Our team will review it shortly.');
+    } catch (err) {
+      console.error('Failed to report user:', err);
+      alert('Failed to submit report. Please try again.');
+    }
+    setUserMenuAnchor(null);
+  };
+
+  const handleBlockUser = async () => {
+    const recipientUserId = recipient?.id || recipient?._id || recipientId;
+    if (!recipientUserId) return;
+    
+    const confirmed = window.confirm(`Are you sure you want to block ${recipient?.name}? You will no longer receive messages from them.`);
+    if (!confirmed) return;
+    
+    try {
+      await api.post('/users/block', {
+        blocked_user_id: recipientUserId
+      });
+      alert(`${recipient?.name} has been blocked.`);
+      navigate('/chat'); // Go back to chat list
+    } catch (err) {
+      console.error('Failed to block user:', err);
+      alert('Failed to block user. Please try again.');
+    }
+    setUserMenuAnchor(null);
+  };
+
+  const handleSend = async () =>{
     if (!newMessage.trim()) return;
 
     // Need either a recipient or a conversation to send
@@ -414,9 +460,30 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
                   {recipient?.is_online ? 'Online' : 'Offline'}
                 </Typography>
               </Box>
-              <IconButton onClick={() => setShowSearch(true)}>
+              <IconButton onClick={() => setShowSearch(true)} aria-label="Search messages">
                 <SearchIcon />
               </IconButton>
+              <IconButton onClick={(e) => setUserMenuAnchor(e.currentTarget)} aria-label="More options">
+                <MoreVertIcon />
+              </IconButton>
+              <Menu
+                anchorEl={userMenuAnchor}
+                open={Boolean(userMenuAnchor)}
+                onClose={() => setUserMenuAnchor(null)}
+              >
+                <MenuItem onClick={handleReportUser}>
+                  <ListItemIcon>
+                    <ReportIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>Report User</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={handleBlockUser}>
+                  <ListItemIcon>
+                    <BlockIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>Block User</ListItemText>
+                </MenuItem>
+              </Menu>
             </>
           ) : (
             <>

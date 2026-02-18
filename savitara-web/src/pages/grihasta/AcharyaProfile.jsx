@@ -30,6 +30,7 @@ import {
 import Layout from '../../components/Layout'
 import api from '../../services/api'
 import ServiceCard from '../../components/cards/ServiceCard'
+import TrustBadge, { TrustBadgeGroup } from '../../components/TrustBadge'
 // We might not have ReviewCard, so we will inline a simple one if needed or create one.
 
 function CustomTabPanel(props) {
@@ -165,13 +166,16 @@ export default function AcharyaProfile() {
                     {profile.name}
                   </Typography>
                   {profile.verification_status === 'active' && (
-                    <Chip 
-                      icon={<FaCheckCircle size={14} />} 
-                      label="Verified Acharya" 
-                      color="secondary" 
-                      size="small"
-                      sx={{ fontWeight: 600 }}
-                    />
+                    <TrustBadge type="verified" size="medium" showTooltip />
+                  )}
+                  {profile.kyc_verified && (
+                    <TrustBadge type="kyc-verified" size="medium" showTooltip />
+                  )}
+                  {profile.rating >= 4.5 && profile.total_bookings >= 50 && (
+                    <TrustBadge type="top-rated" size="medium" showTooltip />
+                  )}
+                  {profile.total_bookings >= 100 && profile.rating >= 4.8 && (
+                    <TrustBadge type="elite-acharya" size="medium" showTooltip />
                   )}
                 </Box>
                 
@@ -215,6 +219,16 @@ export default function AcharyaProfile() {
                   >
                     Chat with Acharya
                   </Button>
+                  
+                  {/* Privacy & Security Trust Signal */}
+                  <Box mt={2}>
+                    <TrustBadgeGroup 
+                      badges={['privacy-protected', 'secure']} 
+                      size="small" 
+                      variant="inline"
+                      spacing={2}
+                    />
+                  </Box>
                 </Box>
               </Grid>
             </Grid>

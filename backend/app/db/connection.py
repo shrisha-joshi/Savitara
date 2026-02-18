@@ -249,6 +249,74 @@ class DatabaseManager:
             cls.db.wallet_transactions, [("user_id", 1), ("created_at", -1)]
         )
 
+        # Gamification: Coins & Points indexes
+        await cls._create_index_safe(cls.db.user_coins, "user_id", unique=True)
+        await cls._create_index_safe(
+            cls.db.coin_transactions, [("user_id", 1), ("created_at", -1)]
+        )
+        await cls._create_index_safe(
+            cls.db.coin_transactions, [("user_id", 1), ("transaction_type", 1)]
+        )
+        await cls._create_index_safe(
+            cls.db.points_transactions, [("user_id", 1), ("created_at", -1)]
+        )
+
+        # Gamification: Streaks indexes
+        await cls._create_index_safe(cls.db.user_streaks, "user_id", unique=True)
+        await cls._create_index_safe(
+            cls.db.user_streaks, [("streak_active", 1), ("current_streak", -1)]
+        )
+        await cls._create_index_safe(cls.db.user_streaks, "last_login")
+
+        # Gamification: Achievements & Milestones indexes
+        await cls._create_index_safe(cls.db.milestones, [("user_id", 1), ("milestone_type", 1)])
+        await cls._create_index_safe(
+            cls.db.milestones, [("user_id", 1), ("achieved_at", -1)]
+        )
+        await cls._create_index_safe(
+            cls.db.daily_rewards, [("user_id", 1), ("date", 1)], unique=True
+        )
+
+        # Moderation: User Reports indexes
+        await cls._create_index_safe(
+            cls.db.user_reports, [("status", 1), ("priority", -1), ("created_at", -1)]
+        )
+        await cls._create_index_safe(
+            cls.db.user_reports, [("reporter_id", 1), ("created_at", -1)]
+        )
+        await cls._create_index_safe(
+            cls.db.user_reports, [("reported_user_id", 1), ("created_at", -1)]
+        )
+        await cls._create_index_safe(cls.db.user_reports, "reviewed_by")
+
+        # Moderation: Blocked Users indexes
+        await cls._create_index_safe(
+            cls.db.blocked_users, [("blocker_id", 1), ("blocked_user_id", 1)], unique=True
+        )
+        await cls._create_index_safe(
+            cls.db.blocked_users, [("blocker_id", 1), ("created_at", -1)]
+        )
+        await cls._create_index_safe(cls.db.blocked_users, "blocked_user_id")
+
+        # Moderation: Warnings & Suspensions indexes
+        await cls._create_index_safe(
+            cls.db.user_warnings, [("user_id", 1), ("created_at", -1)]
+        )
+        await cls._create_index_safe(
+            cls.db.user_suspensions, [("user_id", 1), ("is_active", 1)]
+        )
+        await cls._create_index_safe(
+            cls.db.user_suspensions, [("suspended_until", 1), ("is_active", 1)]
+        )
+
+        # Audit Logs indexes
+        await cls._create_index_safe(
+            cls.db.audit_logs, [("timestamp", -1), ("action", 1)]
+        )
+        await cls._create_index_safe(
+            cls.db.audit_logs, [("user_id", 1), ("timestamp", -1)]
+        )
+
         logger.info("Database indexes created successfully")
 
     @classmethod

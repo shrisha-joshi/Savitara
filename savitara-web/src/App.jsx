@@ -3,6 +3,7 @@ import PropTypes from 'prop-types'
 import { useAuth } from './context/AuthContext'
 import { SocketProvider } from './context/SocketContext'
 import PrivateRoute from './components/auth/PrivateRoute'
+import ErrorBoundary from './components/ErrorBoundary'
 
 // Common pages
 import Home from './pages/Home'
@@ -106,8 +107,9 @@ function App() {
   const isOnboarded = user?.onboarded || user?.onboarding_completed
 
   return (
-    <SocketProvider>
-      <Routes>
+    <ErrorBoundary>
+      <SocketProvider>
+        <Routes>
         {/* Public routes */}
       <Route path="/" element={<Home />} />
       <Route path="/login" element={user ? <Navigate to={isOnboarded ? "/" : "/onboarding"} /> : <Login />} />
@@ -175,9 +177,10 @@ function App() {
       </Route>
       
       {/* Catch-all redirect */}
-      <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    </SocketProvider>
+        <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </SocketProvider>
+    </ErrorBoundary>
   )
 }
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { View, StyleSheet, FlatList } from 'react-native';
 import { List, Avatar, Badge, Text } from 'react-native-paper';
 import { chatAPI } from '../../services/api';
@@ -14,7 +15,8 @@ const ChatListScreen = ({ navigation }) => {
   const loadConversations = async () => {
     try {
       const response = await chatAPI.getConversations();
-      setConversations(response.data.conversations || []);
+      // Backend wraps in StandardResponse: { success, data: { conversations } }
+      setConversations(response.data?.data?.conversations || response.data?.conversations || []);
     } catch (error) {
       console.error('Failed to load conversations:', error);
     } finally {
@@ -22,29 +24,24 @@ const ChatListScreen = ({ navigation }) => {
     }
   };
 
-  const renderConversation = ({ item }) => (
-    <List.Item
-      title={item.other_user_name}
-      description={item.last_message?.content || 'No messages yet'}
-      left={() => (
-        <Avatar.Image 
+  const renderConversation = ({ item }) => {
+    // Use new backend fields for user and message
+    const otherUser = item.other_user || {};
+    const lastMsg = item.last_message || {};
+    return (
+      <List.Item
+        title={otherUser.name || 'Unknown User'}
+        description={lastMsg.content || 'No messages yet'}
+        left={() => <Avatar.Image 
           size={50} 
-          source={{ uri: item.other_user_picture || 'https://via.placeholder.com/50' }} 
-        />
-      )}
-      right={() => (
-        <>
-          {item.unread_count > 0 && (
-            <Badge style={styles.badge}>{item.unread_count}</Badge>
-          )}
-        </>
-      )}
-      onPress={() => navigation.navigate('Conversation', { 
-        conversationId: item._id,
-        otherUserName: item.other_user_name 
-      })}
-    />
-  );
+          source={{ uri: otherUser.profile_picture || otherUser.profile_image || 'https://via.placeholder.com/50' }} 
+        />}
+          conversationId: item.id || item._id,
+          otherUserName: otherUser.name || 'Unknown User',
+        })}
+      />
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -79,5 +76,9 @@ const styles = StyleSheet.create({
     color: '#999',
   },
 });
+
+ChatListScreen.propTypes = {
+  navigation: PropTypes.object.isRequired,
+};
 
 export default ChatListScreen;

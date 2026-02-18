@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import PropTypes from 'prop-types';
 import { View, StyleSheet, Text } from 'react-native';
 import { GiftedChat } from 'react-native-gifted-chat';
 import * as ScreenCapture from 'expo-screen-capture';
@@ -6,10 +7,9 @@ import { chatAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
 const ConversationScreen = ({ route }) => {
-  const { conversationId, otherUserName } = route.params;
+  const { conversationId, otherUserId, otherUserName } = route.params;
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(true);
 
   // Prevent screen capture on mount, allow on unmount
   useEffect(() => {
@@ -31,18 +31,17 @@ const ConversationScreen = ({ route }) => {
   const loadMessages = async () => {
     try {
       const response = await chatAPI.getMessages(conversationId, { limit: 50 });
-      const messagesData = response.data.messages || [];
-      
+      // Use new backend response structure
+      const messagesData = response.data.data?.messages || response.data.messages || [];
       const formattedMessages = messagesData.map((msg) => ({
-        _id: msg._id,
+        _id: msg._id || msg.id,
         text: msg.content,
-        createdAt: new Date(msg.sent_at),
+        createdAt: new Date(msg.created_at || msg.timestamp),
         user: {
           _id: msg.sender_id,
           name: msg.sender_id === user._id ? user.full_name : otherUserName,
         },
       })).reverse();
-      
       setMessages(formattedMessages);
     } catch (error) {
       console.error('Failed to load messages:', error);
@@ -61,12 +60,9 @@ const ConversationScreen = ({ route }) => {
 
   const onSend = useCallback(async (newMessages = []) => {
     const message = newMessages[0];
-    
     try {
-      await chatAPI.sendMessage(conversationId, {
-        content: message.text,
-      });
-      
+      // Use correct backend endpoint: POST /chat/messages with receiver_id
+      await chatAPI.sendMessage({ receiver_id: otherUserId, content: message.text });
       setMessages((previousMessages) =>
         GiftedChat.append(previousMessages, newMessages)
       );
@@ -81,9 +77,9 @@ const ConversationScreen = ({ route }) => {
       {/* Watermark Overlay */}
       <View style={styles.watermarkContainer} pointerEvents="none">
         {new Array(10).fill(0).map((_, i) => (
-          <View key={`wm-row-${i}`} style={styles.watermarkRow}>
+          <View key={`${user._id}-row-${i}`} style={styles.watermarkRow}>
             {new Array(3).fill(0).map((_, j) => (
-              <Text key={`wm-cell-${i}-${j}`} style={styles.watermarkText}>
+              <Text key={`${user._id}-cell-${i}-${j}`} style={styles.watermarkText}>
                 {user._id}
               </Text>
             ))}
@@ -129,5 +125,9 @@ const styles = StyleSheet.create({
     color: '#000',
   },
 });
+
+ConversationScreen.propTypes = {
+  route: PropTypes.object.isRequired,
+};
 
 export default ConversationScreen;

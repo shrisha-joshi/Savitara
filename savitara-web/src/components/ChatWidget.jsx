@@ -44,8 +44,11 @@ const ChatWidget = ({
   }, [isOpen, conversationId]);
 
   const initializeWebSocket = () => {
+    const isSecure = window.location.protocol === 'https:';
+    const protocol = isSecure ? 'wss:' : 'ws:';
+    const backendHost = import.meta.env.VITE_BACKEND_WS_HOST || import.meta.env.VITE_BACKEND_HOST || 'localhost:8000';
     const websocket = new WebSocket(
-      `${process.env.REACT_APP_WS_URL || 'ws://localhost:8000'}/ws/${currentUser.id}`
+      `${protocol}//${backendHost}/ws/${currentUser.id}`
     );
 
     websocket.onopen = () => {
@@ -168,7 +171,7 @@ const ChatWidget = ({
     }
   };
 
-  const markAsRead = (messageId) => {
+  const _markAsRead = (messageId) => {
     if (ws && isConnected) {
       ws.send(JSON.stringify({
         type: 'mark_read',
@@ -257,7 +260,7 @@ const ChatWidget = ({
             </Typography>
           </Box>
         </Box>
-        <IconButton onClick={onClose} sx={{ color: 'white' }}>
+        <IconButton onClick={onClose} sx={{ color: 'white' }} aria-label="Close chat">
           <Close />
         </IconButton>
       </Box>

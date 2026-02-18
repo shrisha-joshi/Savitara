@@ -282,13 +282,13 @@ export default function CalendarManagement() {
         <Paper sx={{ p: 3 }}>
           {/* Month Navigation */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-            <IconButton onClick={handlePreviousMonth}>
+            <IconButton onClick={handlePreviousMonth} aria-label="Previous month">
               <ChevronLeft />
             </IconButton>
             <Typography variant="h5" fontWeight={600}>
               {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
             </Typography>
-            <IconButton onClick={handleNextMonth}>
+            <IconButton onClick={handleNextMonth} aria-label="Next month">
               <ChevronRight />
             </IconButton>
           </Box>

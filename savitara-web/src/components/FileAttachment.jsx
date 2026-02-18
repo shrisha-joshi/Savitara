@@ -58,6 +58,7 @@ const FileAttachment = ({ attachment, inMessage = true }) => {
         <IconButton
           size="small"
           onClick={handleDownload}
+          aria-label="Download file"
           sx={{
             position: 'absolute',
             top: 8,

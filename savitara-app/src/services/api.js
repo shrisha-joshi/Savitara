@@ -76,16 +76,25 @@ export const bookingAPI = {
   getBooking: (id) => api.get(`/bookings/${id}`),
   startBooking: (id, otp) => api.post(`/bookings/${id}/start`, { otp }),
   confirmAttendance: (id, data) => api.post(`/bookings/${id}/attendance`, data),
+  referBooking: (bookingId, newAcharyaId, notes) => api.put(`/bookings/${bookingId}/refer`, { new_acharya_id: newAcharyaId, notes }),
+  fetchAcharyas: async () => {
+    const res = await api.get('/users/acharyas/search', { params: { limit: 100 } });
+    return res.data?.data?.profiles || [];
+  },
 };
 
 // Chat APIs
 export const chatAPI = {
-  getConversations: () => api.get('/chat/conversations'),
+  getConversations: (params) => api.get('/chat/conversations', { params }),
   getMessages: (conversationId, params) => api.get(`/chat/conversations/${conversationId}/messages`, { params }),
-  sendMessage: (conversationId, data) => api.post(`/chat/conversations/${conversationId}/messages`, data),
-  markAsRead: (conversationId) => api.post(`/chat/conversations/${conversationId}/read`),
-  getOpenChat: () => api.get('/chat/open'),
-  postOpenMessage: (data) => api.post('/chat/open/messages', data),
+  // Backend: POST /chat/messages with { receiver_id, content }
+  sendMessage: (data) => api.post('/chat/messages', data),
+  // Backend: GET /chat/conversations then mark read on message fetch
+  markAsRead: (conversationId) => api.get(`/chat/conversations/${conversationId}/messages?page=1&limit=1`),
+  getOpenChat: (params) => api.get('/chat/open-chat', { params }),
+  verifyConversation: (recipientId) => api.post('/chat/verify-conversation', { recipient_id: recipientId }),
+  getUnreadCount: () => api.get('/chat/unread-count'),
+  deleteMessage: (messageId) => api.delete(`/chat/messages/${messageId}`),
 };
 
 // Review APIs

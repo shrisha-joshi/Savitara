@@ -35,6 +35,15 @@ import {
 } from '@mui/icons-material'
 import Layout from '../../components/Layout'
 import api from '../../services/api'
+// Helper to fetch all Acharyas for referral
+async function fetchAcharyas() {
+  try {
+    const res = await api.get('/users/acharyas/search', { params: { limit: 100 } })
+    return res.data?.data?.profiles || []
+  } catch {
+    return []
+  }
+}
 import { toast } from 'react-toastify'
 
 export default function AcharyaBookings() {
@@ -46,6 +55,36 @@ export default function AcharyaBookings() {
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [actionDialog, setActionDialog] = useState({ open: false, type: null })
   const [amount, setAmount] = useState('')
+  const [referDialog, setReferDialog] = useState({ open: false, booking: null })
+  const [acharyaList, setAcharyaList] = useState([])
+  const [selectedAcharya, setSelectedAcharya] = useState('')
+  const [referNotes, setReferNotes] = useState('')
+  const [referLoading, setReferLoading] = useState(false)
+  // Load Acharya list when refer dialog opens
+  useEffect(() => {
+    if (referDialog.open) {
+      fetchAcharyas().then(setAcharyaList)
+    }
+  }, [referDialog.open])
+  const handleRefer = async () => {
+    if (!selectedAcharya) return
+    setReferLoading(true)
+    try {
+      await api.put(`/bookings/${referDialog.booking._id}/refer`, {
+        new_acharya_id: selectedAcharya,
+        notes: referNotes
+      })
+      toast.success('Booking referred to new Acharya')
+      setReferDialog({ open: false, booking: null })
+      setSelectedAcharya('')
+      setReferNotes('')
+      await loadBookings()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to refer booking')
+    } finally {
+      setReferLoading(false)
+    }
+  }
 
   useEffect(() => {
     loadBookings()
@@ -418,7 +457,7 @@ export default function AcharyaBookings() {
                           >
                             Accept
                           </Button>
-                           <Button
+                          <Button
                             fullWidth
                             variant="outlined"
                             color="error"
@@ -429,8 +468,65 @@ export default function AcharyaBookings() {
                           >
                             Decline
                           </Button>
+                          <Button
+                            fullWidth
+                            variant="outlined"
+                            color="secondary"
+                            onClick={() => {
+                              setReferDialog({ open: true, booking })
+                            }}
+                          >
+                            Refer/Pass
+                          </Button>
                         </>
                       )}
+        {/* Refer/Pass Dialog */}
+        <Dialog
+          open={referDialog.open}
+          onClose={() => setReferDialog({ open: false, booking: null })}
+          maxWidth="xs"
+          fullWidth
+        >
+          <DialogTitle>Refer/Pass Booking</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              Select another Acharya to refer this booking. The new Acharya will be notified.
+            </Typography>
+            <TextField
+              select
+              label="Select Acharya"
+              value={selectedAcharya}
+              onChange={e => setSelectedAcharya(e.target.value)}
+              fullWidth
+              SelectProps={{ native: true }}
+              sx={{ mb: 2 }}
+            >
+              <option value="">-- Select --</option>
+              {acharyaList.filter(a => a._id !== referDialog.booking?.acharya_id).map(a => (
+                <option key={a._id} value={a._id}>{a.full_name || a.name}</option>
+              ))}
+            </TextField>
+            <TextField
+              label="Notes (optional)"
+              value={referNotes}
+              onChange={e => setReferNotes(e.target.value)}
+              fullWidth
+              multiline
+              minRows={2}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setReferDialog({ open: false, booking: null })}>Cancel</Button>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleRefer}
+              disabled={!selectedAcharya || referLoading}
+            >
+              {referLoading ? 'Referring...' : 'Confirm Refer'}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
                       {booking.status === 'confirmed' && (
                         <Button

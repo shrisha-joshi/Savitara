@@ -5,7 +5,7 @@ SonarQube: S5122 - Input validation with Pydantic
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import logging
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -32,6 +32,7 @@ from app.core.exceptions import (
 )
 from app.db.connection import get_db
 from app.models.database import GrihastaProfile, AcharyaProfile, UserRole, UserStatus
+from app.models.moderation import BlockedUser
 
 # Error message constants
 NO_FIELDS_TO_UPDATE = "No fields to update"
@@ -498,6 +499,196 @@ async def update_grihasta_profile(
             detail="Failed to update grihasta profile",
         )
 
+# ==================== Block/Unblock User Endpoints ====================
+
+
+@router.post(
+    "/block",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Block User",
+    description="Block another user from contacting you",
+)
+async def block_user(
+    blocked_user_id: str,
+    reason: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Block a user"""
+    try:
+        blocker_id = str(current_user.get("_id") or current_user.get("id"))
+
+        # Validate blocked user exists
+        try:
+            blocked_oid = ObjectId(blocked_user_id)
+        except (ValueError, TypeError) as e:
+            raise InvalidInputError(
+                message="Invalid user ID format", field="blocked_user_id"
+            ) from e
+
+        blocked_user = await db.users.find_one({"_id": blocked_oid})
+        if not blocked_user:
+            raise ResourceNotFoundError(
+                resource_type="User", resource_id=blocked_user_id
+            )
+
+        # Can't block yourself
+        if blocker_id == blocked_user_id:
+            raise InvalidInputError(
+                message="Cannot block yourself", field="blocked_user_id"
+            )
+
+        # Check if already blocked
+        existing_block = await db.blocked_users.find_one(
+            {"blocker_id": blocker_id, "blocked_user_id": blocked_user_id}
+        )
+
+        if existing_block:
+            return StandardResponse(
+                success=True, message="User already blocked", data={"already_blocked": True}
+            )
+
+        # Check if mutual block
+        reverse_block = await db.blocked_users.find_one(
+            {"blocker_id": blocked_user_id, "blocked_user_id": blocker_id}
+        )
+
+        is_mutual = reverse_block is not None
+
+        # Create block
+        block = BlockedUser(
+            blocker_id=blocker_id,
+            blocked_user_id=blocked_user_id,
+            reason=reason,
+            is_mutual=is_mutual,
+        )
+
+        block_dict = block.model_dump(by_alias=True, exclude={"id"})
+        await db.blocked_users.insert_one(block_dict)
+
+        # Update mutual flag on reverse block if exists
+        if is_mutual:
+            await db.blocked_users.update_one(
+                {"blocker_id": blocked_user_id, "blocked_user_id": blocker_id},
+                {"$set": {"is_mutual": True}},
+            )
+
+        logger.info(f"User {blocker_id} blocked user {blocked_user_id}")
+
+        return StandardResponse(success=True, message="User blocked successfully")
+
+    except (ResourceNotFoundError, InvalidInputError):
+        raise
+    except Exception as e:
+        logger.error(f"Block user error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to block user",
+        )
+
+
+@router.post(
+    "/unblock",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Unblock User",
+    description="Unblock a previously blocked user",
+)
+async def unblock_user(
+    blocked_user_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Unblock a user"""
+    try:
+        blocker_id = str(current_user.get("_id") or current_user.get("id"))
+
+        # Delete block
+        result = await db.blocked_users.delete_one(
+            {"blocker_id": blocker_id, "blocked_user_id": blocked_user_id}
+        )
+
+        if result.deleted_count == 0:
+            return StandardResponse(
+                success=True, message="User was not blocked", data={"was_blocked": False}
+            )
+
+        # Update mutual flag on reverse block if exists
+        reverse_block = await db.blocked_users.find_one(
+            {"blocker_id": blocked_user_id, "blocked_user_id": blocker_id}
+        )
+
+        if reverse_block:
+            await db.blocked_users.update_one(
+                {"blocker_id": blocked_user_id, "blocked_user_id": blocker_id},
+                {"$set": {"is_mutual": False}},
+            )
+
+        logger.info(f"User {blocker_id} unblocked user {blocked_user_id}")
+
+        return StandardResponse(success=True, message="User unblocked successfully")
+
+    except Exception as e:
+        logger.error(f"Unblock user error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to unblock user",
+        )
+
+
+@router.get(
+    "/blocked",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Blocked Users",
+    description="Get list of users you have blocked",
+)
+async def get_blocked_users(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Get list of blocked users"""
+    try:
+        blocker_id = str(current_user.get("_id") or current_user.get("id"))
+
+        # Get blocked users with their details
+        pipeline = [
+            {MATCH_OP: {"blocker_id": blocker_id}},
+            {
+                "$lookup": {
+                    "from": "users",
+                    "let": {"blocked_id": {"$toObjectId": "$blocked_user_id"}},
+                    "pipeline": [
+                        {"$match": {"$expr": {"$eq": ["$_id", "$$blocked_id"]}}},
+                        {"$project": {"email": 1, "role": 1, "status": 1}},
+                    ],
+                    "as": "blocked_user",
+                }
+            },
+            {"$unwind": {"path": "$blocked_user", "preserveNullAndEmptyArrays": True}},
+            {"$sort": {"created_at": -1}},
+        ]
+
+        blocked_list = await db.blocked_users.aggregate(pipeline).to_list(None)
+
+        # Serialize ObjectIds
+        for item in blocked_list:
+            if "_id" in item:
+                item["_id"] = str(item["_id"])
+            if "blocked_user" in item and "_id" in item["blocked_user"]:
+                item["blocked_user"]["_id"] = str(item["blocked_user"]["_id"])
+
+        return StandardResponse(
+            success=True, data={"blocked_users": blocked_list, "count": len(blocked_list)}
+        )
+
+    except Exception as e:
+        logger.error(f"Get blocked users error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch blocked users",
+        )
 
 @router.put(
     "/acharya/profile",

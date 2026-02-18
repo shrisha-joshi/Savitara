@@ -25,15 +25,25 @@ from app.core.constants import (
     MONGO_LIMIT,
     MONGO_SUM,
 )
-from app.core.security import get_current_admin
+from app.core.security import get_current_admin, get_current_user
 from app.core.exceptions import ResourceNotFoundError, InvalidInputError
 from app.db.connection import get_db
 from app.models.database import UserStatus, Notification
+from app.models.moderation import (
+    UserReport,
+    ReportReason,
+    ReportStatus,
+    ReportAction,
+    UserWarning,
+    UserSuspension,
+)
 
 # MongoDB query constants - SonarQube: S1192
 MONGO_REGEX = "$regex"
 MONGO_OPTIONS = "$options"
 REGEX_CASE_INSENSITIVE = "i"
+MONGO_MATCH = "$match"
+ERROR_INVALID_USER_ID = "Invalid user ID format"
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -531,7 +541,7 @@ async def update_acharya_rating(acharya_id: str, db: AsyncIOMotorDatabase):
     """Recalculate Acharya's average rating"""
     pipeline = [
         {
-            "$match": {
+            MONGO_MATCH: {
                 "acharya_id": acharya_id,
                 "review_type": "acharya",
                 "is_public": True,
@@ -780,7 +790,7 @@ async def suspend_user(
             user_oid = ObjectId(user_id)
         except (ValueError, TypeError) as e:
             raise InvalidInputError(
-                message="Invalid user ID format", field="user_id"
+                message=ERROR_INVALID_USER_ID, field="user_id"
             ) from e
 
         # Get user
@@ -852,7 +862,7 @@ async def activate_user(
             user_oid = ObjectId(user_id)
         except (ValueError, TypeError) as e:
             raise InvalidInputError(
-                message="Invalid user ID format", field="user_id"
+                message=ERROR_INVALID_USER_ID, field="user_id"
             ) from e
 
         # Get user
@@ -1073,7 +1083,7 @@ async def get_all_bookings(
 
         # Get bookings with details
         pipeline = [
-            {"$match": query},
+            {MONGO_MATCH: query},
             {
                 "$lookup": {
                     "from": "grihasta_profiles",
@@ -1229,4 +1239,326 @@ async def get_audit_logs(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch audit logs",
+        )
+
+
+# ==================== User Reporting & Moderation Endpoints ====================
+
+
+@router.post(
+    "/reports",
+    response_model=StandardResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit User Report",
+    description="Report another user for inappropriate behavior",
+)
+async def create_user_report(
+    reported_user_id: str,
+    reason: str,
+    description: Optional[str] = None,
+    context: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Create a user report"""
+    try:
+        reporter_id = str(current_user.get("_id") or current_user.get("id"))
+
+        # Validate reported user exists
+        try:
+            reported_oid = ObjectId(reported_user_id)
+        except (ValueError, TypeError) as e:
+            raise InvalidInputError(
+                message=ERROR_INVALID_USER_ID, field="reported_user_id"
+            ) from e
+
+        reported_user = await db.users.find_one({"_id": reported_oid})
+        if not reported_user:
+            raise ResourceNotFoundError(
+                resource_type="User", resource_id=reported_user_id
+            )
+
+        # Can't report yourself
+        if reporter_id == reported_user_id:
+            raise InvalidInputError(
+                message="Cannot report yourself", field="reported_user_id"
+            )
+
+        # Create report
+        report = UserReport(
+            reporter_id=reporter_id,
+            reported_user_id=reported_user_id,
+            reason=reason,
+            description=description or "",
+            context=context or "",
+            status=ReportStatus.PENDING,
+            priority=3 if reason in ["harassment", "violence", "scam"] else 1,
+        )
+
+        report_dict = report.model_dump(by_alias=True, exclude={"id"})
+        result = await db.user_reports.insert_one(report_dict)
+
+        # Notify admins about new report
+        admins = await db.users.find({"role": "admin"}).to_list(None)
+        admin_notifications = [
+            Notification(
+                user_id=str(admin["_id"]),
+                title="New User Report",
+                body=f"User reported for {reason}",
+                notification_type="admin_alert",
+                data={"report_id": str(result.inserted_id), "reason": reason},
+            ).model_dump(by_alias=True, exclude_none=True)
+            for admin in admins
+        ]
+
+        if admin_notifications:
+            await db.notifications.insert_many(admin_notifications)
+
+        logger.info(
+            f"User {reporter_id} reported user {reported_user_id} for {reason}"
+        )
+
+        return StandardResponse(
+            success=True,
+            data={"report_id": str(result.inserted_id)},
+            message="Report submitted successfully. Our team will review it shortly.",
+        )
+
+    except (ResourceNotFoundError, InvalidInputError):
+        raise
+    except Exception as e:
+        logger.error(f"Create report error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to submit report",
+        )
+
+
+@router.get(
+    "/reports",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get All Reports",
+    description="Get all user reports (Admin only)",
+)
+async def get_all_reports(
+    status_filter: Optional[str] = Query(None, description="Filter by status"),
+    priority: Optional[int] = Query(None, ge=1, le=5, description="Filter by priority"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: Dict[str, Any] = Depends(get_current_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Get all user reports with details"""
+    try:
+        # Build query
+        query = {}
+        if status_filter:
+            query["status"] = status_filter
+        if priority:
+            query["priority"] = priority
+
+        # Get reports with user details
+        pipeline = [
+            {MONGO_MATCH: query},
+            {
+                MONGO_LOOKUP: {
+                    "from": "users",
+                    "let": {"reporter": {"$toObjectId": "$reporter_id"}},
+                    "pipeline": [
+                        {MONGO_MATCH: {"$expr": {"$eq": ["$_id", "$$reporter"]}}},
+                        {"$project": {"email": 1, "role": 1}},
+                    ],
+                    "as": "reporter",
+                }
+            },
+            {MONGO_UNWIND: {"path": "$reporter", "preserveNullAndEmptyArrays": True}},
+            {
+                MONGO_LOOKUP: {
+                    "from": "users",
+                    "let": {"reported": {"$toObjectId": "$reported_user_id"}},
+                    "pipeline": [
+                        {MONGO_MATCH: {"$expr": {"$eq": ["$_id", "$$reported"]}}},
+                        {"$project": {"email": 1, "role": 1, "status": 1}},
+                    ],
+                    "as": "reported_user",
+                }
+            },
+            {
+                MONGO_UNWIND: {
+                    "path": "$reported_user",
+                    "preserveNullAndEmptyArrays": True,
+                }
+            },
+            {MONGO_SORT: {"priority": -1, "created_at": -1}},
+            {MONGO_SKIP: (page - 1) * limit},
+            {MONGO_LIMIT: limit},
+        ]
+
+        reports = await db.user_reports.aggregate(pipeline).to_list(length=limit)
+
+        # Serialize ObjectIds
+        for report in reports:
+            if "_id" in report:
+                report["_id"] = str(report["_id"])
+            if "reporter" in report and "_id" in report["reporter"]:
+                report["reporter"]["_id"] = str(report["reporter"]["_id"])
+            if "reported_user" in report and "_id" in report["reported_user"]:
+                report["reported_user"]["_id"] = str(report["reported_user"]["_id"])
+
+        # Get total count
+        total_count = await db.user_reports.count_documents(query)
+
+        return StandardResponse(
+            success=True,
+            data={
+                "reports": reports,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total": total_count,
+                    "pages": (total_count + limit - 1) // limit,
+                },
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Get reports error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch reports",
+        )
+
+
+@router.post(
+    "/reports/{report_id}/review",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Review Report",
+    description="Review and take action on a user report (Admin only)",
+)
+async def review_report(
+    report_id: str,
+    action: str = Query(..., description="resolved|dismissed|action_taken"),
+    action_taken: Optional[str] = Query(
+        None, description="warning_sent|user_suspended|user_banned|content_removed"
+    ),
+    admin_notes: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Review a user report and take action"""
+    try:
+        admin_id = str(current_user.get("_id") or current_user.get("id"))
+
+        # Get report
+        try:
+            report_oid = ObjectId(report_id)
+        except (ValueError, TypeError) as e:
+            raise InvalidInputError(
+                message="Invalid report ID format", field="report_id"
+            ) from e
+
+        report = await db.user_reports.find_one({"_id": report_oid})
+        if not report:
+            raise ResourceNotFoundError(resource_type="Report", resource_id=report_id)
+
+        # Update report
+        update_data = {
+            "status": action,
+            "reviewed_by": admin_id,
+            "reviewed_at": datetime.now(timezone.utc),
+            "admin_notes": admin_notes or "",
+            "updated_at": datetime.now(timezone.utc),
+        }
+
+        if action_taken:
+            update_data["action_taken"] = action_taken
+
+        await db.user_reports.update_one({"_id": report_oid}, {"$set": update_data})
+
+        # Take action on reported user if needed
+        if action_taken == "user_suspended":
+            await db.users.update_one(
+                {"_id": ObjectId(report["reported_user_id"])},
+                {
+                    "$set": {
+                        "status": UserStatus.SUSPENDED.value,
+                        "suspended_by": admin_id,
+                        "suspended_at": datetime.now(timezone.utc),
+                        "suspension_reason": f"Report: {report['reason']}",
+                    }
+                },
+            )
+
+            # Create suspension record
+            suspension = UserSuspension(
+                user_id=report["reported_user_id"],
+                suspended_by=admin_id,
+                reason=f"Report: {report['reason']} - {admin_notes or ''}",
+                report_ids=[report_id],
+            )
+            await db.user_suspensions.insert_one(
+                suspension.model_dump(by_alias=True, exclude={"id"})
+            )
+
+            # Notify user
+            await db.notifications.insert_one(
+                Notification(
+                    user_id=report["reported_user_id"],
+                    title="Account Suspended",
+                    body="Your account has been suspended due to a report. Contact support for details.",
+                    notification_type="account_status",
+                    data={"action": "suspended"},
+                ).model_dump(by_alias=True, exclude_none=True)
+            )
+
+        elif action_taken == "warning_sent":
+            # Create warning
+            warning = UserWarning(
+                user_id=report["reported_user_id"],
+                issued_by=admin_id,
+                reason=f"Report: {report['reason']}",
+                severity=report.get("priority", 1),
+                report_id=report_id,
+            )
+            await db.user_warnings.insert_one(
+                warning.model_dump(by_alias=True, exclude={"id"})
+            )
+
+            # Notify user
+            await db.notifications.insert_one(
+                Notification(
+                    user_id=report["reported_user_id"],
+                    title="Warning Issued",
+                    body=f"You have received a warning: {report['reason']}. Please review our community guidelines.",
+                    notification_type="warning",
+                    data={"warning_id": str(report_id)},
+                ).model_dump(by_alias=True, exclude_none=True)
+            )
+
+        # Notify reporter
+        await db.notifications.insert_one(
+            Notification(
+                user_id=report["reporter_id"],
+                title="Report Reviewed",
+                body=f"Your report has been reviewed. Action: {action.replace('_', ' ').title()}",
+                notification_type="report_update",
+                data={"report_id": report_id, "action": action},
+            ).model_dump(by_alias=True, exclude_none=True)
+        )
+
+        logger.info(f"Admin {admin_id} reviewed report {report_id}: {action}")
+
+        return StandardResponse(
+            success=True, message=f"Report {action.replace('_', ' ')} successfully"
+        )
+
+    except (ResourceNotFoundError, InvalidInputError):
+        raise
+    except Exception as e:
+        logger.error(f"Review report error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to review report",
         )

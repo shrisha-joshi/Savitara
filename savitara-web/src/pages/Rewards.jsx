@@ -329,6 +329,7 @@ export default function Rewards() {
                     <Tooltip title={copiedCode === 'referral' ? 'Copied!' : 'Copy code'}>
                       <IconButton 
                         onClick={() => copyToClipboard(referralStats.referral_code, 'referral')}
+                        aria-label="Copy referral code"
                         sx={{ 
                           bgcolor: 'rgba(255, 255, 255, 0.2)',
                           '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.3)' }
@@ -436,6 +437,7 @@ export default function Rewards() {
                             <IconButton 
                               size="small"
                               onClick={() => copyToClipboard(coupon.code, coupon.code)}
+                              aria-label="Copy coupon code"
                             >
                               {copiedCode === coupon.code ? <CheckCircle color="success" /> : <ContentCopy />}
                             </IconButton>

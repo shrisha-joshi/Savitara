@@ -717,3 +717,136 @@ class GamificationService:
                             "rewarded": True,
                         }
                     )
+
+    # ==================== Streak System ====================
+
+    async def get_user_streak(self, user_id: str) -> Optional[Dict]:
+        """Get user's current streak"""
+        streak = await self.user_streaks.find_one({"user_id": user_id})
+
+        if not streak:
+            return None
+
+        return {
+            "current_streak": streak.get("current_streak", 0),
+            "longest_streak": streak.get("longest_streak", 0),
+            "last_login": streak.get("last_login"),
+            "streak_active": streak.get("streak_active", False),
+            "total_logins": streak.get("total_logins", 0),
+        }
+
+    async def record_daily_checkin(self, user_id: str) -> Dict:
+        """Record daily check-in and update streak"""
+        from datetime import datetime, timezone, timedelta
+
+        now = datetime.now(timezone.utc)
+        today = now.date()
+
+        # Get or create streak
+        streak = await self.user_streaks.find_one({"user_id": user_id})
+
+        if not streak:
+            from app.models.gamification import UserStreak
+
+            new_streak = UserStreak(
+                user_id=user_id,
+                current_streak=1,
+                longest_streak=1,
+                last_login=now,
+                streak_active=True,
+                total_logins=1,
+            )
+            await self.user_streaks.insert_one(
+                new_streak.model_dump(by_alias=True, exclude={"id"})
+            )
+
+            # Award first day coins
+            await self.award_coins(
+                user_id=user_id,
+                action=ActionType.DAILY_LOGIN,
+                description="Day 1 login reward",
+            )
+
+            return {
+                "success": True,
+                "current_streak": 1,
+                "coins_awarded": COIN_REWARDS.get(ActionType.DAILY_LOGIN, 10),
+                "message": "Welcome! Day 1 streak started!",
+            }
+
+        # Check last login date
+        last_login = streak["last_login"].date() if streak.get("last_login") else None
+
+        # Already checked in today
+        if last_login == today:
+            return {
+                "success": True,
+                "current_streak": streak["current_streak"],
+                "coins_awarded": 0,
+                "message": "You've already checked in today!",
+                "already_checked_in": True,
+            }
+
+        # Check if streak is broken
+        yesterday = today - timedelta(days=1)
+
+        if last_login == yesterday:
+            # Streak continues
+            new_streak_count = streak["current_streak"] + 1
+            is_broken = False
+        else:
+            # Streak broken
+            new_streak_count = 1
+            is_broken = True
+
+        # Update longest streak
+        new_longest = max(new_streak_count, streak.get("longest_streak", 0))
+
+        # Update streak
+        await self.user_streaks.update_one(
+            {"user_id": user_id},
+            {
+                "$set": {
+                    "current_streak": new_streak_count,
+                    "longest_streak": new_longest,
+                    "last_login": now,
+                    "streak_active": True,
+                },
+                "$inc": {"total_logins": 1},
+            },
+        )
+
+        # Award coins based on streak
+        base_coins = COIN_REWARDS.get(ActionType.DAILY_LOGIN, 10)
+        streak_bonus = (new_streak_count // 7) * 50  # Bonus every 7 days
+        total_coins = base_coins + streak_bonus
+
+        await self.award_coins(
+            user_id=user_id,
+            action=ActionType.DAILY_LOGIN,
+            custom_amount=total_coins,
+            description=f"Day {new_streak_count} login reward"
+            + (f" + {streak_bonus} streak bonus!" if streak_bonus > 0 else ""),
+        )
+
+        # Check for 7-day streak milestone
+        if new_streak_count % 7 == 0:
+            await self.award_coins(
+                user_id=user_id,
+                action=ActionType.LOGIN_STREAK_7,
+                description=f"{new_streak_count}-day streak milestone!",
+            )
+
+        message = f"Day {new_streak_count} streak!"
+        if is_broken:
+            message = "Streak reset. Starting fresh at Day 1!"
+        elif streak_bonus > 0:
+            message += f" +{streak_bonus} bonus coins!"
+
+        return {
+            "success": True,
+            "current_streak": new_streak_count,
+            "coins_awarded": total_coins,
+            "message": message,
+            "is_new_record": new_streak_count == new_longest and new_streak_count > 1,
+        }

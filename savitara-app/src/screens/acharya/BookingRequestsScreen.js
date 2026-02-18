@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { Text, Card, Button, Chip, ActivityIndicator, Searchbar, Divider, Avatar } from 'react-native-paper';
+import { Picker } from '@react-native-picker/picker';
 import { bookingAPI } from '../../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const BookingRequestsScreen = ({ navigation }) => {
+  const [referVisible, setReferVisible] = useState(false);
   const [bookings, setBookings] = useState([]);
   const [filteredBookings, setFilteredBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
+  const [acharyaList, setAcharyaList] = useState([]);
 
   useEffect(() => {
     loadBookings();
@@ -23,6 +26,7 @@ const BookingRequestsScreen = ({ navigation }) => {
   const loadBookings = async () => {
     try {
       setLoading(true);
+      const list = await bookingAPI.fetchAcharyas();
       const response = await bookingAPI.getAcharyaBookings({});
       const bookingData = response.data?.data || response.data?.bookings || [];
       setBookings(bookingData);
@@ -42,6 +46,7 @@ const BookingRequestsScreen = ({ navigation }) => {
   const filterBookings = () => {
     let filtered = [...bookings];
 
+    const [selectedAcharya, setSelectedAcharya] = useState('');
     // Filter by status
     if (selectedFilter !== 'all') {
       filtered = filtered.filter(b => b.status === selectedFilter);
@@ -98,6 +103,7 @@ const BookingRequestsScreen = ({ navigation }) => {
   }
 
   return (
+    <PaperProvider>
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
@@ -411,6 +417,7 @@ const styles = StyleSheet.create({
   },
   cardTitleContainer: {
     flexDirection: 'row',
+                </PaperProvider>
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,

@@ -1,11 +1,33 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, TextInput, Button, RadioButton } from 'react-native-paper';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { Text, TextInput, Button, RadioButton, ActivityIndicator } from 'react-native-paper';
 import { Calendar } from 'react-native-calendars';
 import { bookingAPI } from '../../services/api';
 
 const BookingScreen = ({ route, navigation }) => {
   const { acharya } = route.params;
+  const [validationError, setValidationError] = useState(null);
+
+  // Validate acharya data on mount
+  useEffect(() => {
+    if (!acharya || !acharya._id || acharya._id === 'undefined' || acharya._id === 'null') {
+      setValidationError('Invalid Acharya ID. Please try again from the Acharya profile.');
+      Alert.alert('Error', 'Invalid Acharya selection. Returning to search.', [
+        { text: 'OK', onPress: () => navigation.goBack() }
+      ]);
+    }
+  }, [acharya, navigation]);
+
+  if (validationError) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <Text style={styles.errorText}>{validationError}</Text>
+        <Button mode="contained" onPress={() => navigation.goBack()} style={styles.button}>
+          Go Back
+        </Button>
+      </View>
+    );
+  }
   const [formData, setFormData] = useState({
     pooja_type: '',
     booking_type: 'in_person',

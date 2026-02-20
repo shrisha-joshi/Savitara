@@ -95,6 +95,11 @@ export const chatAPI = {
   verifyConversation: (recipientId) => api.post('/chat/verify-conversation', { recipient_id: recipientId }),
   getUnreadCount: () => api.get('/chat/unread-count'),
   deleteMessage: (messageId) => api.delete(`/chat/messages/${messageId}`),
+  
+  // Reactions
+  addReaction: (messageId, emoji) => api.post(`/messages/${messageId}/reactions`, { emoji }),
+  removeReaction: (messageId, emoji) => api.delete(`/messages/${messageId}/reactions/${emoji}`),
+  getReactions: (messageId) => api.get(`/messages/${messageId}/reactions`),
 };
 
 // Review APIs

@@ -1,8 +1,6 @@
 # Docker Compose for Savitara Platform
 # Run with: docker-compose up -d
 
-version: '3.8'
-
 services:
   # MongoDB Database
   mongodb:
@@ -75,10 +73,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MONGO_URI=mongodb://admin:${MONGO_ADMIN_PASSWORD:-savitara_admin_pass}@mongodb:27017/savitara?authSource=admin
+      - MONGODB_URL=mongodb://admin:${MONGO_ADMIN_PASSWORD:-savitara_admin_pass}@mongodb:27017/savitara?authSource=admin
       - REDIS_URL=redis://redis:6379/0
-      - ELASTICSEARCH_URL=http://elasticsearch:9200
-      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-super-secret-jwt-key-change-in-production}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}

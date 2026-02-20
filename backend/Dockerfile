@@ -12,6 +12,7 @@ COPY requirements.txt .
 # Install dependencies, create user, and set up directories in a single RUN command
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    curl \
     && pip install --no-cache-dir -r requirements.txt \
     && groupadd -r appuser && useradd -r -g appuser appuser \
     && mkdir -p /app/uploads/documents /app/logs \

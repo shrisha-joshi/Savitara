@@ -22,6 +22,7 @@ __pycache__/
 *.so
 .Python
 venv/
+.venv/
 env/
 ENV/
 build/
@@ -197,6 +198,7 @@ lerna-debug.log*
 # Docker
 # ===========================
 docker-compose.override.yml
+volumes/
 
 # ===========================
 # Testing
@@ -252,6 +254,12 @@ out/
 # Google OAuth credentials
 client_secret_*.json
 *client_secret*.json
+
+# ===========================
+# Application Data (user uploads, media)
+# ===========================
+uploads/
+media/
 
 # ===========================
 # Misc

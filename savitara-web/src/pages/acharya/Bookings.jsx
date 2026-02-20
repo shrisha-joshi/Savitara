@@ -98,7 +98,8 @@ export default function AcharyaBookings() {
     try {
       setLoading(true)
       const response = await api.get('/bookings/my-bookings')
-      const bookingData = response.data?.data || response.data || []
+      const raw = response.data?.data
+      const bookingData = Array.isArray(raw) ? raw : (raw?.bookings || response.data?.bookings || [])
       setBookings(bookingData)
     } catch (error) {
       console.error('Failed to load bookings:', error)
@@ -137,42 +138,46 @@ export default function AcharyaBookings() {
         case 'accept':
           endpoint = `/bookings/${selectedBooking._id}/status`
           successMessage = 'Booking request accepted'
-          // For request mode bookings, go directly to confirmed status
-          // Amount can be set later when creating payment
-          data = { 
+          data = {
             status: 'confirmed',
             amount: amount ? Number.parseFloat(amount) : undefined,
             notes: 'Request approved by Acharya'
           }
+          await api.put(endpoint, data)
           break
         case 'reject':
           endpoint = `/bookings/${selectedBooking._id}/status`
           successMessage = 'Booking request declined'
-          data = { 
+          data = {
             status: 'cancelled',
             notes: 'Request declined by Acharya'
           }
+          await api.put(endpoint, data)
           break
-        case 'start':
+        case 'start': {
           endpoint = `/bookings/${selectedBooking._id}/start`
           successMessage = 'Booking started successfully'
+          const otp = window.prompt('Enter start OTP shared by Grihasta')
+          if (!otp) {
+            toast.info('Start cancelled: OTP required')
+            return
+          }
+          await api.post(endpoint, null, { params: { otp } })
           break
-        case 'complete':
-          endpoint = `/bookings/${selectedBooking._id}/complete`
-          successMessage = 'Booking completed successfully'
+        }
+        case 'complete': {
+          endpoint = `/bookings/${selectedBooking._id}/attendance/confirm`
+          successMessage = 'Attendance confirmed; booking completion queued'
+          await api.post(endpoint, { confirmed: true })
           break
+        }
         case 'cancel':
-          endpoint = `/bookings/${selectedBooking._id}/cancel`
+          endpoint = `/bookings/${selectedBooking._id}/status`
           successMessage = 'Booking cancelled successfully'
+          await api.put(endpoint, { status: 'cancelled', notes: 'Cancelled by Acharya' })
           break
         default:
           return
-      }
-
-      if (data) {
-        await api.put(endpoint, data)
-      } else {
-        await api.put(endpoint)
       }
 
       toast.success(successMessage)

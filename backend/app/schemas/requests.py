@@ -10,7 +10,7 @@ from pydantic import (
     ConfigDict,
     model_validator,
 )
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Generic, TypeVar
 from datetime import datetime, timezone
 from app.models.database import UserRole, Location
 from app.core.constants import PHONE_REGEX
@@ -18,6 +18,8 @@ from app.core.constants import PHONE_REGEX
 
 def utcnow():
     return datetime.now(timezone.utc)
+
+T = TypeVar("T")
 
 
 # ============= Authentication Schemas =============
@@ -474,10 +476,10 @@ class AcharyaSearchParams(BaseModel):
 # ============= Standard Response Wrapper =============
 
 
-class StandardResponse(BaseModel):
+class StandardResponse(BaseModel, Generic[T]):
     """Standard API response wrapper"""
 
     success: bool
-    data: Optional[Any] = None
+    data: Optional[T] = None
     message: Optional[str] = None
     timestamp: datetime = Field(default_factory=utcnow)

@@ -13,7 +13,7 @@ export default function AcharyaDashboard() {
   const navigate = useNavigate()
   
   // Use SWR for automatic caching and revalidation
-  const { data, isLoading: loading } = useSWRApi('/bookings/acharya?limit=100')
+  const { data, isLoading: loading } = useSWRApi('/bookings/my-bookings?limit=100')
   
   // Compute stats and recent bookings from cached/fresh data
   const { stats, recentBookings } = useMemo(() => {

@@ -86,6 +86,7 @@ class PaymentStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     REFUNDED = "refunded"
+    NOT_REQUIRED = "not_required"
 
 
 class Location(BaseModel):
@@ -247,8 +248,36 @@ class Booking(BaseModel):
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
+class MessageType(str, Enum):
+    """Message type enumeration"""
+    TEXT = "text"
+    VOICE = "voice"
+    IMAGE = "image"
+    VIDEO = "video"
+    FILE = "file"
+    FORWARDED = "forwarded"
+
+
+class MessageReaction(BaseModel):
+    """Embedded reaction in a message"""
+    user_id: PyObjectId
+    emoji: str = Field(max_length=8)  # Unicode emoji
+    created_at: datetime = Field(default_factory=utcnow)
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+
+class ForwardedMessageInfo(BaseModel):
+    """Embedded info about forwarded message origin"""
+    message_id: Optional[PyObjectId] = None
+    sender_name: Optional[str] = None
+    room_name: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+
 class Message(BaseModel):
-    """Chat message model"""
+    """Chat message model with reactions, media, and forwarding support"""
 
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     conversation_id: Optional[PyObjectId] = None  # None for open chat
@@ -259,12 +288,37 @@ class Message(BaseModel):
     expires_at: Optional[datetime] = None  # For 7-day auto-delete
     read: bool = False
     created_at: datetime = Field(default_factory=utcnow)
+    
+    # New fields for enhanced chat features
+    message_type: MessageType = MessageType.TEXT
+    reactions: List[MessageReaction] = Field(default_factory=list)
+    
+    # Media fields (for voice, image, video, file)
+    media_url: Optional[str] = None
+    media_mime: Optional[str] = None
+    media_duration_s: Optional[int] = None  # Duration in seconds for voice/video
+    media_waveform: Optional[List[float]] = None  # Waveform data for voice messages
+    
+    # Forwarding fields
+    forwarded_from: Optional[ForwardedMessageInfo] = None
+    
+    # Soft delete and edit tracking
+    edited_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
 
-    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, use_enum_values=True)
+
+
+class RoomType(str, Enum):
+    """Conversation room type enumeration"""
+    DIRECT = "direct"
+    PRIVATE_GROUP = "private_group"
+    ACHARYA_GROUP = "acharya_group"
+    COMMUNITY = "community"
 
 
 class Conversation(BaseModel):
-    """Conversation model"""
+    """Conversation model with group chat and privacy controls"""
 
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     participants: List[PyObjectId]
@@ -272,8 +326,14 @@ class Conversation(BaseModel):
     expires_at: Optional[datetime] = None
     last_message_at: datetime = Field(default_factory=utcnow)
     created_at: datetime = Field(default_factory=utcnow)
+    
+    # New fields for group chat and privacy
+    room_type: RoomType = RoomType.DIRECT
+    allow_forward_out: bool = True  # Allow forwarding messages out of this room
+    locked: bool = False  # Room locked (only admins can post)
+    pinned_message_id: Optional[PyObjectId] = None
 
-    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, use_enum_values=True)
 
 
 class Review(BaseModel):

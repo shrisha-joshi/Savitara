@@ -3,7 +3,7 @@ Moderation Models for User Reports and Blocking
 Handles user safety, abuse reporting, and blocking functionality
 """
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -46,15 +46,17 @@ class ReportAction(str, Enum):
 
 
 class UserReport(BaseModel):
-    """User report model - when a user reports another user"""
+    """User report model - when a user reports another user or message"""
 
     id: Optional[str] = Field(alias="_id", default=None)
     reporter_id: str  # User who is reporting
     reported_user_id: str  # User being reported
+    message_id: Optional[str] = None  # Optional: specific message being reported
     reason: ReportReason
     description: str = ""
     evidence_urls: List[str] = []  # Screenshots, chat logs, etc.
     context: str = ""  # Booking ID, chat ID, etc.
+    metadata: Dict[str, Any] = {}  # Additional context (message content, screenshots, etc.)
     status: ReportStatus = ReportStatus.PENDING
     priority: int = 1  # 1 (low) to 5 (high)
     reviewed_by: Optional[str] = None  # Admin ID

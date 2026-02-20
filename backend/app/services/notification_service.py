@@ -391,6 +391,208 @@ class NotificationService:
                 service_name="Firebase", details={"error": str(e)}
             )
 
+    # ============ Moderation-Specific Notifications ============
+
+    def send_block_notification(
+        self, token: str, blocker_name: str, is_mutual: bool = False
+    ) -> Optional[str]:
+        """
+        Send notification when user is blocked
+
+        Args:
+            token: FCM token of the blocked user
+            blocker_name: Name of the user who blocked
+            is_mutual: Whether this is a mutual block
+
+        Returns:
+            Message ID or None if failed
+        """
+        try:
+            title = "User Interaction Blocked"
+            if is_mutual:
+                body = f"You and {blocker_name} can no longer interact"
+            else:
+                body = f"{blocker_name} has blocked you"
+
+            return self.send_notification(
+                token=token,
+                title=title,
+                body=body,
+                data={"type": "user_blocked", "is_mutual": str(is_mutual)},
+            )
+        except Exception as e:
+            logger.error(f"Failed to send block notification: {e}")
+            return None
+
+    def send_report_notification(
+        self, token: str, report_id: str, admin_action: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Send notification about report status
+
+        Args:
+            token: FCM token of the reporter
+            report_id: Report ID
+            admin_action: Action taken by admin (if any)
+
+        Returns:
+            Message ID or None if failed
+        """
+        try:
+            if admin_action:
+                title = "Report Update"
+                body = f"Your report has been reviewed. Action taken: {admin_action}"
+            else:
+                title = "Report Received"
+                body = "Thank you for your report. Our team will review it soon."
+
+            return self.send_notification(
+                token=token,
+                title=title,
+                body=body,
+                data={"type": "report_update", "report_id": report_id},
+            )
+        except Exception as e:
+            logger.error(f"Failed to send report notification: {e}")
+            return None
+
+    def send_warning_notification(
+        self, token: str, reason: str, severity: int
+    ) -> Optional[str]:
+        """
+        Send notification when user receives a warning
+
+        Args:
+            token: FCM token of the warned user
+            reason: Reason for warning
+            severity: Warning severity (1-5)
+
+        Returns:
+            Message ID or None if failed
+        """
+        try:
+            title = "Community Guidelines Warning"
+            severity_text = ["", "Minor", "Moderate", "Serious", "Severe", "Critical"][
+                min(severity, 5)
+            ]
+            body = f"{severity_text} warning: {reason}"
+
+            return self.send_notification(
+                token=token,
+                title=title,
+                body=body,
+                data={
+                    "type": "user_warning",
+                    "severity": str(severity),
+                    "reason": reason,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Failed to send warning notification: {e}")
+            return None
+
+    def send_member_muted_notification(
+        self,
+        token: str,
+        group_name: str,
+        duration_hours: Optional[int] = None,
+        admin_name: str = "Admin",
+    ) -> Optional[str]:
+        """
+        Send notification when member is muted in a group
+
+        Args:
+            token: FCM token of the muted user
+            group_name: Name of the group
+            duration_hours: Mute duration in hours (None = indefinite)
+            admin_name: Name of the admin who muted
+
+        Returns:
+            Message ID or None if failed
+        """
+        try:
+            title = f"Muted in {group_name}"
+            if duration_hours:
+                body = f"{admin_name} muted you for {duration_hours} hours"
+            else:
+                body = f"{admin_name} muted you indefinitely"
+
+            return self.send_notification(
+                token=token,
+                title=title,
+                body=body,
+                data={
+                    "type": "member_muted",
+                    "group_name": group_name,
+                    "duration_hours": str(duration_hours) if duration_hours else "indefinite",
+                },
+            )
+        except Exception as e:
+            logger.error(f"Failed to send mute notification: {e}")
+            return None
+
+    def send_member_removed_notification(
+        self, token: str, group_name: str, admin_name: str = "Admin"
+    ) -> Optional[str]:
+        """
+        Send notification when member is removed from a group
+
+        Args:
+            token: FCM token of the removed user
+            group_name: Name of the group
+            admin_name: Name of the admin who removed
+
+        Returns:
+            Message ID or None if failed
+        """
+        try:
+            title = f"Removed from {group_name}"
+            body = f"{admin_name} removed you from the group"
+
+            return self.send_notification(
+                token=token,
+                title=title,
+                body=body,
+                data={"type": "member_removed", "group_name": group_name},
+            )
+        except Exception as e:
+            logger.error(f"Failed to send removal notification: {e}")
+            return None
+
+    def send_role_changed_notification(
+        self, token: str, group_name: str, new_role: str, owner_name: str = "Owner"
+    ) -> Optional[str]:
+        """
+        Send notification when member's role changes
+
+        Args:
+            token: FCM token of the user
+            group_name: Name of the group
+            new_role: New role (admin or member)
+            owner_name: Name of the owner who changed the role
+
+        Returns:
+            Message ID or None if failed
+        """
+        try:
+            title = f"Role Changed in {group_name}"
+            role_display = "Administrator" if new_role == "admin" else "Member"
+            body = f"{owner_name} changed your role to {role_display}"
+
+            return self.send_notification(
+                token=token,
+                title=title,
+                body=body,
+                data={
+                    "type": "role_changed",
+                    "group_name": group_name,
+                    "new_role": new_role,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Failed to send role change notification: {e}")
+            return None
+
 
 # Singleton instance
 _notification_service: Optional[NotificationService] = None

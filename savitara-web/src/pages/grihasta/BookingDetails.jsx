@@ -75,10 +75,11 @@ export default function BookingDetails() {
   }
 
   const isAcharya = user?.role === 'acharya'
-  // Correctly identify the "other" party based on current user role
+  // Identify participants
   const acharyaChatId = booking.acharya_user_id || booking.acharya_userid || booking.acharya_id
-  const otherPartyId = isAcharya ? booking.user_id : acharyaChatId
-  const otherPartyName = isAcharya ? booking.user_name : booking.acharya_name
+  const grihastaUserId = booking.grihasta_id || booking.user_id
+  const otherPartyId = isAcharya ? grihastaUserId : acharyaChatId
+  const otherPartyName = isAcharya ? booking.grihasta_name : booking.acharya_name
 
   const formatStatus = (status) => {
     const colors = {
@@ -94,10 +95,12 @@ export default function BookingDetails() {
     />
   }
   
-  // Format date helper
-  const formatDate = (dateStr) => {
+  // Format date/time helper
+  const formatDateTime = (dateStr) => {
+    if (!dateStr) return '—'
     try {
-      return new Date(dateStr).toLocaleDateString()
+      const d = new Date(dateStr)
+      return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
     } catch (err) {
       console.warn('Invalid date format:', dateStr, err)
       return dateStr
@@ -140,9 +143,9 @@ export default function BookingDetails() {
                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                   Service / Pooja
                 </Typography>
-                <Typography variant="h6">
-                  {booking.pooja_name || booking.service_name || 'General Consultation'}
-                </Typography>
+                  <Typography variant="h6">
+                    {booking.pooja_name || booking.pooja_type || booking.service_name || 'General Consultation'}
+                  </Typography>
               </Box>
               
               <Box mb={3}>
@@ -152,13 +155,14 @@ export default function BookingDetails() {
                 <Box display="flex" alignItems="center" gap={1} mb={0.5}>
                   <FaCalendarAlt color="#666" />
                   <Typography variant="body1">
-                    {formatDate(booking.date)}
+                    {formatDateTime(booking.date_time || booking.scheduled_datetime || booking.date)}
                   </Typography>
                 </Box>
                 <Box display="flex" alignItems="center" gap={1}>
                   <FaClock color="#666" />
                   <Typography variant="body1">
-                    {booking.time_slot} ({booking.duration} mins)
+                    {booking.time_slot || new Date(booking.date_time || booking.scheduled_datetime || booking.date || '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {booking.duration_minutes || booking.duration ? ` (${booking.duration_minutes || booking.duration} mins)` : ''}
                   </Typography>
                 </Box>
               </Box>

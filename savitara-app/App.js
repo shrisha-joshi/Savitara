@@ -19,6 +19,7 @@ import {
 } from '@expo-google-fonts/poppins';
 import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { SocketProvider } from './src/context/SocketContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import './src/i18n';
 import ErrorBoundary from './src/components/ErrorBoundary';
@@ -85,8 +86,10 @@ export default function App() {
       <SafeAreaProvider onLayout={onLayoutRootView}>
         <PaperProvider>
           <AuthProvider>
-            <AppContent />
-            <StatusBar style="auto" />
+            <SocketProvider>
+              <AppContent />
+              <StatusBar style="auto" />
+            </SocketProvider>
           </AuthProvider>
         </PaperProvider>
       </SafeAreaProvider>

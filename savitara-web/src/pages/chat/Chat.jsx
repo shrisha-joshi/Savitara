@@ -34,6 +34,8 @@ import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import MessageSkeleton from '../../components/MessageSkeleton';
+import EmojiPickerButton from '../../components/EmojiPickerButton';
+import MessageReactions from '../../components/MessageReactions';
 
 const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
   const { conversationId: urlConversationId, recipientId } = useParams(); // Should handle both URL params based on route
@@ -151,6 +153,38 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
         return;
       }
       
+      // Handle reaction events
+      if (lastMsg.type === 'reaction_added' && lastMsg.conversation_id === activeConversationId) {
+        setMessages(prev => prev.map(msg => {
+          if (msg.id === lastMsg.message_id || msg._id === lastMsg.message_id) {
+            const reactions = msg.reactions || [];
+            // Check if user already reacted with this emoji (shouldn't happen, but defensive)
+            const alreadyReacted = reactions.some(r => r.user_id === lastMsg.user_id && r.emoji === lastMsg.emoji);
+            if (!alreadyReacted) {
+              return {
+                ...msg,
+                reactions: [...reactions, { user_id: lastMsg.user_id, emoji: lastMsg.emoji, created_at: lastMsg.timestamp }]
+              };
+            }
+          }
+          return msg;
+        }));
+        return;
+      }
+      
+      if (lastMsg.type === 'reaction_removed' && lastMsg.conversation_id === activeConversationId) {
+        setMessages(prev => prev.map(msg => {
+          if (msg.id === lastMsg.message_id || msg._id === lastMsg.message_id) {
+            return {
+              ...msg,
+              reactions: (msg.reactions || []).filter(r => !(r.user_id === lastMsg.user_id && r.emoji === lastMsg.emoji))
+            };
+          }
+          return msg;
+        }));
+        return;
+      }
+      
       // Handle read receipt events
       if (lastMsg.type === 'message_read' && lastMsg.conversation_id === activeConversationId) {
         // Update message status to 'read'
@@ -170,9 +204,9 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
           if (exists) return prev;
           
           // Mark message as delivered if it's from remote user
-          const messageWithStatus = lastMsg.sender_id !== user?.id 
-            ? { ...lastMsg, status: lastMsg.status || 'delivered' }
-            : lastMsg;
+          const messageWithStatus = lastMsg.sender_id === user?.id
+            ? lastMsg
+            : { ...lastMsg, status: lastMsg.status || 'delivered' };
           
           return [...prev, messageWithStatus];
         });
@@ -221,30 +255,24 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
 
   // Mark messages as read when conversation is active
   useEffect(() => {
-    const markMessagesAsRead = async () => {
+    const markMessagesAsReadLocally = () => {
       if (!activeConversationId || !user?.id) return;
-      
-      // Find unread messages from the other user
       const unreadMessages = messages.filter(msg => 
         msg.sender_id !== user.id && 
         msg.status !== 'read' && 
         !msg.read_at
       );
-      
       if (unreadMessages.length === 0) return;
-      
-      try {
-        // Mark each message as read
-        for (const msg of unreadMessages) {
-          await api.post(`/chat/messages/${msg.id || msg._id}/read`);
+
+      // Optimistically mark as read locally; backend marks read on fetch
+      setMessages(prev => prev.map(msg => {
+        if (msg.sender_id !== user.id && !msg.read_at && msg.status !== 'read') {
+          return { ...msg, status: 'read', read_at: new Date().toISOString() };
         }
-      } catch (err) {
-        console.error('Failed to mark messages as read:', err);
-      }
+        return msg;
+      }));
     };
-    
-    // Mark as read after 1 second (debounce)
-    const timer = setTimeout(markMessagesAsRead, 1000);
+    const timer = setTimeout(markMessagesAsReadLocally, 1000);
     return () => clearTimeout(timer);
   }, [messages, activeConversationId, user?.id]);
 
@@ -336,7 +364,7 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
     const recipientUserId = recipient?.id || recipient?._id || recipientId;
     if (!recipientUserId) return;
     
-    const confirmed = window.confirm(`Are you sure you want to block ${recipient?.name}? You will no longer receive messages from them.`);
+    const confirmed = globalThis.confirm(`Are you sure you want to block ${recipient?.name}? You will no longer receive messages from them.`);
     if (!confirmed) return;
     
     try {
@@ -409,6 +437,30 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
     }
   };
 
+  // Add reaction to a message
+  const handleReact = async (messageId, emoji) => {
+    try {
+      await api.post(`/messages/${messageId}/reactions`, { emoji });
+      // WebSocket will update the UI via reaction_added event
+    } catch (err) {
+      console.error('Failed to add reaction:', err);
+      const errorMsg = err.response?.data?.detail || err.response?.data?.message || 'Failed to add reaction';
+      setError(errorMsg);
+    }
+  };
+
+  // Remove reaction from a message
+  const handleUnreact = async (messageId, emoji) => {
+    try {
+      await api.delete(`/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`);
+      // WebSocket will update the UI via reaction_removed event
+    } catch (err) {
+      console.error('Failed to remove reaction:', err);
+      const errorMsg = err.response?.data?.detail || err.response?.data?.message || 'Failed to remove reaction';
+      setError(errorMsg);
+    }
+  };
+
   if (loading) return (
     <Box sx={{ height: inLayout ? '100%' : '85vh', display: 'flex', flexDirection: 'column' }}>
       {/* Header skeleton */}
@@ -452,7 +504,23 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
           </IconButton>
           <Avatar src={recipient?.profile_picture || recipient?.profile_image} alt={recipient?.name} sx={{ mr: 2 }} />
           
-          {!showSearch ? (
+          {showSearch ? (
+            <>
+              <TextField
+                autoFocus
+                fullWidth
+                size="small"
+                variant="outlined"
+                placeholder="Search messages..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                sx={{ flex: 1 }}
+              />
+              <IconButton onClick={() => { setShowSearch(false); setSearchQuery(''); }} sx={{ ml: 1 }}>
+                <CloseIcon />
+              </IconButton>
+            </>
+          ) : (
             <>
               <Box sx={{ flex: 1 }}>
                 <Typography variant="h6">{recipient?.name || 'Chat'}</Typography>
@@ -484,22 +552,6 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
                   <ListItemText>Block User</ListItemText>
                 </MenuItem>
               </Menu>
-            </>
-          ) : (
-            <>
-              <TextField
-                autoFocus
-                fullWidth
-                size="small"
-                variant="outlined"
-                placeholder="Search messages..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                sx={{ flex: 1 }}
-              />
-              <IconButton onClick={() => { setShowSearch(false); setSearchQuery(''); }} sx={{ ml: 1 }}>
-                <CloseIcon />
-              </IconButton>
             </>
           )}
         </Paper>
@@ -553,12 +605,13 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
             );
           }
           
-          return filteredMessages.map((msg) => {
+          return <>{filteredMessages.map((msg) => {
           const isMe = msg.sender_id === user.id;
           const msgTime = msg.created_at || msg.timestamp;
+          const msgId = msg.id || msg._id;
           return (
             <Box 
-              key={msg.id || msg._id || `${msg.sender_id}-${msgTime}`}
+              key={msgId || `${msg.sender_id}-${msgTime}`}
               onContextMenu={(e) => handleContextMenu(e, msg)}
               sx={{ 
                 alignSelf: isMe ? 'flex-end' : 'flex-start',
@@ -569,26 +622,52 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
                 color: isMe ? 'white' : 'text.primary',
                 borderRadius: 2,
                 boxShadow: 1,
-                cursor: 'context-menu'
+                cursor: 'context-menu',
+                position: 'relative',
+                '&:hover .emoji-picker': {
+                  opacity: 1
+                }
               }}
             >
               <Typography variant="body1">{msg.content}</Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', mt: 0.5, gap: 0.5 }}>
-                <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                  {msgTime ? new Date(msgTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                </Typography>
-                {isMe && (
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    {msg.status === 'read' && <DoneAllIcon sx={{ fontSize: 14, color: '#4fc3f7' }} />}
-                    {msg.status === 'delivered' && <DoneAllIcon sx={{ fontSize: 14, opacity: 0.7 }} />}
-                    {msg.status === 'sent' && <DoneIcon sx={{ fontSize: 14, opacity: 0.7 }} />}
-                    {!msg.status && <DoneIcon sx={{ fontSize: 14, opacity: 0.4 }} />}
-                  </Box>
-                )}
+              
+              {/* Reactions display */}
+              {msg.reactions && msg.reactions.length > 0 && (
+                <MessageReactions
+                  reactions={msg.reactions}
+                  currentUserId={user.id}
+                  onReact={(emoji) => handleReact(msgId, emoji)}
+                  onUnreact={(emoji) => handleUnreact(msgId, emoji)}
+                />
+              )}
+              
+              {/* Bottom row: timestamp, read receipts, emoji picker */}
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5, gap: 0.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                    {msgTime ? new Date(msgTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                  </Typography>
+                  {isMe && (
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      {msg.status === 'read' && <DoneAllIcon sx={{ fontSize: 14, color: '#4fc3f7' }} />}
+                      {msg.status === 'delivered' && <DoneAllIcon sx={{ fontSize: 14, opacity: 0.7 }} />}
+                      {msg.status === 'sent' && <DoneIcon sx={{ fontSize: 14, opacity: 0.7 }} />}
+                      {!msg.status && <DoneIcon sx={{ fontSize: 14, opacity: 0.4 }} />}
+                    </Box>
+                  )}
+                </Box>
+                
+                {/* Emoji picker button (shows on hover) */}
+                <Box className="emoji-picker" sx={{ opacity: 0, transition: 'opacity 0.2s' }}>
+                  <EmojiPickerButton
+                    onSelect={(emoji) => handleReact(msgId, emoji)}
+                    size="small"
+                  />
+                </Box>
               </Box>
             </Box>
           );
-        });
+          })}</>
         })()}
         
         {isTyping && (

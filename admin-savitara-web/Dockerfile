@@ -14,7 +14,8 @@ COPY . .
 ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 
-RUN npm run build
+# Increase heap to prevent OOM in constrained environments
+RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 
 # Stage 3: Runner
 FROM node:18-alpine AS runner

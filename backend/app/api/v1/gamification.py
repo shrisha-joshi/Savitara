@@ -1,4 +1,4 @@
-"""
+﻿"""
 Gamification API Endpoints
 Handles coins, points, vouchers, coupons, loyalty, referrals
 """
@@ -110,7 +110,7 @@ async def award_coins_endpoint(
 
     service = GamificationService(db)
     result = await service.award_coins(
-        user_id=str(current_user["_id"]),
+        user_id=str(current_user["id"]),
         action=request.action,
         reference_id=request.reference_id,
         custom_amount=request.custom_amount,
@@ -128,7 +128,7 @@ async def redeem_coins_endpoint(
     """Redeem coins for booking discount"""
     service = GamificationService(db)
     result = await service.redeem_coins(
-        user_id=str(current_user["_id"]),
+        user_id=str(current_user["id"]),
         amount=request.amount,
         booking_id=request.booking_id,
         booking_amount=request.booking_amount,
@@ -146,7 +146,7 @@ async def get_coins_balance(
 ):
     """Get user's coin balance and transactions"""
     service = GamificationService(db)
-    result = await service.get_user_coins(str(current_user["_id"]))
+    result = await service.get_user_coins(str(current_user["id"]))
     return result
 
 
@@ -158,7 +158,7 @@ async def get_coin_transactions(
 ):
     """Get coin transaction history"""
     transactions = (
-        await db.coin_transactions.find({"user_id": str(current_user["_id"])})
+        await db.coin_transactions.find({"user_id": str(current_user["id"])})
         .sort("created_at", -1)
         .limit(limit)
         .to_list(limit)
@@ -177,10 +177,10 @@ async def award_points_endpoint(
     db=Depends(get_db),
 ):
     """Award points to user"""
-    target_user_id = request.target_user_id or str(current_user["_id"])
+    target_user_id = request.target_user_id or str(current_user["id"])
 
     # Preventing self-award unless admin/staff
-    if target_user_id == str(current_user["_id"]):
+    if target_user_id == str(current_user["id"]):
         raise HTTPException(status_code=403, detail="Cannot award points to self")
 
     # Only admin/staff can award points to others
@@ -204,7 +204,7 @@ async def get_loyalty_status(
 ):
     """Get user's loyalty tier and benefits"""
     service = GamificationService(db)
-    result = await service.get_user_loyalty(str(current_user["_id"]))
+    result = await service.get_user_loyalty(str(current_user["id"]))
     return result
 
 
@@ -297,7 +297,7 @@ async def get_my_vouchers(
 ):
     """Get all active vouchers for current user"""
     service = GamificationService(db)
-    vouchers = await service.get_user_vouchers(str(current_user["_id"]))
+    vouchers = await service.get_user_vouchers(str(current_user["id"]))
     return {"vouchers": vouchers}
 
 
@@ -311,7 +311,7 @@ async def claim_voucher(
     """Claim a voucher by code"""
     service = GamificationService(db)
     result = await service.award_voucher_to_user(
-        user_id=str(current_user["_id"]),
+        user_id=str(current_user["id"]),
         voucher_code=voucher_code,
         earned_via=earned_via,
     )
@@ -335,7 +335,7 @@ async def validate_coupon(
     service = GamificationService(db)
     result = await service.validate_coupon(
         code=request.code,
-        user_id=str(current_user["_id"]),
+        user_id=str(current_user["id"]),
         booking_amount=request.booking_amount,
         service_id=request.service_id,
     )
@@ -357,7 +357,7 @@ async def get_available_coupons(
         {"is_active": True, "valid_from": {"$lte": now}, "valid_until": {"$gte": now}}
     ).to_list(100)
 
-    user_id = str(current_user["_id"])
+    user_id = str(current_user["id"])
     result = []
 
     if not coupons:
@@ -407,7 +407,7 @@ async def calculate_price(
     service = GamificationService(db)
     price_display = await service.calculate_price(
         base_amount=request.base_amount,
-        user_id=str(current_user["_id"]),
+        user_id=str(current_user["id"]),
         service_id=request.service_id,
         coupon_code=request.coupon_code,
         use_coins=request.use_coins,
@@ -425,7 +425,7 @@ async def get_my_referral_code(
 ):
     """Get or generate user's referral code"""
     service = GamificationService(db)
-    user_id_str = str(current_user["_id"])
+    user_id_str = str(current_user["id"])
 
     # Check if user has code
     if current_user.get("referral_code"):
@@ -489,7 +489,7 @@ async def create_referral(
     """Create a referral (called when someone uses referral code)"""
     service = GamificationService(db)
     result = await service.create_referral(
-        referrer_id=str(current_user["_id"]),
+        referrer_id=str(current_user["id"]),
         referral_code=request.referral_code,
         referee_role=request.referee_role,
     )
@@ -529,7 +529,7 @@ async def get_my_milestones(
 ):
     """Get user's achieved milestones"""
     milestones = (
-        await db.milestones.find({"user_id": str(current_user["_id"])})
+        await db.milestones.find({"user_id": str(current_user["id"])})
         .sort("achieved_at", -1)
         .to_list(100)
     )
@@ -544,12 +544,12 @@ async def get_available_milestones(current_user: dict = Depends(get_current_user
         "grihasta": [
             {"type": "bookings", "count": 1, "reward": "500 coins + REPEAT15 voucher"},
             {"type": "bookings", "count": 5, "reward": "1,000 coins + Silver tier"},
-            {"type": "bookings", "count": 10, "reward": "₹200 wallet credit"},
+            {"type": "bookings", "count": 10, "reward": "â‚¹200 wallet credit"},
             {"type": "bookings", "count": 25, "reward": "Gold tier + 5,000 coins"},
             {
                 "type": "bookings",
                 "count": 50,
-                "reward": "₹1,000 wallet + Platinum tier",
+                "reward": "â‚¹1,000 wallet + Platinum tier",
             },
             {"type": "referrals", "count": 5, "reward": "1,000 coins"},
             {"type": "referrals", "count": 10, "reward": "3,000 coins"},
@@ -559,7 +559,7 @@ async def get_available_milestones(current_user: dict = Depends(get_current_user
         "acharya": [
             {"type": "bookings", "count": 10, "reward": "2,000 coins + Featured badge"},
             {"type": "bookings", "count": 50, "reward": "5,000 coins + Master tier"},
-            {"type": "bookings", "count": 100, "reward": "₹2,000 wallet credit"},
+            {"type": "bookings", "count": 100, "reward": "â‚¹2,000 wallet credit"},
             {
                 "type": "bookings",
                 "count": 500,
@@ -582,14 +582,14 @@ async def get_gamification_overview(
     service = GamificationService(db)
 
     # Get all data
-    coins = await service.get_user_coins(str(current_user["_id"]))
-    loyalty = await service.get_user_loyalty(str(current_user["_id"]))
-    vouchers = await service.get_user_vouchers(str(current_user["_id"]))
+    coins = await service.get_user_coins(str(current_user["id"]))
+    loyalty = await service.get_user_loyalty(str(current_user["id"]))
+    vouchers = await service.get_user_vouchers(str(current_user["id"]))
 
     # Get referral code
     referral_code = current_user.get("referral_code", "")
     if not referral_code:
-        referral_code = await service.generate_referral_code(str(current_user["_id"]))
+        referral_code = await service.generate_referral_code(str(current_user["id"]))
 
     return {
         "coins": {
@@ -632,7 +632,7 @@ async def create_voucher_admin(
 
     # Convert Pydantic model to dict
     data = voucher_data.dict()
-    data["created_by"] = str(current_user["_id"])
+    data["created_by"] = str(current_user["id"])
 
     result = await service.create_voucher(data)
 
@@ -651,7 +651,7 @@ async def create_coupon_admin(
 
     # coupon_data is now a Pydantic model
     data = coupon_data.dict(exclude_unset=True)
-    data["created_by"] = str(current_user["_id"])
+    data["created_by"] = str(current_user["id"])
 
     # Use the imported Coupon model if needed for further validation or consistency
     # (though CreateCouponRequest handles input validation)
@@ -719,7 +719,7 @@ async def get_my_streak(
 ):
     """Get user's current login streak"""
     service = GamificationService(db)
-    streak = await service.get_user_streak(str(current_user["_id"]))
+    streak = await service.get_user_streak(str(current_user["id"]))
 
     if not streak:
         # Create initial streak record
@@ -727,7 +727,7 @@ async def get_my_streak(
         from datetime import datetime, timezone
 
         new_streak = UserStreak(
-            user_id=str(current_user["_id"]),
+            user_id=str(current_user["id"]),
             current_streak=1,
             longest_streak=1,
             last_login=datetime.now(timezone.utc),
@@ -754,7 +754,7 @@ async def daily_checkin(
 ):
     """Record daily check-in and update streak"""
     service = GamificationService(db)
-    result = await service.record_daily_checkin(str(current_user["_id"]))
+    result = await service.record_daily_checkin(str(current_user["id"]))
 
     return result
 
@@ -801,7 +801,7 @@ async def get_my_achievements(
     current_user: dict = Depends(get_current_user), db=Depends(get_db)
 ):
     """Get user's achieved milestones/achievements"""
-    user_id = str(current_user["_id"])
+    user_id = str(current_user["id"])
 
     # Get all milestones
     milestones = (
@@ -858,7 +858,7 @@ async def get_daily_rewards(
     """Get daily reward calendar (last 7 days)"""
     from datetime import datetime, timezone, timedelta
 
-    user_id = str(current_user["_id"])
+    user_id = str(current_user["id"])
     today = datetime.now(timezone.utc).date()
 
     # Get last 7 days of rewards
@@ -909,7 +909,7 @@ async def claim_daily_reward(
     """Claim today's daily reward"""
     from datetime import datetime, timezone
 
-    user_id = str(current_user["_id"])
+    user_id = str(current_user["id"])
     today = datetime.now(timezone.utc).date().isoformat()
 
     # Check if reward exists and not claimed

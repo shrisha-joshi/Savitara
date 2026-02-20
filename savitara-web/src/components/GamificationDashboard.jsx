@@ -47,23 +47,23 @@ const GamificationDashboard = () => {
       setLoading(true);
 
       // Fetch overview
-      const overviewRes = await api.get('/stats/overview');
+      const overviewRes = await api.get('/gamification/stats/overview');
       setOverview(overviewRes.data.data || overviewRes.data);
 
       // Fetch vouchers
-      const vouchersRes = await api.get('/vouchers/my');
+      const vouchersRes = await api.get('/gamification/vouchers/my');
       setVouchers(vouchersRes.data.vouchers || vouchersRes.data.data || []);
 
       // Fetch available coupons
-      const couponsRes = await api.get('/coupons/available');
+      const couponsRes = await api.get('/gamification/coupons/available');
       setCoupons(couponsRes.data.coupons || couponsRes.data.data || []);
 
       // Fetch coin transactions
-      const transactionsRes = await api.get('/coins/transactions?limit=20');
+      const transactionsRes = await api.get('/gamification/coins/transactions?limit=20');
       setTransactions(transactionsRes.data.transactions || transactionsRes.data.data || []);
 
       // Fetch milestones
-      const milestonesRes = await api.get('/milestones/my');
+      const milestonesRes = await api.get('/gamification/milestones/my');
       setMilestones(milestonesRes.data.milestones || milestonesRes.data.data || []);
 
     } catch (error) {

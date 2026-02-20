@@ -54,6 +54,12 @@ from app.api.v1 import (
     admin_services,
     upload,
     gamification,
+    reactions,
+    conversation_settings,
+    voice,
+    forwarding,
+    moderation,
+    group_admin,
 )
 
 from app.middleware.advanced_rate_limit import AdvancedRateLimiter
@@ -67,13 +73,15 @@ import sentry_sdk
 
 # Configure logging
 import os
-os.makedirs(os.path.dirname(settings.LOG_FILE), exist_ok=True)
+_log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs", "savitara.log")
+_log_file = os.path.normpath(_log_file)
+os.makedirs(os.path.dirname(_log_file), exist_ok=True)
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
+    handlers=[  # noqa: E501
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(settings.LOG_FILE),
+        logging.FileHandler(_log_file),
     ],
 )
 
@@ -554,8 +562,16 @@ app.include_router(
     upload.router, prefix=API_V1_PREFIX, tags=["Upload"]
 )  # File upload endpoints
 app.include_router(
-    gamification.router, prefix=API_V1_PREFIX, tags=["Gamification"]
+    gamification.router, prefix=API_V1_PREFIX + "/gamification", tags=["Gamification"]
 )  # Gamification system
+app.include_router(reactions.router, prefix=API_V1_PREFIX)  # Message reactions
+app.include_router(
+    conversation_settings.router, prefix=API_V1_PREFIX
+)  # Conversation settings (pin/archive/mute)
+app.include_router(voice.router, prefix=API_V1_PREFIX)  # Voice messages
+app.include_router(forwarding.router, prefix=API_V1_PREFIX)  # Message forwarding
+app.include_router(moderation.router, prefix=API_V1_PREFIX)  # User blocking and reporting
+app.include_router(group_admin.router, prefix=API_V1_PREFIX)  # Group chat moderation
 
 
 # WebSocket endpoint for real-time communication

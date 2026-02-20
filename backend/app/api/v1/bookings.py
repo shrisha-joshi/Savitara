@@ -409,7 +409,18 @@ async def create_booking(
             notes=booking_data.notes,
         )
 
-        result = await db.bookings.insert_one(booking.model_dump(by_alias=True))
+        booking_dict = booking.model_dump(by_alias=True)
+        # Ensure _id is removed if None to allow MongoDB to generate it
+        if "_id" in booking_dict and booking_dict["_id"] is None:
+            del booking_dict["_id"]
+        
+        # Remove unique fields that are None to avoid duplicate key errors with sparse indexes
+        if "razorpay_order_id" in booking_dict and booking_dict["razorpay_order_id"] is None:
+            del booking_dict["razorpay_order_id"]
+        if "razorpay_payment_id" in booking_dict and booking_dict["razorpay_payment_id"] is None:
+            del booking_dict["razorpay_payment_id"]
+            
+        result = await db.bookings.insert_one(booking_dict)
         booking.id = str(result.inserted_id)
 
         logger.info(f"Booking created: {booking.id} for Grihasta {grihasta_id}")
@@ -482,6 +493,16 @@ async def update_booking_status(
     if current_user["role"] not in [UserRole.ADMIN.value, UserRole.ACHARYA.value]:
         raise PermissionDeniedError(action="Update status")
 
+    if current_user["role"] == UserRole.ACHARYA.value:
+        acharya_id = current_user["id"]
+        acharya_obj = ObjectId(acharya_id) if ObjectId.is_valid(acharya_id) else None
+        acharya_profile = await db.acharya_profiles.find_one(
+            {"user_id": acharya_obj or acharya_id}, {"_id": 1}
+        )
+        acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
+        if str(booking.get("acharya_id")) not in [str(acharya_profile_id), acharya_id]:
+            raise PermissionDeniedError(action="Update status")
+
     update_doc = {
         "status": status_update.status,
         "updated_at": datetime.now(timezone.utc),
@@ -492,6 +513,14 @@ async def update_booking_status(
 
     if status_update.notes is not None:
         update_doc["notes"] = status_update.notes
+
+    # For request-mode bookings, when Acharya confirms, auto-generate start OTP and set status to confirmed
+    if (
+        status_update.status == BookingStatus.CONFIRMED.value
+        and booking.get("booking_mode") == "request"
+        and not booking.get("start_otp")
+    ):
+        update_doc["start_otp"] = generate_otp()
 
     await db.bookings.update_one({"_id": ObjectId(booking_id)}, {"$set": update_doc})
     return StandardResponse(success=True, message="Status updated")
@@ -695,14 +724,19 @@ async def start_booking(
     """
     try:
         acharya_id = current_user["id"]
+        acharya_obj_id = ObjectId(acharya_id) if ObjectId.is_valid(acharya_id) else None
 
         # Get booking
         booking_doc = await db.bookings.find_one({"_id": ObjectId(booking_id)})
         if not booking_doc:
             raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
 
-        # Verify Acharya
-        if str(booking_doc["acharya_id"]) != acharya_id:
+        # Verify Acharya (allow profile id match)
+        acharya_profile = await db.acharya_profiles.find_one(
+            {"user_id": acharya_obj_id or acharya_id}, {"_id": 1}
+        )
+        acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
+        if str(booking_doc.get("acharya_id")) not in [str(acharya_profile_id), acharya_id]:
             raise PermissionDeniedError(action="Start booking")
 
         # Check booking status
@@ -803,6 +837,7 @@ def _verify_booking_participation(
     booking_doc: dict, user_id: str, user_role: str
 ) -> None:
     """Verify user is participant in booking"""
+    acharya_user_id = booking_doc.get("acharya_user_id")
     if (
         (
             user_role == UserRole.GRIHASTA.value
@@ -811,6 +846,7 @@ def _verify_booking_participation(
         or (
             user_role == UserRole.ACHARYA.value
             and str(booking_doc["acharya_id"]) != user_id
+            and str(acharya_user_id) != user_id
         )
         or (user_role not in [UserRole.GRIHASTA.value, UserRole.ACHARYA.value])
     ):
@@ -929,12 +965,22 @@ async def get_my_bookings(
         user_id = current_user["id"]
         role = current_user["role"]
 
+        try:
+            user_obj_id = ObjectId(user_id)
+        except Exception:
+            user_obj_id = None
+
         # Build query
         query = {}
         if role == UserRole.GRIHASTA.value:
-            query["grihasta_id"] = user_id
+            query["grihasta_id"] = user_obj_id or user_id
         elif role == UserRole.ACHARYA.value:
-            query["acharya_id"] = user_id
+            # Acharya bookings are stored by acharya_profile _id; resolve profile by user_id
+            acharya_profile = await db.acharya_profiles.find_one(
+                {"user_id": user_obj_id or user_id}, {"_id": 1}
+            )
+            acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
+            query["acharya_id"] = acharya_profile_id or user_obj_id or user_id
         else:
             raise PermissionDeniedError(action="View bookings")
 
@@ -961,11 +1007,44 @@ async def get_my_bookings(
                     "as": "acharya",
                 }
             },
-            {MONGO_UNWIND: "$acharya"},
+            {MONGO_UNWIND: {"path": "$acharya", "preserveNullAndEmptyArrays": True}},
+            {
+                MONGO_LOOKUP: {
+                    "from": "users",
+                    "localField": "grihasta_id",
+                    "foreignField": "_id",
+                    "as": "grihasta_user",
+                }
+            },
+            {MONGO_UNWIND: {"path": "$grihasta_user", "preserveNullAndEmptyArrays": True}},
+            {
+                MONGO_LOOKUP: {
+                    "from": "users",
+                    "localField": "acharya.user_id",
+                    "foreignField": "_id",
+                    "as": "acharya_user",
+                }
+            },
+            {MONGO_UNWIND: {"path": "$acharya_user", "preserveNullAndEmptyArrays": True}},
             {
                 "$addFields": {
                     "pooja_name": {"$ifNull": ["$pooja.name", "$service_name"]},
                     "acharya_user_id": "$acharya.user_id",
+                    "pooja_type": {"$ifNull": ["$pooja.name", "$service_name"]},
+                    "grihasta_name": {
+                        "$ifNull": [
+                            "$grihasta_user.full_name",
+                            "$grihasta_user.name",
+                        ]
+                    },
+                    "acharya_name": {
+                        "$ifNull": [
+                            "$acharya.name",
+                            "$acharya_user.full_name",
+                            "$acharya_user.name",
+                        ]
+                    },
+                    "scheduled_datetime": "$date_time",
                 }
             },
             {MONGO_SORT: {"created_at": -1}},
@@ -1035,20 +1114,44 @@ async def get_booking_details(
                     "as": "acharya",
                 }
             },
-            {MONGO_UNWIND: "$acharya"},
+            {MONGO_UNWIND: {"path": "$acharya", "preserveNullAndEmptyArrays": True}},
             {
                 MONGO_LOOKUP: {
-                    "from": "grihasta_profiles",
+                    "from": "users",
                     "localField": "grihasta_id",
                     "foreignField": "_id",
-                    "as": "grihasta",
+                    "as": "grihasta_user",
                 }
             },
-            {"$unwind": "$grihasta"},
+            {"$unwind": {"path": "$grihasta_user", "preserveNullAndEmptyArrays": True}},
+            {
+                MONGO_LOOKUP: {
+                    "from": "users",
+                    "localField": "acharya.user_id",
+                    "foreignField": "_id",
+                    "as": "acharya_user",
+                }
+            },
+            {"$unwind": {"path": "$acharya_user", "preserveNullAndEmptyArrays": True}},
             {
                 "$addFields": {
                     "pooja_name": {"$ifNull": ["$pooja.name", "$service_name"]},
                     "acharya_user_id": "$acharya.user_id",
+                    "pooja_type": {"$ifNull": ["$pooja.name", "$service_name"]},
+                    "grihasta_name": {
+                        "$ifNull": [
+                            "$grihasta_user.full_name",
+                            "$grihasta_user.name",
+                        ]
+                    },
+                    "acharya_name": {
+                        "$ifNull": [
+                            "$acharya.name",
+                            "$acharya_user.full_name",
+                            "$acharya_user.name",
+                        ]
+                    },
+                    "scheduled_datetime": "$date_time",
                 }
             },
         ]
@@ -1063,12 +1166,14 @@ async def get_booking_details(
         # Verify access
         user_role = current_user["role"]
         user_id = current_user["id"]
+        acharya_profile_id = booking.get("acharya_id")
+        acharya_user_id = booking.get("acharya_user_id")
         if (
             user_role == UserRole.GRIHASTA.value
-            and str(booking["grihasta_id"]) != user_id
+            and str(booking.get("grihasta_id")) != user_id
         ) or (
             user_role == UserRole.ACHARYA.value
-            and str(booking["acharya_id"]) != user_id
+            and (str(acharya_profile_id) != user_id and str(acharya_user_id) != user_id)
         ):
             raise PermissionDeniedError(action=ERROR_VIEW_BOOKING)
 

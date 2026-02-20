@@ -46,7 +46,7 @@ class SavitaraUser(HttpUser):
         min_rating = random.choice([0, 3.5, 4.0, 4.5])
         
         with self.client.get(
-            f"/api/v1/users/acharyas/search",
+            "/api/v1/users/acharyas/search",
             params={
                 "city": city,
                 "min_rating": min_rating,
@@ -151,6 +151,75 @@ class SavitaraUser(HttpUser):
                 response.success()
             else:
                 response.failure(f"Health check failed: {response.status_code}")
+    
+    @task(1)
+    def get_blocked_users(self):
+        """Test getting blocked users list"""
+        with self.client.get(
+            "/api/v1/moderation/blocks",
+            params={"limit": 50, "offset": 0},
+            headers=self.headers,
+            catch_response=True,
+            name="/api/v1/moderation/blocks"
+        ) as response:
+            if response.status_code in [200, 401]:
+                response.success()
+            else:
+                response.failure(f"Get blocked users failed: {response.status_code}")
+    
+    @task(1)
+    def create_report(self):
+        """Test creating a report"""
+        report_data = {
+            "reported_user_id": f"user_{random.randint(1, 100)}",
+            "reason": random.choice(["spam", "harassment", "inappropriate", "violence"]),
+            "description": "Test report for load testing",
+            "context": {"source": "load_test"}
+        }
+        
+        with self.client.post(
+            "/api/v1/moderation/reports",
+            json=report_data,
+            headers=self.headers,
+            catch_response=True,
+            name="/api/v1/moderation/reports [POST]"
+        ) as response:
+            if response.status_code in [201, 400, 401]:
+                response.success()
+            else:
+                response.failure(f"Create report failed: {response.status_code}")
+    
+    @task(1)
+    def get_user_reports(self):
+        """Test getting user's reports"""
+        with self.client.get(
+            "/api/v1/moderation/reports",
+            params={"limit": 50, "offset": 0},
+            headers=self.headers,
+            catch_response=True,
+            name="/api/v1/moderation/reports [GET]"
+        ) as response:
+            if response.status_code in [200, 401]:
+                response.success()
+            else:
+                response.failure(f"Get reports failed: {response.status_code}")
+    
+    @task(1)
+    def get_group_audit_log(self):
+        """Test getting group audit log"""
+        conversation_id = f"conv_{random.randint(1, 50)}"
+        
+        with self.client.get(
+            f"/api/v1/groups/{conversation_id}/audit",
+            params={"limit": 50, "skip": 0},
+            headers=self.headers,
+            catch_response=True,
+            name="/api/v1/groups/{id}/audit"
+        ) as response:
+            if response.status_code in [200, 403, 404]:
+                response.success()
+            else:
+                response.failure(f"Get audit log failed: {response.status_code}")
 
 
 # Custom event handlers for detailed metrics
@@ -174,16 +243,17 @@ def on_test_stop(environment, **kwargs):
     
     # Print summary statistics
     stats = environment.stats
-    print(f"\n{'='*80}")
-    print(f"LOAD TEST SUMMARY")
-    print(f"{'='*80}")
+    separator = "=" * 80
+    print(f"\n{separator}")
+    print("LOAD TEST SUMMARY")
+    print(separator)
     print(f"Total Requests: {stats.total.num_requests}")
     print(f"Total Failures: {stats.total.num_failures}")
     print(f"Average Response Time: {stats.total.avg_response_time:.2f}ms")
     print(f"Min Response Time: {stats.total.min_response_time:.2f}ms")
     print(f"Max Response Time: {stats.total.max_response_time:.2f}ms")
     print(f"Requests/sec: {stats.total.current_rps:.2f}")
-    print(f"{'='*80}\n")
+    print(f"{separator}\n")
 
 
 # Run with:

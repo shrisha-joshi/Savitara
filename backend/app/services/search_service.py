@@ -5,6 +5,7 @@ Provides advanced full-text search capabilities for acharyas
 from elasticsearch import AsyncElasticsearch
 from typing import List, Dict, Any, Optional
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -286,5 +287,19 @@ class SearchService:
         await self.es.close()
 
 
-# Singleton instance
-search_service = SearchService()
+# Singleton instance - pick up ELASTICSEARCH_HOSTS from settings
+def _make_search_service() -> "SearchService":
+    try:
+        from app.core.config import settings
+        hosts_raw = settings.ELASTICSEARCH_HOSTS or "http://localhost:9200"
+        # Handle both plain URL ("http://es:9200") and JSON-array string ('["http://..."]')
+        if hosts_raw.strip().startswith("["):
+            hosts = json.loads(hosts_raw)
+        else:
+            hosts = [hosts_raw]
+        return SearchService(es_url=hosts[0])
+    except Exception:
+        return SearchService()
+
+
+search_service = _make_search_service()

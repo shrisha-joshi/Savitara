@@ -292,3 +292,9 @@ def create_http_exception(exc: SavitaraException) -> HTTPException:
             },
         },
     )
+
+
+# Aliases for compatibility with other modules
+NotFoundException = ResourceNotFoundError
+ForbiddenException = PermissionDeniedError
+ValidationException = ValidationError

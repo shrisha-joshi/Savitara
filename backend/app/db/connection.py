@@ -180,11 +180,45 @@ class DatabaseManager:
             cls.db.messages, [("sender_id", 1), ("receiver_id", 1)]
         )
         await cls._create_index_safe(cls.db.messages, "created_at")
+        # Enhanced indexes for message reactions and media filtering
+        await cls._create_index_safe(
+            cls.db.messages, [("conversation_id", 1), ("message_type", 1)]
+        )
 
         # Conversations indexes
         await cls._create_index_safe(cls.db.conversations, "participants")
         await cls._create_index_safe(
             cls.db.conversations, [("participants", 1), ("updated_at", -1)]
+        )
+        
+        # Conversation User Settings indexes (new collection)
+        await cls._create_index_safe(
+            cls.db.conversation_user_settings, [("conversation_id", 1), ("user_id", 1)], unique=True
+        )
+        await cls._create_index_safe(
+            cls.db.conversation_user_settings, [("user_id", 1), ("is_pinned", 1), ("pin_rank", 1)]
+        )
+        await cls._create_index_safe(
+            cls.db.conversation_user_settings, [("user_id", 1), ("is_archived", 1)]
+        )
+        
+        # Conversation Members indexes (new collection for group chat)
+        await cls._create_index_safe(
+            cls.db.conversation_members, [("conversation_id", 1), ("user_id", 1)], unique=True
+        )
+        await cls._create_index_safe(
+            cls.db.conversation_members, [("user_id", 1), ("conversation_id", 1)]
+        )
+        await cls._create_index_safe(
+            cls.db.conversation_members, [("conversation_id", 1), ("role", 1)]
+        )
+        
+        # Room Audit Log indexes (new collection for group admin actions)
+        await cls._create_index_safe(
+            cls.db.room_audit_log, [("conversation_id", 1), ("created_at", -1)]
+        )
+        await cls._create_index_safe(
+            cls.db.room_audit_log, [("actor_id", 1), ("created_at", -1)]
         )
 
         # Panchanga indexes
@@ -288,6 +322,8 @@ class DatabaseManager:
             cls.db.user_reports, [("reported_user_id", 1), ("created_at", -1)]
         )
         await cls._create_index_safe(cls.db.user_reports, "reviewed_by")
+        # Enhanced: Index for message-specific reports
+        await cls._create_index_safe(cls.db.user_reports, "message_id", sparse=True)
 
         # Moderation: Blocked Users indexes
         await cls._create_index_safe(
@@ -361,3 +397,7 @@ def get_db() -> AsyncIOMotorDatabase:
             },
         )
     return db
+
+
+# Alias for compatibility
+get_database = get_db

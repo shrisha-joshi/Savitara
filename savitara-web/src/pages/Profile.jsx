@@ -101,7 +101,7 @@ export default function Profile() {
     const fetchStats = async () => {
       try {
         const response = await api.get('/bookings')
-        const rawBookings = response.data?.data || response.data || []
+        const rawBookings = response.data?.data?.bookings || response.data?.data || response.data || []
         const bookings = Array.isArray(rawBookings) ? rawBookings : []
         const now = new Date()
         

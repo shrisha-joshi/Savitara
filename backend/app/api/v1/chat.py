@@ -22,6 +22,7 @@ from app.models.database import Message, Conversation, UserRole
 from slowapi.errors import RateLimitExceeded
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from app.services.websocket_manager import manager
+from app.middleware.block_enforcement import BlockEnforcementMiddleware
 import re
 from pydantic import BaseModel
 
@@ -158,7 +159,13 @@ async def _get_or_create_conversation(db, sender_id: str, receiver_id: str) -> s
 async def _create_one_to_one_message(
     db, sender_id: str, receiver_id: str, content: str
 ) -> Tuple[Message, str]:
-    """Create message for 1-to-1 chat"""
+    """Create message for 1-to-1 chat with block enforcement"""
+    # Check if users have blocked each other
+    block_enforcer = BlockEnforcementMiddleware(db)
+    await block_enforcer.check_block_status(
+        sender_id, receiver_id, action="send message"
+    )
+
     conversation_id = await _get_or_create_conversation(db, sender_id, receiver_id)
     message = Message(
         conversation_id=ObjectId(conversation_id),
@@ -189,13 +196,8 @@ async def _get_display_name(db, other_user: dict) -> str:
     return "User"
 
 
-async def _enrich_conversation(db, conv: dict, user_id: str) -> dict:
-    """Enrich a conversation with unread count, other user info, and last message"""
-    conv_oid = conv["_id"]
-    conv_id = str(conv_oid)
-    user_oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
-
-    # Count unread messages - try ObjectId first, fallback to string
+async def _count_unread_messages(db, conv_oid, conv_id: str, user_id: str, user_oid) -> int:
+    """Count unread messages for a conversation."""
     unread_count = 0
     if user_oid:
         unread_count = await db.messages.count_documents(
@@ -205,25 +207,31 @@ async def _enrich_conversation(db, conv: dict, user_id: str) -> dict:
         unread_count = await db.messages.count_documents(
             {"conversation_id": conv_id, "receiver_id": user_id, "read": False}
         )
+    return unread_count
 
-    # Get other participant - compare as strings to avoid ObjectId/string mismatch
+
+async def _get_other_participant(db, conv: dict, user_id: str):
+    """Get the other participant in a conversation."""
     other_user_id = next(
         (p for p in conv.get("participants", []) if str(p) != user_id), None
     )
-    other_user = None
-    if other_user_id:
-        oid = (
-            ObjectId(str(other_user_id))
-            if ObjectId.is_valid(str(other_user_id))
-            else None
-        )
-        if oid:
-            other_user = await db.users.find_one({"_id": oid})
-        if not other_user:
-            other_user = await db.users.find_one({"_id": other_user_id})
-    display_name = await _get_display_name(db, other_user)
+    if not other_user_id:
+        return None
+    
+    oid = (
+        ObjectId(str(other_user_id))
+        if ObjectId.is_valid(str(other_user_id))
+        else None
+    )
+    if oid:
+        other_user = await db.users.find_one({"_id": oid})
+        if other_user:
+            return other_user
+    return await db.users.find_one({"_id": other_user_id})
 
-    # Get last message - try ObjectId then string for conversation_id
+
+async def _get_last_message(db, conv_oid, conv_id: str):
+    """Get the last message for a conversation."""
     last_message = await db.messages.find_one(
         {"conversation_id": conv_oid}, sort=[("created_at", -1)]
     )
@@ -231,16 +239,59 @@ async def _enrich_conversation(db, conv: dict, user_id: str) -> dict:
         last_message = await db.messages.find_one(
             {"conversation_id": conv_id}, sort=[("created_at", -1)]
         )
+    
+    if not last_message:
+        return None
+    
+    return {
+        "content": last_message.get("content"),
+        "created_at": last_message.get("created_at"),
+        "timestamp": last_message.get("created_at").isoformat()
+        if last_message.get("created_at")
+        else None,
+    }
 
-    last_msg_data = None
-    if last_message:
-        last_msg_data = {
-            "content": last_message.get("content"),
-            "created_at": last_message.get("created_at"),
-            "timestamp": last_message.get("created_at").isoformat()
-            if last_message.get("created_at")
-            else None,
+
+async def _get_conversation_settings(db, conv_id: str, user_id: str):
+    """Get conversation settings for a user."""
+    settings = await db.conversation_user_settings.find_one(
+        {"conversation_id": conv_id, "user_id": user_id}
+    )
+    
+    if not settings:
+        return {
+            "is_pinned": False,
+            "pin_rank": None,
+            "is_archived": False,
+            "muted_until": None,
+            "notifications_on": True,
+            "last_read_at": None,
         }
+    
+    return {
+        "is_pinned": settings.get("is_pinned", False),
+        "pin_rank": settings.get("pin_rank"),
+        "is_archived": settings.get("is_archived", False),
+        "muted_until": settings.get("muted_until"),
+        "notifications_on": settings.get("notifications_on", True),
+        "last_read_at": settings.get("last_read_at"),
+    }
+
+
+async def _enrich_conversation(db, conv: dict, user_id: str) -> dict:
+    """Enrich a conversation with unread count, other user info, last message, and settings"""
+    conv_oid = conv["_id"]
+    conv_id = str(conv_oid)
+    user_oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
+
+    # Get conversation data using helper functions
+    unread_count = await _count_unread_messages(db, conv_oid, conv_id, user_id, user_oid)
+    other_user = await _get_other_participant(db, conv, user_id)
+    last_msg_data = await _get_last_message(db, conv_oid, conv_id)
+    settings_data = await _get_conversation_settings(db, conv_id, user_id)
+    
+    # Get display name for other user
+    display_name = await _get_display_name(db, other_user)
 
     return {
         "id": conv_id,
@@ -259,6 +310,7 @@ async def _enrich_conversation(db, conv: dict, user_id: str) -> dict:
         "unread_count": unread_count,
         "last_message_at": conv.get("last_message_at"),
         "participants": [str(p) for p in conv.get("participants", [])],
+        **settings_data,  # Unpack settings dict
     }
 
 
@@ -736,15 +788,16 @@ async def verify_conversation(
 async def get_conversations(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    include_archived: bool = Query(False, description="Include archived conversations"),
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Get user's conversations with unread count"""
+    """Get user's conversations with unread count and settings"""
     try:
         user_id = current_user["id"]
         user_oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
 
-        # Get conversations where user is participant (ObjectId)
+        # Get ALL conversations where user is participant (we'll filter after enrichment)
         conversations = []
         if user_oid:
             conversations = (
@@ -752,9 +805,7 @@ async def get_conversations(
                     {"participants": user_oid, "is_open_chat": False}
                 )
                 .sort("last_message_at", -1)
-                .skip((page - 1) * limit)
-                .limit(limit)
-                .to_list(length=limit)
+                .to_list(length=None)  # Get all, we'll paginate after filtering
             )
 
         # Fallback: query with string (legacy data)
@@ -764,36 +815,45 @@ async def get_conversations(
                     {"participants": user_id, "is_open_chat": False}
                 )
                 .sort("last_message_at", -1)
-                .skip((page - 1) * limit)
-                .limit(limit)
-                .to_list(length=limit)
+                .to_list(length=None)
             )
 
-        # Enrich each conversation with metadata
+        # Enrich each conversation with metadata and settings
         result_conversations = [
             await _enrich_conversation(db, conv, user_id) for conv in conversations
         ]
 
-        # Get total count (check both forms)
-        total_count = 0
-        if user_oid:
-            total_count = await db.conversations.count_documents(
-                {"participants": user_oid, "is_open_chat": False}
+        # Filter out archived conversations unless include_archived=True
+        if not include_archived:
+            result_conversations = [
+                conv for conv in result_conversations if not conv.get("is_archived", False)
+            ]
+
+        # Sort: pinned first (by pin_rank ascending), then unpinned (by last_message_at descending)
+        # pin_rank of 0 is most recent pin, higher numbers are older pins
+        result_conversations.sort(
+            key=lambda c: (
+                not c.get("is_pinned", False),  # Pinned conversations first (False < True)
+                c.get("pin_rank") if c.get("is_pinned") else float("inf"),  # Lower pin_rank first
+                -(c.get("last_message_at").timestamp() if c.get("last_message_at") else 0),  # Recent messages first
             )
-        if total_count == 0:
-            total_count = await db.conversations.count_documents(
-                {"participants": user_id, "is_open_chat": False}
-            )
+        )
+
+        # Apply pagination after filtering and sorting
+        total_count = len(result_conversations)
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        paginated_conversations = result_conversations[start_idx:end_idx]
 
         return StandardResponse(
             success=True,
             data={
-                "conversations": result_conversations,
+                "conversations": paginated_conversations,
                 "pagination": {
                     "page": page,
                     "limit": limit,
                     "total": total_count,
-                    "pages": (total_count + limit - 1) // limit,
+                    "pages": (total_count + limit - 1) // limit if total_count > 0 else 0,
                 },
             },
         )

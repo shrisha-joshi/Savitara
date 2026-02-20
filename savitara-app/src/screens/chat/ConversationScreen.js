@@ -1,15 +1,57 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { View, StyleSheet, Text } from 'react-native';
-import { GiftedChat } from 'react-native-gifted-chat';
+import { GiftedChat, Bubble } from 'react-native-gifted-chat';
 import * as ScreenCapture from 'expo-screen-capture';
+import * as Haptics from 'expo-haptics';
 import { chatAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import EmojiPicker from '../../components/EmojiPicker';
+import MessageReactions from '../../components/MessageReactions';
+import { useSocket } from '../../context/SocketContext';
+
+function BubbleRenderer({ currentMessage, reactions, currentUserId, onAddReaction, onRemoveReaction, ...props }) {
+  return (
+    <View>
+      <Bubble
+        currentMessage={currentMessage}
+        {...props}
+        wrapperStyle={{
+          left: { backgroundColor: '#F0F0F0' },
+          right: { backgroundColor: '#FF6B35' },
+        }}
+      />
+      {reactions.length > 0 && (
+        <MessageReactions
+          reactions={reactions}
+          currentUserId={currentUserId}
+          onAddReaction={onAddReaction}
+          onRemoveReaction={onRemoveReaction}
+          messageId={currentMessage._id}
+          compact
+        />
+      )}
+    </View>
+  );
+}
+BubbleRenderer.propTypes = {
+  currentMessage: PropTypes.shape({
+    _id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  }).isRequired,
+  reactions: PropTypes.array.isRequired,
+  currentUserId: PropTypes.string.isRequired,
+  onAddReaction: PropTypes.func.isRequired,
+  onRemoveReaction: PropTypes.func.isRequired,
+};
 
 const ConversationScreen = ({ route }) => {
   const { conversationId, otherUserId, otherUserName } = route.params;
   const { user } = useAuth();
+  const { socket } = useSocket();
   const [messages, setMessages] = useState([]);
+  const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
+  const [selectedMessageId, setSelectedMessageId] = useState(null);
+  const [messageReactions, setMessageReactions] = useState({}); // messageId -> reactions array
 
   // Prevent screen capture on mount, allow on unmount
   useEffect(() => {
@@ -26,7 +68,18 @@ const ConversationScreen = ({ route }) => {
   useEffect(() => {
     loadMessages();
     markAsRead();
-  }, []);
+    
+    // WebSocket listeners for real-time reactions
+    if (socket) {
+      socket.on('reaction_added', handleReactionUpdate);
+      socket.on('reaction_removed', handleReactionUpdate);
+      
+      return () => {
+        socket.off('reaction_added', handleReactionUpdate);
+        socket.off('reaction_removed', handleReactionUpdate);
+      };
+    }
+  }, [socket]);
 
   const loadMessages = async () => {
     try {
@@ -43,10 +96,41 @@ const ConversationScreen = ({ route }) => {
         },
       })).reverse();
       setMessages(formattedMessages);
+      
+      // Load reactions for all messages
+      await loadReactionsForMessages(messagesData.map(m => m._id || m.id));
     } catch (error) {
       console.error('Failed to load messages:', error);
-    } finally {
-      setLoading(false);
+    }
+  };
+
+  const loadReactionsForMessages = async (messageIds) => {
+    try {
+      const reactionsMap = {};
+      
+      // Load reactions for each message (batch if possible in future)
+      for (const messageId of messageIds) {
+        try {
+          const response = await chatAPI.getReactions(messageId);
+          reactionsMap[messageId] = response.data.data || [];
+        } catch (error) {
+          console.error(`Failed to load reactions for message ${messageId}:`, error);
+          reactionsMap[messageId] = [];
+        }
+      }
+      
+      setMessageReactions(reactionsMap);
+    } catch (error) {
+      console.error('Failed to load reactions:', error);
+    }
+  };
+
+  const handleReactionUpdate = (data) => {
+    if (data.message_id) {
+      setMessageReactions((prev) => ({
+        ...prev,
+        [data.message_id]: data.reactions || [],
+      }));
     }
   };
 
@@ -72,6 +156,55 @@ const ConversationScreen = ({ route }) => {
     }
   }, [conversationId]);
 
+  const handleLongPress = (context, message) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectedMessageId(message._id);
+    setEmojiPickerVisible(true);
+  };
+
+  const handleAddReaction = async (messageId, emoji) => {
+    try {
+      await chatAPI.addReaction(messageId, emoji);
+      // Optimistic update
+      const response = await chatAPI.getReactions(messageId);
+      setMessageReactions((prev) => ({
+        ...prev,
+        [messageId]: response.data.data || [],
+      }));
+    } catch (error) {
+      console.error('Failed to add reaction:', error);
+      alert('Failed to add reaction');
+    }
+  };
+
+  const handleRemoveReaction = async (messageId, emoji) => {
+    try {
+      await chatAPI.removeReaction(messageId, emoji);
+      // Optimistic update
+      const response = await chatAPI.getReactions(messageId);
+      setMessageReactions((prev) => ({
+        ...prev,
+        [messageId]: response.data.data || [],
+      }));
+    } catch (error) {
+      console.error('Failed to remove reaction:', error);
+      alert('Failed to remove reaction');
+    }
+  };
+
+  const renderBubble = (props) => {
+    const reactions = messageReactions[props.currentMessage._id] || [];
+    return (
+      <BubbleRenderer
+        {...props}
+        reactions={reactions}
+        currentUserId={user._id}
+        onAddReaction={handleAddReaction}
+        onRemoveReaction={handleRemoveReaction}
+      />
+    );
+  };
+
   return (
     <View style={styles.container}>
       {/* Watermark Overlay */}
@@ -96,6 +229,15 @@ const ConversationScreen = ({ route }) => {
         }}
         renderUsernameOnMessage
         showUserAvatar
+        renderBubble={renderBubble}
+        onLongPress={handleLongPress}
+      />
+      
+      <EmojiPicker
+        visible={emojiPickerVisible}
+        onClose={() => setEmojiPickerVisible(false)}
+        onSelectEmoji={handleAddReaction}
+        messageId={selectedMessageId}
       />
     </View>
   );

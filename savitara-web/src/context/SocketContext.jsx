@@ -15,6 +15,8 @@ export const SocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [messages, setMessages] = useState([]);
+  const [typingIndicators, setTypingIndicators] = useState({});
+  const [bookingUpdates, setBookingUpdates] = useState([]);
   const [offlineQueue, setOfflineQueue] = useState([]);
   const reconnectTimeoutRef = useRef(null);
   const connectingRef = useRef(false);
@@ -59,9 +61,9 @@ export const SocketProvider = ({ children }) => {
     
     // Use environment variable or fallback to current host
     const backendHost = import.meta.env.VITE_BACKEND_WS_HOST || 
-                        import.meta.env.VITE_BACKEND_HOST || 
-                        globalThis.location?.host || 
-                        'localhost:8000';
+              import.meta.env.VITE_BACKEND_HOST || 
+              'localhost:8000' ||
+              globalThis.location?.host;
     
     const wsUrl = `${protocol}//${backendHost}/ws/${user.id}?token=${token}`;
 
@@ -99,8 +101,29 @@ export const SocketProvider = ({ children }) => {
         console.log('WS Message:', data);
         
         if (data.type === 'new_message') {
-          // The WS data object itself contains the message fields (id, sender_id, content, etc.)
           setMessages(prev => [...prev, data]);
+        } else if (data.type === 'message_read') {
+          setMessages(prev => prev.map(msg => {
+            if ((msg.id || msg._id) === (data.message_id || data.id)) {
+              return { ...msg, status: 'read', read_at: data.read_at || new Date().toISOString() };
+            }
+            return msg;
+          }));
+        } else if (data.type === 'typing_indicator') {
+          const fromId = data.sender_id || data.user_id
+          if (fromId) {
+            setTypingIndicators(prev => ({ ...prev, [fromId]: { isTyping: data.is_typing, at: Date.now() } }))
+            // auto-clear typing after 5s
+            setTimeout(() => {
+              setTypingIndicators(prev => {
+                const clone = { ...prev }
+                delete clone[fromId]
+                return clone
+              })
+            }, 5000)
+          }
+        } else if (data.type === 'booking_update') {
+          setBookingUpdates(prev => [...prev.slice(-10), { ...data, received_at: Date.now() }]);
         }
       } catch (err) {
         console.error('WS Parse Error:', err);
@@ -174,9 +197,11 @@ export const SocketProvider = ({ children }) => {
       sendMessage, 
       queueMessage, 
       offlineQueue,
-      sendTypingIndicator 
+      sendTypingIndicator,
+      typingIndicators,
+      bookingUpdates,
     }),
-    [socket, isConnected, isConnecting, messages, sendMessage, queueMessage, offlineQueue, sendTypingIndicator]
+    [socket, isConnected, isConnecting, messages, sendMessage, queueMessage, offlineQueue, sendTypingIndicator, typingIndicators, bookingUpdates]
   );
 
   return (

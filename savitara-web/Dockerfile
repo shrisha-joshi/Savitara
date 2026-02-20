@@ -16,8 +16,8 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build the application
-RUN npm run build
+# Build the application (increase heap to prevent OOM in constrained environments)
+RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 
 # Stage 2: Serve the application with Nginx
 FROM nginx:alpine

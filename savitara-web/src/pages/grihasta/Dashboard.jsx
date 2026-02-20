@@ -16,7 +16,7 @@ export default function GrihastaDashboard() {
   const [streakDays, setStreakDays] = useState(0)
   
   // Use SWR for automatic caching and revalidation
-  const { data, isLoading: loading } = useSWRApi('/bookings/my?limit=50')
+  const { data, isLoading: loading } = useSWRApi('/bookings/my-bookings?limit=50')
   
   // Fetch streak data
   useEffect(() => {

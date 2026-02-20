@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from app.core.security import get_current_user
 from app.core.constants import MONGO_REGEX
 from app.db.connection import get_db
-from app.models.services import ServiceBookingType
+from app.models.services import ServiceBookingType, Service
 from app.schemas.requests import StandardResponse
 from app.core.exceptions import ResourceNotFoundError, InvalidInputError
 
@@ -75,10 +75,13 @@ async def get_services(
             .to_list(length=limit)
         )
         total = await db.services.count_documents(query)
+        
+        # Convert raw documents to Pydantic models to handle _id serialization
+        services_list = [Service(**service) for service in services]
 
         return StandardResponse(
             success=True,
-            data={"services": services, "total": total, "skip": skip, "limit": limit},
+            data={"services": services_list, "total": total, "skip": skip, "limit": limit},
         )
     except Exception as e:
         logger.error(f"Error fetching services: {e}")

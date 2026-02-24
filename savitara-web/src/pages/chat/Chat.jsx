@@ -11,6 +11,7 @@ import {
   IconButton,
   CircularProgress,
   Alert,
+  Snackbar,
   Skeleton,
   Fab,
   Menu,
@@ -19,13 +20,16 @@ import {
   ListItemText
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
+import MicIcon from '@mui/icons-material/Mic';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
+import ForwardIcon from '@mui/icons-material/Forward';
 import DoneIcon from '@mui/icons-material/Done';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import ReportIcon from '@mui/icons-material/Report';
@@ -36,6 +40,9 @@ import api from '../../services/api';
 import MessageSkeleton from '../../components/MessageSkeleton';
 import EmojiPickerButton from '../../components/EmojiPickerButton';
 import MessageReactions from '../../components/MessageReactions';
+import VoiceRecorder from '../../components/VoiceRecorder';
+import VoiceMessagePlayer from '../../components/VoiceMessagePlayer';
+import ForwardMessageDialog from '../../components/ForwardMessageDialog';
 
 const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
   const { conversationId: urlConversationId, recipientId } = useParams(); // Should handle both URL params based on route
@@ -63,6 +70,8 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [userMenuAnchor, setUserMenuAnchor] = useState(null);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  const [showForwardDialog, setShowForwardDialog] = useState(false);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -233,6 +242,30 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
     scrollToBottom();
   }, [messages]);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl/Cmd + Enter to send message (when focused on input)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && newMessage.trim()) {
+        e.preventDefault();
+        handleSend();
+      }
+      
+      // Esc to close emoji picker or other dialogs
+      if (e.key === 'Escape') {
+        if (showForwardDialog) {
+          setShowForwardDialog(false);
+        }
+        if (contextMenu !== null) {
+          handleCloseContextMenu();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [newMessage, showForwardDialog, contextMenu]);
+
   // Debounced typing indicator
   const typingDebounceRef = useRef(null);
   const handleTyping = useCallback(() => {
@@ -335,6 +368,11 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
       console.error('Failed to delete message:', err);
       setError('Failed to delete message');
     }
+    handleCloseContextMenu();
+  };
+
+  const handleForwardMessage = () => {
+    setShowForwardDialog(true);
     handleCloseContextMenu();
   };
 
@@ -629,7 +667,58 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
                 }
               }}
             >
-              <Typography variant="body1">{msg.content}</Typography>
+              {/* Message content - support voice, image, regular text */}
+              {msg.message_type === 'voice' ? (
+                <VoiceMessagePlayer
+                  audioUrl={msg.media_url}
+                  duration={msg.duration_s}
+                  waveform={msg.waveform}
+                />
+              ) : msg.message_type === 'image' ? (
+                <Box
+                  component="img"
+                  src={msg.media_url}
+                  alt="Image message"
+                  sx={{ 
+                    maxWidth: '100%', 
+                    borderRadius: 1, 
+                    cursor: 'pointer',
+                    '&:hover': { opacity: 0.9 }
+                  }}
+                  onClick={() => window.open(msg.media_url, '_blank')}
+                />
+              ) : msg.message_type === 'file' ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <AttachFileIcon fontSize="small" />
+                  <Typography 
+                    variant="body2" 
+                    component="a" 
+                    href={msg.media_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ color: isMe ? 'white' : 'primary.main', textDecoration: 'underline' }}
+                  >
+                    {msg.file_name || 'Download File'}
+                  </Typography>
+                </Box>
+              ) : (
+                /* Regular text or forwarded message */
+                <>
+                  {msg.forwarded_from && (
+                    <Box sx={{ 
+                      borderLeft: 2, 
+                      borderColor: isMe ? 'rgba(255,255,255,0.5)' : 'primary.main', 
+                      pl: 1, 
+                      mb: 0.5 
+                    }}>
+                      <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                        Forwarded from {msg.forwarded_from?.name || 'Unknown'}
+                      </Typography>
+                    </Box>
+                  )}
+                  <Typography variant="body1">{msg.content}</Typography>
+                </>
+              )}
               
               {/* Reactions display */}
               {msg.reactions && msg.reactions.length > 0 && (
@@ -710,35 +799,54 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
 
       {/* Input Area */}
       <Paper elevation={3} sx={{ p: 2, mt: inLayout ? 0 : 2, display: 'flex', alignItems: 'flex-end', gap: 2 }}>
-        <TextField
-          fullWidth
-          multiline
-          maxRows={4}
-          variant="outlined"
-          placeholder="Type a message... (Shift+Enter for new line)"
-          value={newMessage}
-          onChange={(e) => {
-            setNewMessage(e.target.value);
-            handleTyping();
-          }}
-          onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-              }
-          }}
-          size="small"
-        />
-        <Button 
-           variant="contained" 
-           color="primary" 
-           endIcon={<SendIcon />} 
-           onClick={handleSend}
-           sx={{ minWidth: 100, height: 40 }}
-           disabled={!newMessage.trim() || sending}
-        >
-          {sending ? 'Sending...' : 'Send'}
-        </Button>
+        {showVoiceRecorder ? (
+          <VoiceRecorder
+            conversationId={activeConversationId}
+            onSend={() => {
+              setShowVoiceRecorder(false);
+            }}
+            onCancel={() => setShowVoiceRecorder(false)}
+          />
+        ) : (
+          <>
+            <TextField
+              fullWidth
+              multiline
+              maxRows={4}
+              variant="outlined"
+              placeholder="Type a message... (Shift+Enter for new line)"
+              value={newMessage}
+              onChange={(e) => {
+                setNewMessage(e.target.value);
+                handleTyping();
+              }}
+              onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                  }
+              }}
+              size="small"
+            />
+            <IconButton 
+              color="primary" 
+              onClick={() => setShowVoiceRecorder(true)}
+              sx={{ height: 40, width: 40 }}
+            >
+              <MicIcon />
+            </IconButton>
+            <Button 
+               variant="contained" 
+               color="primary" 
+               endIcon={<SendIcon />} 
+               onClick={handleSend}
+               sx={{ minWidth: 100, height: 40 }}
+               disabled={!newMessage.trim() || sending}
+            >
+              {sending ? 'Sending...' : 'Send'}
+            </Button>
+          </>
+        )}
       </Paper>
       
       {/* Context Menu for message actions */}
@@ -758,6 +866,12 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
           </ListItemIcon>
           <ListItemText>Copy Message</ListItemText>
         </MenuItem>
+        <MenuItem onClick={handleForwardMessage}>
+          <ListItemIcon>
+            <ForwardIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Forward Message</ListItemText>
+        </MenuItem>
         {selectedMessage && selectedMessage.sender_id === user?.id && (
           <MenuItem onClick={handleDeleteMessage}>
             <ListItemIcon>
@@ -767,6 +881,26 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
           </MenuItem>
         )}
       </Menu>
+      
+      {/* Forward Message Dialog */}
+      <ForwardMessageDialog
+        open={showForwardDialog}
+        onClose={() => setShowForwardDialog(false)}
+        message={selectedMessage}
+        currentUserId={user?.id}
+      />
+      
+      {/* Global error Snackbar */}
+      <Snackbar
+        open={Boolean(error)}
+        autoHideDuration={6000}
+        onClose={() => setError('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setError('')} severity="error" variant="filled" sx={{ width: '100%' }}>
+          {error}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

@@ -11,15 +11,17 @@ import {
   Chip,
   Button,
   Grid,
-  Alert
+  Alert,
+  Snackbar
 } from '@mui/material';
 import { format } from 'date-fns';
 import Layout from '../../components/Layout';
 import api from '../../services/api';
 import { FaCalendarAlt, FaClock, FaUser, FaRupeeSign, FaVideo } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
+import { useSocket } from '../../context/SocketContext';
 
-const BookingCard = ({ booking }) => {
+const BookingCard = ({ booking, onPayNow }) => {
   const navigate = useNavigate();
   const statusColors = {
     'requested': 'info',
@@ -84,7 +86,18 @@ const BookingCard = ({ booking }) => {
               Awaiting Acharya confirmation
             </Alert>
           )}
-          {isUpcoming && booking.status === 'confirmed' && (
+          {booking.status === 'confirmed' && booking.payment_status === 'pending' && (
+            <Button 
+              variant="contained" 
+              color="success" 
+              size="small"
+              sx={{ mb: 1, width: '100%' }}
+              onClick={() => onPayNow(booking)}
+            >
+              Pay Now ₹{booking.total_amount}
+            </Button>
+          )}
+          {isUpcoming && booking.status === 'confirmed' && booking.payment_status === 'completed' && (
             <Button 
               variant="contained" 
               color="primary" 
@@ -129,19 +142,70 @@ BookingCard.propTypes = {
     pooja_name: PropTypes.string,
     acharya_name: PropTypes.string,
     status: PropTypes.string.isRequired,
-    total_amount: PropTypes.number
-  }).isRequired
+    total_amount: PropTypes.number,
+    payment_status: PropTypes.string,
+    booking_mode: PropTypes.string
+  }).isRequired,
+  onPayNow: PropTypes.func.isRequired
 };
 
 export default function MyBookings() {
+  const navigate = useNavigate();
+  const socketContext = useSocket();
+  const { bookingUpdates = [], paymentNotifications = [], markPaymentNotificationRead } = socketContext || {};
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [bookings, setBookings] = useState([]);
   const [tabIndex, setTabIndex] = useState(0);
+  const [paymentLoading, setPaymentLoading] = useState(null);
+  const [notification, setNotification] = useState(null);
 
   useEffect(() => {
     fetchBookings();
   }, []);
+
+  // Listen for WebSocket booking updates
+  useEffect(() => {
+    if (bookingUpdates && bookingUpdates.length > 0) {
+      const latestUpdate = bookingUpdates[bookingUpdates.length - 1];
+      // Refresh bookings when update received
+      fetchBookings();
+      
+      // Show notification
+      if (latestUpdate.type === 'booking_update') {
+        setNotification({
+          message: latestUpdate.message || 'Booking status updated',
+          severity: 'info'
+        });
+      }
+    }
+  }, [bookingUpdates]);
+
+  // Listen for payment notifications
+  useEffect(() => {
+    if (paymentNotifications && paymentNotifications.length > 0) {
+      const unreadNotifs = paymentNotifications.filter(n => !n.read);
+      if (unreadNotifs.length > 0) {
+        const latest = unreadNotifs[unreadNotifs.length - 1];
+        setNotification({
+          message: `Booking approved! Amount: ₹${latest.amount}. Click to pay.`,
+          severity: 'success',
+          action: () => {
+            if (markPaymentNotificationRead) {
+              markPaymentNotificationRead(latest.booking_id);
+            }
+            const booking = bookings.find(b => b.id === latest.booking_id);
+            if (booking) {
+              handlePayNow(booking);
+            } else {
+              // Refresh and navigate
+              fetchBookings();
+            }
+          }
+        });
+      }
+    }
+  }, [paymentNotifications, bookings]);
 
   const fetchBookings = async () => {
     try {
@@ -156,6 +220,35 @@ export default function MyBookings() {
       setError('Failed to load bookings.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePayNow = async (booking) => {
+    try {
+      setPaymentLoading(booking.id);
+      
+      // For request-mode bookings, create payment order first
+      if (booking.booking_mode === 'request' && booking.payment_status === 'pending') {
+        const response = await api.post(`/bookings/${booking.id}/create-payment-order`);
+        if (response.data.success) {
+          // Navigate to payment page with order details
+          navigate(`/booking/${booking.id}/payment`, {
+            state: { 
+              booking,
+              razorpayOrderId: response.data.data.razorpay_order_id,
+              amount: response.data.data.amount
+            }
+          });
+        }
+      } else {
+        // Navigate to existing payment page
+        navigate(`/booking/${booking.id}/payment`);
+      }
+    } catch (err) {
+      console.error('Payment order creation failed:', err);
+      alert(err.response?.data?.message || 'Failed to initiate payment. Please try again.');
+    } finally {
+      setPaymentLoading(null);
     }
   };
 
@@ -198,7 +291,7 @@ export default function MyBookings() {
 
         {filtered.length > 0 ? (
           filtered.map(booking => (
-            <BookingCard key={booking._id || booking.id} booking={booking} />
+            <BookingCard key={booking._id || booking.id} booking={booking} onPayNow={handlePayNow} />
           ))
         ) : (
           <Box textAlign="center" py={8} bgcolor="#f9f9f9" borderRadius={2}>
@@ -215,6 +308,26 @@ export default function MyBookings() {
           </Box>
         )}
       </Container>
+      
+      <Snackbar
+        open={!!notification}
+        autoHideDuration={6000}
+        onClose={() => setNotification(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={() => setNotification(null)} 
+          severity={notification?.severity || 'info'}
+          sx={{ width: '100%' }}
+          action={notification?.action && (
+            <Button color="inherit" size="small" onClick={notification.action}>
+              PAY NOW
+            </Button>
+          )}
+        >
+          {notification?.message}
+        </Alert>
+      </Snackbar>
     </Layout>
   );
 }

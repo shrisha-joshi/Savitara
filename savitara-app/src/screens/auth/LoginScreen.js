@@ -32,9 +32,20 @@ const LoginScreen = () => {
     if (!password) {
       tempErrors.password = 'Password is required';
       isValid = false;
-    } else if (mode === 'register' && password.length < 8) {
-      tempErrors.password = 'Password must be at least 8 characters';
-      isValid = false;
+    } else if (mode === 'register') {
+      if (password.length < 8) {
+        tempErrors.password = 'Password must be at least 8 characters';
+        isValid = false;
+      } else if (!/(?=.*[a-z])/.test(password)) {
+        tempErrors.password = 'Password must contain at least one lowercase letter';
+        isValid = false;
+      } else if (!/(?=.*[A-Z])/.test(password)) {
+        tempErrors.password = 'Password must contain at least one uppercase letter';
+        isValid = false;
+      } else if (!/(?=.*[0-9])/.test(password)) {
+        tempErrors.password = 'Password must contain at least one number';
+        isValid = false;
+      }
     }
 
     // Name validation (only for register)
@@ -139,7 +150,7 @@ const LoginScreen = () => {
         {errors.password && <HelperText type="error" visible={true}>{errors.password}</HelperText>}
         {mode === 'register' && !errors.password && (
             <HelperText type="info" visible={true}>
-              Password must be at least 8 characters
+              Min. 8 characters with uppercase, lowercase & number
             </HelperText>
         )}
 

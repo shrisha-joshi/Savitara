@@ -7,11 +7,12 @@ import {
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   FaBars, FaTimes, FaHome, FaSearch, FaCalendarAlt, FaUser, 
-  FaBell, FaSignOutAlt, FaHeart, FaSun, FaMoon
+  FaBell, FaSignOutAlt, FaHeart, FaSun, FaMoon, FaComment
 } from 'react-icons/fa';
 import SavitaraBrand from '../branding/SavitaraBrand';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useSocket } from '../../context/SocketContext';
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -37,10 +38,14 @@ const Navbar = () => {
     threshold: 50,
   });
 
+  const { paymentNotifications } = useSocket() || {};
+  const unreadChatCount = paymentNotifications?.filter(n => !n.read).length || 0;
+
   const navItems = [
     { label: 'Home', path: '/', icon: <FaHome /> },
     { label: 'Find Acharya', path: '/search', icon: <FaSearch /> },
     { label: 'Services', path: '/services', icon: <FaCalendarAlt /> },
+    { label: 'Chat', path: '/chat', icon: <FaComment />, badge: unreadChatCount },
   ];
 
   const isActive = (path) => location.pathname === path;
@@ -222,35 +227,36 @@ const Navbar = () => {
             {/* Desktop Navigation */}
             <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: 1 }}>
               {navItems.map((item) => (
-                <Button
-                  key={item.path}
-                  onClick={() => navigate(item.path)}
-                  sx={{
-                    color: isActive(item.path) 
-                      ? colors.accent.saffron 
-                      : scrolled || !isHomePage ? colors.text.primary : '#FFFFFF',
-                    fontWeight: isActive(item.path) ? 600 : 400,
-                    px: 2,
-                    position: 'relative',
-                    '&::after': {
-                      content: '""',
-                      position: 'absolute',
-                      bottom: 0,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      width: isActive(item.path) ? '60%' : '0%',
-                      height: 3,
-                      backgroundColor: colors.accent.gold,
-                      borderRadius: 2,
-                      transition: 'width 0.3s ease',
-                    },
-                    '&:hover::after': {
-                      width: '60%',
-                    },
-                  }}
-                >
-                  {item.label}
-                </Button>
+                <Badge key={item.path} badgeContent={item.badge || 0} color="error">
+                  <Button
+                    onClick={() => navigate(item.path)}
+                    sx={{
+                      color: isActive(item.path) 
+                        ? colors.accent.saffron 
+                        : scrolled || !isHomePage ? colors.text.primary : '#FFFFFF',
+                      fontWeight: isActive(item.path) ? 600 : 400,
+                      px: 2,
+                      position: 'relative',
+                      '&::after': {
+                        content: '""',
+                        position: 'absolute',
+                        bottom: 0,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        width: isActive(item.path) ? '60%' : '0%',
+                        height: 3,
+                        backgroundColor: colors.accent.gold,
+                        borderRadius: 2,
+                        transition: 'width 0.3s ease',
+                      },
+                      '&:hover::after': {
+                        width: '60%',
+                      },
+                    }}
+                  >
+                    {item.label}
+                  </Button>
+                </Badge>
               ))}
             </Box>
 

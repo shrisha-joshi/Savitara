@@ -245,11 +245,12 @@ app.add_middleware(
 app.add_middleware(SecurityHeadersMiddleware)
 
 # CORS Middleware - SonarQube: S5122 - Properly configured
+# Supports both HTTP and WebSocket connections
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=[
         "X-Total-Count",
@@ -258,6 +259,8 @@ app.add_middleware(
         "X-RateLimit-Remaining",
         "X-RateLimit-Reset",
     ],
+    # Allow WebSocket upgrade requests
+    max_age=86400,  # Cache preflight for 24 hours
 )
 
 
@@ -583,9 +586,18 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, token: str = No
     - Booking updates
     - Notifications
     - Online status
+    - Typing indicators
 
     Requires 'token' query parameter for authentication.
+    Enhanced with origin validation and reconnection support.
     """
+    # SECURITY: Validate origin header (CORS for WebSocket)
+    origin = websocket.headers.get("origin")
+    if origin and origin not in settings.ALLOWED_ORIGINS:
+        logger.warning(f"WebSocket connection blocked from unauthorized origin: {origin}")
+        await websocket.close(code=1008, reason="Invalid origin")
+        return
+
     # Verify token before connecting
     try:
         if not token:
@@ -622,6 +634,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, token: str = No
         return
 
     await manager.connect(user_id, websocket)
+    logger.info(f"WebSocket connection established for user {user_id} from origin {origin}")
 
     try:
         while True:

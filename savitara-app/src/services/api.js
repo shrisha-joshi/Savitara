@@ -71,9 +71,12 @@ export const userAPI = {
 // Booking APIs
 export const bookingAPI = {
   create: (data) => api.post('/bookings', data),
-  getMyBookings: (params) => api.get('/bookings/my', { params }),
-  getAcharyaBookings: (params) => api.get('/bookings/acharya', { params }),
+  getMyBookings: (params) => api.get('/bookings/my-bookings', { params }),
+  getAcharyaBookings: (params) => api.get('/bookings/my-bookings', { params }),
   getBooking: (id) => api.get(`/bookings/${id}`),
+  updateBookingStatus: (id, data) => api.put(`/bookings/${id}/status`, data),
+  createPaymentOrder: (id) => api.post(`/bookings/${id}/create-payment-order`),
+  verifyPayment: (id, data) => api.post(`/bookings/${id}/payment/verify`, data),
   startBooking: (id, otp) => api.post(`/bookings/${id}/start`, { otp }),
   confirmAttendance: (id, data) => api.post(`/bookings/${id}/attendance`, data),
   referBooking: (bookingId, newAcharyaId, notes) => api.put(`/bookings/${bookingId}/refer`, { new_acharya_id: newAcharyaId, notes }),
@@ -100,6 +103,15 @@ export const chatAPI = {
   addReaction: (messageId, emoji) => api.post(`/messages/${messageId}/reactions`, { emoji }),
   removeReaction: (messageId, emoji) => api.delete(`/messages/${messageId}/reactions/${emoji}`),
   getReactions: (messageId) => api.get(`/messages/${messageId}/reactions`),
+  
+  // Conversation settings
+  pinConversation: (conversationId) => api.post(`/chat/conversations/${conversationId}/pin`),
+  archiveConversation: (conversationId) => api.post(`/chat/conversations/${conversationId}/archive`),
+  muteConversation: (conversationId, data) => api.patch(`/chat/conversations/${conversationId}/settings`, data),
+  deleteConversation: (conversationId) => api.delete(`/chat/conversations/${conversationId}`),
+  
+  // Message forwarding
+  forwardMessage: (messageId, data) => api.post(`/messages/${messageId}/forward`, data),
 };
 
 // Review APIs

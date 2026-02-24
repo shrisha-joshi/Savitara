@@ -30,12 +30,14 @@ const BookingScreen = ({ route, navigation }) => {
   }
   const [formData, setFormData] = useState({
     pooja_type: '',
-    booking_type: 'in_person',
+    service_name: '',
+    booking_type: 'only', // 'only' or 'with_samagri'
+    booking_mode: 'instant', // 'instant' or 'request'
     scheduled_date: '',
     scheduled_time: '',
-    duration_hours: '1',
     location: '',
-    special_requirements: '',
+    requirements: '',
+    notes: '',
   });
   const [loading, setLoading] = useState(false);
 
@@ -47,29 +49,57 @@ const BookingScreen = ({ route, navigation }) => {
     try {
       setLoading(true);
       
+      // Validate required fields
+      if (!formData.scheduled_date || !formData.scheduled_time) {
+        Alert.alert('Error', 'Please select date and time');
+        setLoading(false);
+        return;
+      }
+
+      if (!formData.pooja_type && !formData.service_name) {
+        Alert.alert('Error', 'Please specify pooja type or service name');
+        setLoading(false);
+        return;
+      }
+      
       const bookingData = {
         acharya_id: acharya._id,
-        pooja_type: formData.pooja_type,
         booking_type: formData.booking_type,
-        scheduled_datetime: `${formData.scheduled_date}T${formData.scheduled_time}:00`,
-        duration_hours: parseFloat(formData.duration_hours),
-        location: formData.booking_type === 'in_person' ? formData.location : null,
-        special_requirements: formData.special_requirements,
+        booking_mode: formData.booking_mode,
+        date: formData.scheduled_date,
+        time: formData.scheduled_time,
+        service_name: formData.service_name || formData.pooja_type,
+        requirements: formData.requirements || null,
+        notes: formData.notes || null,
+        location: formData.location ? {
+          address: formData.location,
+          city: '',
+          state: '',
+          country: 'India'
+        } : null,
       };
       
       const response = await bookingAPI.create(bookingData);
       const booking = response.data;
       
-      navigation.navigate('Payment', { booking });
+      // For request mode, navigate to bookings list
+      if (formData.booking_mode === 'request') {
+        Alert.alert('Success', 'Booking request sent to Acharya!', [
+          { text: 'OK', onPress: () => navigation.navigate('MyBookingsScreen') }
+        ]);
+      } else {
+        // For instant mode, navigate to payment
+        navigation.navigate('Payment', { booking });
+      }
     } catch (error) {
       console.error('Booking failed:', error);
-      alert(error.response?.data?.message || 'Booking failed');
+      Alert.alert('Error', error.response?.data?.message || 'Booking failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const totalAmount = acharya.acharya_profile.hourly_rate * parseFloat(formData.duration_hours || 1);
+  const estimatedAmount = acharya.acharya_profile?.hourly_rate || 0;
 
   return (
     <ScrollView style={styles.container}>
@@ -77,11 +107,29 @@ const BookingScreen = ({ route, navigation }) => {
         Book {acharya.full_name}
       </Text>
 
+      <View style={styles.radioGroup}>
+        <Text variant="bodyLarge">Booking Mode:</Text>
+        <RadioButton.Group 
+          onValueChange={(value) => setFormData({ ...formData, booking_mode: value })}
+          value={formData.booking_mode}
+        >
+          <View style={styles.radioItem}>
+            <RadioButton value="instant" />
+            <Text>Instant Booking (with payment)</Text>
+          </View>
+          <View style={styles.radioItem}>
+            <RadioButton value="request" />
+            <Text>Request Booking (Acharya confirms)</Text>
+          </View>
+        </RadioButton.Group>
+      </View>
+
       <TextInput
         label="Pooja/Service Type *"
-        value={formData.pooja_type}
-        onChangeText={(text) => setFormData({ ...formData, pooja_type: text })}
+        value={formData.pooja_type || formData.service_name}
+        onChangeText={(text) => setFormData({ ...formData, service_name: text, pooja_type: text })}
         style={styles.input}
+        placeholder="e.g., Satyanarayan Pooja, Consultation"
       />
 
       <View style={styles.radioGroup}>
@@ -91,12 +139,12 @@ const BookingScreen = ({ route, navigation }) => {
           value={formData.booking_type}
         >
           <View style={styles.radioItem}>
-            <RadioButton value="in_person" />
-            <Text>In Person</Text>
+            <RadioButton value="only" />
+            <Text>Service Only</Text>
           </View>
           <View style={styles.radioItem}>
-            <RadioButton value="virtual" />
-            <Text>Virtual</Text>
+            <RadioButton value="with_samagri" />
+            <Text>With Samagri</Text>
           </View>
         </RadioButton.Group>
       </View>
@@ -125,56 +173,68 @@ const BookingScreen = ({ route, navigation }) => {
       />
 
       <TextInput
-        label="Duration (hours) *"
-        value={formData.duration_hours}
-        onChangeText={(text) => setFormData({ ...formData, duration_hours: text })}
+        label="Location"
+        value={formData.location}
+        onChangeText={(text) => setFormData({ ...formData, location: text })}
         style={styles.input}
-        keyboardType="numeric"
+        multiline
+        placeholder="Full address"
       />
 
-      {formData.booking_type === 'in_person' && (
+      {formData.booking_mode === 'request' && (
         <TextInput
-          label="Location *"
-          value={formData.location}
-          onChangeText={(text) => setFormData({ ...formData, location: text })}
+          label="Requirements (for request mode)"
+          value={formData.requirements}
+          onChangeText={(text) => setFormData({ ...formData, requirements: text })}
           style={styles.input}
           multiline
+          numberOfLines={3}
+          placeholder="Describe your specific requirements..."
         />
       )}
 
       <TextInput
-        label="Special Requirements"
-        value={formData.special_requirements}
-        onChangeText={(text) => setFormData({ ...formData, special_requirements: text })}
+        label="Additional Notes"
+        value={formData.notes}
+        onChangeText={(text) => setFormData({ ...formData, notes: text })}
         style={styles.input}
         multiline
-        numberOfLines={3}
+        numberOfLines={2}
       />
 
-      <View style={styles.summary}>
-        <Text variant="titleMedium">Booking Summary</Text>
-        <View style={styles.summaryRow}>
-          <Text>Hourly Rate:</Text>
-          <Text>₹{acharya.acharya_profile.hourly_rate}</Text>
+      {formData.booking_mode === 'instant' && (
+        <View style={styles.summary}>
+          <Text variant="titleMedium">Estimated Amount</Text>
+          <View style={styles.summaryRow}>
+            <Text>Acharya Rate:</Text>
+            <Text>₹{estimatedAmount}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text variant="bodySmall" style={styles.note}>
+              {formData.booking_type === 'with_samagri' 
+                ? 'Final amount includes samagri cost' 
+                : 'Service only'}
+            </Text>
+          </View>
         </View>
-        <View style={styles.summaryRow}>
-          <Text>Duration:</Text>
-          <Text>{formData.duration_hours} hours</Text>
+      )}
+
+      {formData.booking_mode === 'request' && (
+        <View style={styles.infoBox}>
+          <Text variant="bodyMedium">
+            📋 Acharya will review your request and confirm the amount before you pay.
+          </Text>
         </View>
-        <View style={styles.summaryRow}>
-          <Text variant="titleMedium">Total:</Text>
-          <Text variant="titleMedium" style={styles.total}>₹{totalAmount}</Text>
-        </View>
-      </View>
+      )}
 
       <Button 
         mode="contained" 
         onPress={handleBooking}
         loading={loading}
-        disabled={loading || !formData.pooja_type || !formData.scheduled_date || !formData.scheduled_time}
+        disabled={loading || (!formData.pooja_type && !formData.service_name) || !formData.scheduled_date || !formData.scheduled_time}
         style={styles.button}
       >
-        Proceed to Payment
+        {formData.booking_mode === 'request' ? 'Send Request' : 'Proceed to Payment'}
       </Button>
     </ScrollView>
   );
@@ -185,6 +245,16 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
     backgroundColor: '#fff',
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 20,
   },
   title: {
     marginBottom: 20,
@@ -219,6 +289,18 @@ const styles = StyleSheet.create({
   total: {
     color: '#FF6B35',
     fontWeight: 'bold',
+  },
+  note: {
+    fontStyle: 'italic',
+    color: '#666',
+  },
+  infoBox: {
+    marginTop: 15,
+    padding: 15,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2196F3',
   },
   button: {
     marginTop: 20,

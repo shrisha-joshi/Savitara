@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # CORS - SonarQube: Validate origins
     ALLOWED_ORIGINS: Union[List[str], str] = [
         "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://localhost:3003",
+        "http://localhost:8081",  # Expo dev server
+        "http://192.168.1.100:8081",  # Expo on network
         "https://savitara-web.vercel.app",
         "https://admin-savitara-web.vercel.app",
     ]

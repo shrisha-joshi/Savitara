@@ -46,6 +46,7 @@ const GRIHASTA_ICON_MAP = {
   Services: 'book-open-variant',
   Search: 'magnify',
   Bookings: 'calendar-check',
+  Chat: 'chat',
   Wallet: 'wallet',
   Profile: 'account',
 };
@@ -78,6 +79,7 @@ const GrihastaTabNavigator = () => (
     <Tab.Screen name="Services" component={ServicesScreen} options={{ title: 'Services' }} />
     <Tab.Screen name="Search" component={SearchAcharyasScreen} options={{ title: 'Acharyas' }} />
     <Tab.Screen name="Bookings" component={MyBookingsScreen} options={{ title: 'Bookings' }} />
+    <Tab.Screen name="Chat" component={ChatListScreen} options={{ title: 'Messages' }} />
     <Tab.Screen name="Wallet" component={WalletScreen} options={{ title: 'Wallet' }} />
     <Tab.Screen name="Profile" component={ProfileScreen} />
   </Tab.Navigator>

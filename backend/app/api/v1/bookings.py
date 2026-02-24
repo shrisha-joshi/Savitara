@@ -521,8 +521,64 @@ async def update_booking_status(
         and not booking.get("start_otp")
     ):
         update_doc["start_otp"] = generate_otp()
+        # Set payment status to pending when Acharya confirms request
+        update_doc["payment_status"] = PaymentStatus.PENDING.value
 
     await db.bookings.update_one({"_id": ObjectId(booking_id)}, {"$set": update_doc})
+    
+    # Send notifications after status update
+    try:
+        # Get grihasta details for notifications
+        grihasta = await db.users.find_one({"_id": booking.get("grihasta_id")})
+        
+        # Send WebSocket notification
+        from app.services.websocket_manager import manager
+        
+        grihasta_id = str(booking.get("grihasta_id"))
+        acharya_id = str(booking.get("acharya_id"))
+        
+        # Determine if payment is required (request mode + confirmed + amount set)
+        payment_required = (
+            status_update.status == BookingStatus.CONFIRMED.value 
+            and booking.get("booking_mode") == "request"
+            and status_update.amount is not None
+        )
+        
+        websocket_data = {
+            "type": "payment_required" if payment_required else "booking_update",
+            "booking_id": booking_id,
+            "status": status_update.status,
+            "payment_status": update_doc.get("payment_status", booking.get("payment_status")),
+            "amount": update_doc.get("total_amount", booking.get("total_amount")),
+            "message": f"Booking {status_update.status}"
+        }
+        
+        # Send to both Grihasta and Acharya
+        await manager.send_personal_message(grihasta_id, websocket_data)
+        await manager.send_personal_message(acharya_id, websocket_data)
+        
+        # Send FCM notification to Grihasta for payment required
+        if payment_required and grihasta and grihasta.get("fcm_token"):
+            try:
+                from app.services.notification_service import NotificationService
+                
+                notification_service = NotificationService()
+                notification_service.send_notification(
+                    token=grihasta["fcm_token"],
+                    title="Booking Approved!",
+                    body=f"Acharya approved your request. Amount: ₹{status_update.amount}. Please complete payment.",
+                    data={
+                        "type": "payment_required",
+                        "booking_id": booking_id,
+                        "amount": str(status_update.amount)
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send FCM notification: {e}")
+                
+    except Exception as e:
+        logger.warning(f"Failed to send notifications: {e}")
+    
     return StandardResponse(success=True, message="Status updated")
 
 
@@ -585,6 +641,118 @@ async def generate_attendance_otp(
     )
 
     return StandardResponse(success=True, data={"otp": otp}, message="OTP generated")
+
+
+@router.post(
+    "/{booking_id}/create-payment-order",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Create Payment Order for Request-Mode Booking",
+    description="Create Razorpay payment order for approved request-mode bookings",
+)
+async def create_payment_order_for_request(
+    booking_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_grihasta),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """
+    Create Razorpay payment order for request-mode bookings after Acharya approval
+    """
+    try:
+        # Get booking
+        booking_doc = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+        if not booking_doc:
+            raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
+
+        # Verify ownership
+        if str(booking_doc["grihasta_id"]) != current_user["id"]:
+            raise PermissionDeniedError(action="Create payment order")
+
+        # Verify booking is in request mode and confirmed by Acharya
+        if booking_doc.get("booking_mode") != "request":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This endpoint is only for request-mode bookings"
+            )
+
+        if booking_doc.get("status") != BookingStatus.CONFIRMED.value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Booking must be confirmed by Acharya before payment"
+            )
+
+        # Check if amount is set
+        total_amount = booking_doc.get("total_amount", 0)
+        if total_amount <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Booking amount not set by Acharya"
+            )
+
+        # Check if payment order already exists
+        if booking_doc.get("razorpay_order_id"):
+            return StandardResponse(
+                success=True,
+                data={
+                    "razorpay_order_id": booking_doc["razorpay_order_id"],
+                    "amount": total_amount,
+                    "currency": "INR"
+                },
+                message="Payment order already exists"
+            )
+
+        # Create Razorpay order
+        try:
+            from app.services.payment_service import PaymentService
+
+            payment_service = PaymentService()
+            razorpay_order = payment_service.create_order(
+                amount=total_amount,
+                currency="INR",
+                notes={
+                    "grihasta_id": str(booking_doc["grihasta_id"]),
+                    "acharya_id": str(booking_doc["acharya_id"]),
+                    "booking_id": booking_id,
+                    "booking_mode": "request"
+                },
+            )
+            razorpay_order_id = razorpay_order.get("id")
+        except Exception as e:
+            logger.warning(f"Razorpay order creation warning: {e}")
+            # In development, use dummy order ID
+            razorpay_order_id = f"order_dev_{secrets.token_hex(8)}"
+
+        # Update booking with razorpay_order_id and payment status
+        await db.bookings.update_one(
+            {"_id": ObjectId(booking_id)},
+            {
+                "$set": {
+                    "razorpay_order_id": razorpay_order_id,
+                    "payment_status": PaymentStatus.PENDING.value,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            },
+        )
+
+        return StandardResponse(
+            success=True,
+            data={
+                "razorpay_order_id": razorpay_order_id,
+                "amount": total_amount,
+                "currency": "INR",
+                "booking_id": booking_id
+            },
+            message="Payment order created successfully"
+        )
+
+    except (ResourceNotFoundError, PermissionDeniedError, HTTPException):
+        raise
+    except Exception as e:
+        logger.error(f"Create payment order error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create payment order"
+        )
 
 
 @router.post(
@@ -655,6 +823,7 @@ async def verify_payment(
         # Send confirmation notifications
         try:
             from app.services.notification_service import NotificationService
+            from app.services.websocket_manager import manager
 
             notification_service = NotificationService()
 
@@ -666,21 +835,41 @@ async def verify_payment(
                 notification_service.send_notification(
                     token=grihasta["fcm_token"],
                     title="Booking Confirmed",
-                    body=f"Your booking with {booking_doc['acharya_name']} is confirmed. OTP: {start_otp}",
+                    body=f"Your booking is confirmed. OTP: {start_otp}",
                     data={"type": "booking_confirmed", "booking_id": booking_id},
                 )
 
             # Notify Acharya
-            acharya = await db.users.find_one(
+            acharya_profile = await db.acharya_profiles.find_one(
                 {"_id": ObjectId(booking_doc["acharya_id"])}
             )
-            if acharya and acharya.get("fcm_token"):
-                notification_service.send_notification(
-                    token=acharya["fcm_token"],
-                    title="New Booking Confirmed",
-                    body=f"Booking from {booking_doc['grihasta_name']} confirmed",
-                    data={"type": "booking_confirmed", "booking_id": booking_id},
+            if acharya_profile:
+                acharya = await db.users.find_one(
+                    {"_id": acharya_profile.get("user_id")}
                 )
+                if acharya and acharya.get("fcm_token"):
+                    notification_service.send_notification(
+                        token=acharya["fcm_token"],
+                        title="New Booking Confirmed",
+                        body=f"Booking confirmed with payment",
+                        data={"type": "booking_confirmed", "booking_id": booking_id},
+                    )
+            
+            # Send WebSocket updates to both parties
+            grihasta_id = str(booking_doc["grihasta_id"])
+            acharya_id = str(booking_doc["acharya_id"])
+            
+            websocket_data = {
+                "type": "booking_update",
+                "booking_id": booking_id,
+                "status": BookingStatus.CONFIRMED.value,
+                "payment_status": PaymentStatus.COMPLETED.value,
+                "message": "Payment verified. Booking confirmed."
+            }
+            
+            await manager.send_personal_message(grihasta_id, websocket_data)
+            await manager.send_personal_message(acharya_id, websocket_data)
+            
         except Exception as e:
             logger.warning(f"Failed to send confirmation notifications: {e}")
 

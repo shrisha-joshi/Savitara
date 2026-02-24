@@ -19,7 +19,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Alert
+  Alert,
+  Snackbar
 } from '@mui/material'
 import {
   Search,
@@ -35,6 +36,7 @@ import {
 } from '@mui/icons-material'
 import Layout from '../../components/Layout'
 import api from '../../services/api'
+import { useSocket } from '../../context/SocketContext'
 // Helper to fetch all Acharyas for referral
 async function fetchAcharyas() {
   try {
@@ -47,6 +49,8 @@ async function fetchAcharyas() {
 import { toast } from 'react-toastify'
 
 export default function AcharyaBookings() {
+  const socketContext = useSocket();
+  const { bookingUpdates = [] } = socketContext || {};
   const [bookings, setBookings] = useState([])
   const [filteredBookings, setFilteredBookings] = useState([])
   const [loading, setLoading] = useState(true)
@@ -60,6 +64,7 @@ export default function AcharyaBookings() {
   const [selectedAcharya, setSelectedAcharya] = useState('')
   const [referNotes, setReferNotes] = useState('')
   const [referLoading, setReferLoading] = useState(false)
+  const [notification, setNotification] = useState(null);
   // Load Acharya list when refer dialog opens
   useEffect(() => {
     if (referDialog.open) {
@@ -93,6 +98,28 @@ export default function AcharyaBookings() {
   useEffect(() => {
     filterBookings()
   }, [bookings, selectedTab, searchQuery])
+
+  // Listen for WebSocket booking updates
+  useEffect(() => {
+    if (bookingUpdates.length > 0) {
+      const latestUpdate = bookingUpdates[bookingUpdates.length - 1];
+      // Refresh bookings when update received
+      loadBookings();
+      
+      // Show notification for new requests
+      if (latestUpdate.status === 'requested') {
+        setNotification({
+          message: 'New booking request received!',
+          severity: 'info'
+        });
+      } else if (latestUpdate.type === 'booking_update') {
+        setNotification({
+          message: latestUpdate.message || 'Booking updated',
+          severity: 'info'
+        });
+      }
+    }
+  }, [bookingUpdates]);
 
   const loadBookings = async () => {
     try {
@@ -664,6 +691,21 @@ export default function AcharyaBookings() {
           </DialogActions>
         </Dialog>
       </Container>
+      
+      <Snackbar
+        open={!!notification}
+        autoHideDuration={5000}
+        onClose={() => setNotification(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert 
+          onClose={() => setNotification(null)} 
+          severity={notification?.severity || 'info'}
+          sx={{ width: '100%' }}
+        >
+          {notification?.message}
+        </Alert>
+      </Snackbar>
     </Layout>
   )
 }

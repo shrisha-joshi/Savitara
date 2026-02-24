@@ -1,16 +1,81 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, Card, Chip, SegmentedButtons } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { Text, Card, Chip, SegmentedButtons, Button, Snackbar } from 'react-native-paper';
 import { bookingAPI } from '../../services/api';
+import { useSocket } from '../../context/SocketContext';
 
 const MyBookingsScreen = ({ navigation }) => {
+  const socketContext = useSocket();
+  const { bookingUpdates = [], paymentNotifications = [], markPaymentNotificationRead } = socketContext || {};
   const [bookings, setBookings] = useState([]);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   useEffect(() => {
     loadBookings();
   }, [filter]);
+
+  // Listen for WebSocket booking updates
+  useEffect(() => {
+    if (bookingUpdates.length > 0) {
+      const latestUpdate = bookingUpdates[bookingUpdates.length - 1];
+      // Refresh bookings when update received
+      loadBookings();
+      
+      // Show notification
+      if (latestUpdate.type === 'booking_update') {
+        showSnackbar(latestUpdate.message || 'Booking status updated');
+      }
+    }
+  }, [bookingUpdates]);
+
+  // Listen for payment notifications
+  useEffect(() => {
+    if (paymentNotifications.length > 0) {
+      const unreadNotifs = paymentNotifications.filter(n => !n.read);
+      if (unreadNotifs.length > 0) {
+        const latest = unreadNotifs[unreadNotifs.length - 1];
+        Alert.alert(
+          'Booking Approved!',
+          `Amount: ₹${latest.amount}. Please complete payment.`,
+          [
+            { text: 'Later', style: 'cancel', onPress: () => markPaymentNotificationRead(latest.booking_id) },
+            { 
+              text: 'Pay Now', 
+              onPress: () => {
+                markPaymentNotificationRead(latest.booking_id);
+                handlePayNow(latest.booking_id, latest.amount);
+              }
+            }
+          ]
+        );
+      }
+    }
+  }, [paymentNotifications]);
+
+  const showSnackbar = (message) => {
+    setSnackbarMessage(message);
+    setSnackbarVisible(true);
+  };
+
+  const handlePayNow = async (bookingId, amount) => {
+    try {
+      // Create payment order
+      const response = await bookingAPI.createPaymentOrder(bookingId);
+      if (response.data.success) {
+        // Navigate to payment screen
+        navigation.navigate('Payment', {
+          booking: { id: bookingId, total_amount: amount },
+          razorpayOrderId: response.data.data.razorpay_order_id
+        });
+      }
+    } catch (error) {
+      console.error('Payment order creation failed:', error);
+      Alert.alert('Error', 'Failed to initiate payment. Please try again.');
+    }
+  };
 
   const loadBookings = async () => {
     try {
@@ -89,11 +154,37 @@ const MyBookingsScreen = ({ navigation }) => {
                 <Text variant="titleSmall" style={styles.amount}>
                   ₹{booking.total_amount}
                 </Text>
+                
+                {booking.status === 'confirmed' && booking.payment_status === 'pending' && (
+                  <Button
+                    mode="contained"
+                    onPress={() => handlePayNow(booking._id || booking.id, booking.total_amount)}
+                    style={styles.payButton}
+                    buttonColor="#4CAF50"
+                  >
+                    Pay Now ₹{booking.total_amount}
+                  </Button>
+                )}
+                
+                {booking.status === 'requested' && (
+                  <Text variant="bodySmall" style={styles.statusNote}>
+                    ⏳ Awaiting Acharya confirmation
+                  </Text>
+                )}
               </Card.Content>
             </Card>
           ))
         )}
       </ScrollView>
+      
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={3000}
+        style={{ backgroundColor: '#4CAF50' }}
+      >
+        {snackbarMessage}
+      </Snackbar>
     </View>
   );
 };
@@ -126,6 +217,14 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: '#FF6B35',
     fontWeight: 'bold',
+  },
+  payButton: {
+    marginTop: 10,
+  },
+  statusNote: {
+    marginTop: 8,
+    fontStyle: 'italic',
+    color: '#666',
   },
   centerText: {
     textAlign: 'center',

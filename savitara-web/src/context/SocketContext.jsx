@@ -8,6 +8,9 @@ export const useSocket = () => useContext(SocketContext);
 
 const OFFLINE_QUEUE_KEY = 'savitara_offline_messages';
 const MAX_QUEUE_SIZE = 50;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const BASE_RECONNECT_DELAY = 1000; // 1 second
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
 
 export const SocketProvider = ({ children }) => {
   const { user, token } = useAuth();
@@ -17,8 +20,12 @@ export const SocketProvider = ({ children }) => {
   const [messages, setMessages] = useState([]);
   const [typingIndicators, setTypingIndicators] = useState({});
   const [bookingUpdates, setBookingUpdates] = useState([]);
+  const [paymentNotifications, setPaymentNotifications] = useState([]);
   const [offlineQueue, setOfflineQueue] = useState([]);
+  
   const reconnectTimeoutRef = useRef(null);
+  const reconnectAttemptsRef = useRef(0);
+  const heartbeatIntervalRef = useRef(null);
   const connectingRef = useRef(false);
 
   // Load offline queue from localStorage on mount
@@ -45,6 +52,27 @@ export const SocketProvider = ({ children }) => {
     }
   }, [offlineQueue]);
 
+  // Start heartbeat to keep connection alive
+  const startHeartbeat = useCallback((ws) => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+    }
+
+    heartbeatIntervalRef.current = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, HEARTBEAT_INTERVAL);
+  }, []);
+
+  // Stop heartbeat
+  const stopHeartbeat = useCallback(() => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+  }, []);
+
   const connect = useCallback(() => {
     if (!user || !token || socket?.readyState === WebSocket.OPEN || connectingRef.current) return;
 
@@ -56,35 +84,41 @@ export const SocketProvider = ({ children }) => {
     setIsConnecting(true);
 
     // Determine WS protocol and host dynamically
-    const isSecure = globalThis.location?.protocol === 'https:';
+    const isSecure = window.location.protocol === 'https:';
     const protocol = isSecure ? 'wss:' : 'ws:';
     
-    // Use environment variable or fallback to current host
-    const backendHost = import.meta.env.VITE_BACKEND_WS_HOST || 
-              import.meta.env.VITE_BACKEND_HOST || 
-              'localhost:8000' ||
-              globalThis.location?.host;
+    // Get WebSocket host from environment or derive from current location
+    let wsHost = import.meta.env.VITE_BACKEND_WS_HOST;
+    if (!wsHost) {
+      const apiUrl = import.meta.env.VITE_BACKEND_API_URL || `http://localhost:8000`;
+      wsHost = apiUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    }
     
-    const wsUrl = `${protocol}//${backendHost}/ws/${user.id}?token=${token}`;
+    const wsUrl = `${protocol}//${wsHost}/ws/${user.id}?token=${token}`;
 
-    console.log('Connecting to WebSocket:', wsUrl);
+    console.log('[WS] Connecting to:', wsUrl.split('?')[0]); // Don't log token
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      console.log('WebSocket Connected');
+      console.log('[WS] Connected successfully');
       setIsConnected(true);
       setIsConnecting(false);
       connectingRef.current = false;
+      reconnectAttemptsRef.current = 0; // Reset reconnect counter
       setSocket(ws);
+      
       // Clear any pending reconnects
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
       }
+
+      // Start heartbeat
+      startHeartbeat(ws);
       
       // Send any queued messages
       if (offlineQueue.length > 0) {
-        console.log(`Sending ${offlineQueue.length} queued messages`);
+        console.log(`[WS] Sending ${offlineQueue.length} queued messages`);
         offlineQueue.forEach(msg => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify(msg));
@@ -122,6 +156,19 @@ export const SocketProvider = ({ children }) => {
               })
             }, 5000)
           }
+        } else if (data.type === 'payment_required') {
+          // Handle payment required notifications
+          setPaymentNotifications(prev => [...prev.slice(-5), { ...data, received_at: Date.now(), read: false }]);
+          setBookingUpdates(prev => [...prev.slice(-10), { ...data, received_at: Date.now() }]);
+          
+          // Show browser notification if permitted
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('Booking Approved!', {
+              body: `Amount: ₹${data.amount}. Please complete payment.`,
+              icon: '/logo.png',
+              tag: `payment-${data.booking_id}`
+            });
+          }
         } else if (data.type === 'booking_update') {
           setBookingUpdates(prev => [...prev.slice(-10), { ...data, received_at: Date.now() }]);
         }
@@ -131,27 +178,40 @@ export const SocketProvider = ({ children }) => {
     };
 
     ws.onclose = (event) => {
-      console.log('WebSocket Disconnected', event.code, event.reason);
+      console.log('[WS] Disconnected:', event.code, event.reason);
       setIsConnected(false);
       setIsConnecting(false);
       connectingRef.current = false;
       setSocket(null);
+      stopHeartbeat();
 
-      // Attempt reconnect after 3 seconds, but only if not a normal closure
-      if (user && token && event.code !== 1000) {
+      // Exponential backoff reconnection (avoid if intentional closure code 1000)
+      if (user && token && event.code !== 1000 && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+        const delay = BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttemptsRef.current);
+        console.log(
+          `[WS] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current + 1}/${MAX_RECONNECT_ATTEMPTS})`
+        );
+        
         reconnectTimeoutRef.current = setTimeout(() => {
-          console.log('Attempting Reconnect...');
+          reconnectAttemptsRef.current += 1;
           connect();
-        }, 3000);
+        }, delay);
+      } else if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+        console.error('[WS] Max reconnection attempts reached');
+        
+        // Notify user of connection failure
+        window.dispatchEvent(new CustomEvent('websocket_failed', {
+          detail: { message: 'Unable to connect to chat. Please refresh the page.' }
+        }));
       }
     };
 
     ws.onerror = (error) => {
-      console.error('WebSocket Error:', error);
+      console.error('[WS] Error:', error);
       // Let onclose handle reconnection
     };
 
-  }, [user, token, socket, offlineQueue]);
+  }, [user, token, socket, offlineQueue, startHeartbeat, stopHeartbeat]);
 
   useEffect(() => {
     if (user && token) {
@@ -160,6 +220,7 @@ export const SocketProvider = ({ children }) => {
     return () => {
       if (socket) socket.close();
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      stopHeartbeat();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, token]); // Removed connect from deps to prevent recursive updates
@@ -187,6 +248,18 @@ export const SocketProvider = ({ children }) => {
     }
   }, [socket]);
 
+  const markPaymentNotificationRead = useCallback((bookingId) => {
+    setPaymentNotifications(prev => 
+      prev.map(notif => 
+        notif.booking_id === bookingId ? { ...notif, read: true } : notif
+      )
+    );
+  }, []);
+
+  const clearPaymentNotifications = useCallback(() => {
+    setPaymentNotifications([]);
+  }, []);
+
   const contextValue = useMemo(
     () => ({ 
       socket, 
@@ -200,8 +273,11 @@ export const SocketProvider = ({ children }) => {
       sendTypingIndicator,
       typingIndicators,
       bookingUpdates,
+      paymentNotifications,
+      markPaymentNotificationRead,
+      clearPaymentNotifications,
     }),
-    [socket, isConnected, isConnecting, messages, sendMessage, queueMessage, offlineQueue, sendTypingIndicator, typingIndicators, bookingUpdates]
+    [socket, isConnected, isConnecting, messages, sendMessage, queueMessage, offlineQueue, sendTypingIndicator, typingIndicators, bookingUpdates, paymentNotifications, markPaymentNotificationRead, clearPaymentNotifications]
   );
 
   return (

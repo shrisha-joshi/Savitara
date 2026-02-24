@@ -303,8 +303,10 @@ async def login(request: LoginRequest, db: AsyncIOMotorDatabase = Depends(get_db
             )
 
         # Update last login
+        from bson import ObjectId
+        user_obj_id = ObjectId(user.id) if isinstance(user.id, str) else user.id
         await db.users.update_one(
-            {"_id": user.id}, {"$set": {"last_login": datetime.now(timezone.utc)}}
+            {"_id": user_obj_id}, {"$set": {"last_login": datetime.now(timezone.utc)}}
         )
 
         # Check if user has completed onboarding by checking if profile exists
@@ -455,7 +457,14 @@ async def get_current_user_info(
     """
     Get current authenticated user information
     """
-    user_doc = await db.users.find_one({"_id": current_user["id"]})
+    from bson import ObjectId
+    
+    # Convert user_id to ObjectId if it's a string
+    user_id = current_user["id"]
+    if isinstance(user_id, str):
+        user_id = ObjectId(user_id)
+    
+    user_doc = await db.users.find_one({"_id": user_id})
 
     if not user_doc:
         raise AuthenticationError(message="User not found")

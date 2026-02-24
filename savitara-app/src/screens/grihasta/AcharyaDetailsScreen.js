@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Image } from 'react-native';
+import { View, StyleSheet, ScrollView, Image, Alert } from 'react-native';
 import { Text, Button, Divider, Chip } from 'react-native-paper';
-import { userAPI, reviewAPI } from '../../services/api';
+import { userAPI, reviewAPI, chatAPI } from '../../services/api';
 
 const AcharyaDetailsScreen = ({ route, navigation }) => {
   const { acharyaId } = route.params;
@@ -31,6 +31,26 @@ const AcharyaDetailsScreen = ({ route, navigation }) => {
       setReviews(response.data.reviews || []);
     } catch (error) {
       console.error('Failed to load reviews:', error);
+    }
+  };
+
+  const handleChatNow = async () => {
+    try {
+      const userId = acharya.user_id || acharya._id || acharyaId;
+      const response = await chatAPI.verifyConversation(userId);
+      if (response.data.success && response.data.conversation_id) {
+        navigation.navigate('Conversation', {
+          conversationId: response.data.conversation_id,
+          recipient: {
+            id: userId,
+            name: acharya.full_name,
+            avatar: acharya.profile_picture
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Failed to start chat:', error);
+      Alert.alert('Error', 'Unable to start chat. Please try again.');
     }
   };
 
@@ -120,13 +140,24 @@ const AcharyaDetailsScreen = ({ route, navigation }) => {
         )}
       </View>
 
-      <Button 
-        mode="contained" 
-        style={styles.bookButton}
-        onPress={() => navigation.navigate('Booking', { acharya })}
-      >
-        Book Now
-      </Button>
+      <View style={styles.buttonContainer}>
+        <Button 
+          mode="contained" 
+          style={styles.bookButton}
+          onPress={() => navigation.navigate('Booking', { acharya })}
+        >
+          Book Now
+        </Button>
+        
+        <Button 
+          mode="outlined" 
+          style={styles.chatButton}
+          icon="chat"
+          onPress={handleChatNow}
+        >
+          Chat Now
+        </Button>
+      </View>
     </ScrollView>
   );
 };

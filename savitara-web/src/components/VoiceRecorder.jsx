@@ -7,7 +7,10 @@ import {
   Tooltip,
   CircularProgress,
   Paper,
-  LinearProgress
+  LinearProgress,
+  Alert,
+  AlertTitle,
+  Button
 } from '@mui/material';
 import {
   Mic,
@@ -19,6 +22,7 @@ import {
   Delete
 } from '@mui/icons-material';
 import api from '../services/api';
+import { checkMediaRecorderSupport, getBrowserInfo } from '../utils/browserCompat';
 
 const MAX_DURATION_SECONDS = 90;
 const WAVEFORM_SAMPLES = 50;
@@ -38,13 +42,14 @@ const WAVEFORM_SAMPLES = 50;
  * - Accessible with ARIA labels and keyboard navigation
  */
 const VoiceRecorder = ({ conversationId, onSend, onCancel }) => {
-  const [state, setState] = useState('idle'); // idle | recording | preview | uploading | error
+  const [state, setState] = useState('idle'); // idle | recording | preview | uploading | error | unsupported
   const [duration, setDuration] = useState(0);
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [waveform, setWaveform] = useState(new Array(WAVEFORM_SAMPLES).fill(0));
+  const [browserSupport, setBrowserSupport] = useState(null);
   
   const mediaRecorderRef = useRef(null);
   const audioStreamRef = useRef(null);
@@ -53,6 +58,18 @@ const VoiceRecorder = ({ conversationId, onSend, onCancel }) => {
   const audioElementRef = useRef(null);
   const analyserRef = useRef(null);
   const animationFrameRef = useRef(null);
+
+  // Check browser compatibility on mount
+  useEffect(() => {
+    const support = checkMediaRecorderSupport();
+    const browser = getBrowserInfo();
+    setBrowserSupport({ ...support, browser });
+    
+    if (!support.supported) {
+      setState('unsupported');
+      setErrorMessage(support.message);
+    }
+  }, []);
 
   const cleanupResources = useCallback(() => {
     if (timerRef.current) {
@@ -389,7 +406,38 @@ const VoiceRecorder = ({ conversationId, onSend, onCancel }) => {
       </Paper>
     );
   }
-
+  // Render unsupported browser UI
+  if (state === 'unsupported') {
+    return (
+      <Paper
+        elevation={3}
+        sx={{
+          p: 3,
+          bgcolor: 'background.paper',
+          borderRadius: 2,
+        }}
+      >
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <AlertTitle>Voice Recording Not Supported</AlertTitle>
+          {errorMessage}
+          {browserSupport?.browser && (
+            <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+              Browser: {browserSupport.browser.name} {browserSupport.browser.version}
+            </Typography>
+          )}
+        </Alert>
+        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+          <Button 
+            variant="outlined" 
+            startIcon={<Close />}
+            onClick={onCancel}
+          >
+            Close
+          </Button>
+        </Box>
+      </Paper>
+    );
+  }
   return (
     <Paper
       elevation={3}

@@ -15,9 +15,11 @@ import {
   Divider,
   CircularProgress,
   Alert,
-  Rating
+  Rating,
+  Stack
 } from '@mui/material'
 import MessageIcon from '@mui/icons-material/Message';
+import ChatIcon from '@mui/icons-material/Chat';
 import { 
   FaStar, 
   FaMapMarkerAlt, 
@@ -104,6 +106,21 @@ export default function AcharyaProfile() {
   const handleBookPooja = (poojaId) => {
     const acharyaProfileId = profile?._id || profile?.id || id
     navigate(`/booking/create/${acharyaProfileId}?poojaId=${poojaId}`)
+  }
+
+  const handleChatNow = async () => {
+    try {
+      const userId = profile.user_id || profile.userId || profile.account_id || id
+      const response = await api.post('/chat/verify-conversation', {
+        recipient_id: userId
+      })
+      if (response.data.success && response.data.conversation_id) {
+        navigate(`/chat/${response.data.conversation_id}`)
+      }
+    } catch (err) {
+      console.error('Failed to start chat:', err)
+      setError('Unable to start chat. Please try again.')
+    }
   }
 
   if (loading) {
@@ -391,10 +408,10 @@ export default function AcharyaProfile() {
                       color="primary"
                       fullWidth 
                       size="large"
-                      startIcon={<MessageIcon />}
-                      onClick={() => navigate(`/chat/u/${acharyaUserId}`)}
+                      startIcon={<ChatIcon />}
+                      onClick={handleChatNow}
                     >
-                      Message
+                      Chat Now
                     </Button>
                   </Box>
                   

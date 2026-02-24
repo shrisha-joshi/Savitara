@@ -44,12 +44,16 @@ export default function Login() {
       if (password.length < 8) {
         tempErrors.password = 'Password must be at least 8 characters'
         isValid = false
+      } else if (!/(?=.*[a-z])/.test(password)) {
+        tempErrors.password = 'Password must contain at least one lowercase letter'
+        isValid = false
+      } else if (!/(?=.*[A-Z])/.test(password)) {
+        tempErrors.password = 'Password must contain at least one uppercase letter'
+        isValid = false
+      } else if (!/(?=.*[0-9])/.test(password)) {
+        tempErrors.password = 'Password must contain at least one number'
+        isValid = false
       }
-      // Optional: Add regex for special chars if backend requires it
-      // else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#\$%\^&\*])/.test(password)) {
-      //   tempErrors.password = 'Password must include uppercase, lowercase, number, and special char'
-      //   isValid = false
-      // }
     }
 
     // Name Validation (Register mode only)
@@ -245,7 +249,7 @@ export default function Login() {
                 margin="normal"
                 required
                 error={!!errors.password}
-                helperText={errors.password || (mode === 'register' ? 'Min. 8 characters' : '')}
+                helperText={errors.password || (mode === 'register' ? 'Min. 8 characters with uppercase, lowercase & number' : '')}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">

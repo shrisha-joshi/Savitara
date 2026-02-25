@@ -145,7 +145,7 @@ class TestConversationSettingsService:
             return_value={**updates, "conversation_id": conversation_id, "user_id": user_id}
         )
 
-        result = await settings_service.update_settings(
+        await settings_service.update_settings(
             conversation_id, user_id, updates
         )
 
@@ -201,7 +201,7 @@ class TestConversationSettingsService:
         mock_db.conversation_user_settings.update_many = AsyncMock()
         mock_db.conversation_user_settings.update_one = AsyncMock()
 
-        result = await settings_service.pin_conversation(conversation_id, user_id)
+        await settings_service.pin_conversation(conversation_id, user_id)
 
         # Should have incremented existing pins
         assert mock_db.conversation_user_settings.update_many.called

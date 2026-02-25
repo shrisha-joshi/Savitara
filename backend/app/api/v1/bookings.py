@@ -537,6 +537,8 @@ async def _notify_booking_status_update(
         logger.warning(f"Failed to send notifications: {exc}")
 
 
+@router.put(
+    "/{booking_id}/status",
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Update Booking Status",

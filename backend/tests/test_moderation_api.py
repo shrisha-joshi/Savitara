@@ -3,8 +3,8 @@ Integration tests for Moderation API
 Tests blocking, reporting, and admin moderation endpoints
 """
 import pytest
+from typing import Any
 from httpx import AsyncClient
-from motor.motor_asyncio import AsyncIOMotorDatabase
 from datetime import datetime, timezone
 from bson import ObjectId
 
@@ -12,10 +12,10 @@ from bson import ObjectId
 # ============ Block Endpoints Tests ============
 
 @pytest.mark.asyncio
-async def test_block_user_success(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_block_user_success(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test successfully blocking another user"""
     # Arrange: Create test users
-    user1 = await test_db.users.insert_one({
+    await test_db.users.insert_one({
         "email": "blocker@test.com",
         "role": "grihasta",
         "status": "active",
@@ -55,7 +55,7 @@ async def test_block_user_success(async_client: AsyncClient, auth_headers, test_
 
 
 @pytest.mark.asyncio
-async def test_block_user_creates_mutual_block(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_block_user_creates_mutual_block(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test that reciprocal blocks are detected as mutual"""
     # Arrange: Create users and first block (A blocks B)
     user_a_id = str(ObjectId())
@@ -89,7 +89,7 @@ async def test_block_user_creates_mutual_block(async_client: AsyncClient, auth_h
 
 
 @pytest.mark.asyncio
-async def test_block_yourself_returns_error(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_block_yourself_returns_error(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test that you cannot block yourself"""
     # Arrange: Create user
     current_user_id = "507f1f77bcf86cd799439011"  # Mock current user ID from fixture
@@ -108,7 +108,7 @@ async def test_block_yourself_returns_error(async_client: AsyncClient, auth_head
 
 
 @pytest.mark.asyncio
-async def test_unblock_user_success(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_unblock_user_success(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test successfully unblocking a user"""
     # Arrange: Create block record
     blocker_id = "507f1f77bcf86cd799439011"
@@ -149,7 +149,7 @@ async def test_unblock_user_success(async_client: AsyncClient, auth_headers, tes
 
 
 @pytest.mark.asyncio
-async def test_get_blocked_users_with_pagination(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_get_blocked_users_with_pagination(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test retrieving blocked users list with pagination"""
     # Arrange: Create multiple blocked users
     blocker_id = "507f1f77bcf86cd799439011"
@@ -196,7 +196,7 @@ async def test_get_blocked_users_with_pagination(async_client: AsyncClient, auth
 
 
 @pytest.mark.asyncio
-async def test_get_mutual_blocks(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_get_mutual_blocks(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test retrieving mutual blocks"""
     # Arrange: Create mutual blocks
     current_user_id = "507f1f77bcf86cd799439011"
@@ -239,12 +239,12 @@ async def test_get_mutual_blocks(async_client: AsyncClient, auth_headers, test_d
 
 
 @pytest.mark.asyncio
-async def test_get_block_count(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_get_block_count(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test getting count of blocked users"""
     # Arrange: Create some blocks
     blocker_id = "507f1f77bcf86cd799439011"
     
-    for i in range(5):
+    for _ in range(5):
         await test_db.blocked_users.insert_one({
             "blocker_user_id": blocker_id,
             "blocked_user_id": str(ObjectId()),
@@ -266,7 +266,7 @@ async def test_get_block_count(async_client: AsyncClient, auth_headers, test_db:
 
 
 @pytest.mark.asyncio
-async def test_block_without_auth_returns_401(async_client: AsyncClient, test_db: AsyncIOMotorDatabase):
+async def test_block_without_auth_returns_401(async_client: AsyncClient, test_db: Any):
     """Test that blocking requires authentication"""
     # Act: Try to block without auth headers
     response = await async_client.post(
@@ -281,10 +281,9 @@ async def test_block_without_auth_returns_401(async_client: AsyncClient, test_db
 # ============ Report Endpoints Tests ============
 
 @pytest.mark.asyncio
-async def test_create_user_report_success(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_create_user_report_success(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test creating a report against a user"""
     # Arrange: Create users
-    reporter_id = "507f1f77bcf86cd799439011"
     reported_id = str(ObjectId())
     
     await test_db.users.insert_one({
@@ -325,7 +324,7 @@ async def test_create_user_report_success(async_client: AsyncClient, auth_header
 
 
 @pytest.mark.asyncio
-async def test_create_message_report_success(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_create_message_report_success(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test creating a report for a specific message"""
     # Arrange: Create message and users
     message_id = str(ObjectId())
@@ -371,7 +370,7 @@ async def test_create_message_report_success(async_client: AsyncClient, auth_hea
 
 
 @pytest.mark.asyncio
-async def test_cannot_report_yourself(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_cannot_report_yourself(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test that you cannot report yourself"""
     # Arrange: Current user ID
     current_user_id = "507f1f77bcf86cd799439011"
@@ -393,7 +392,7 @@ async def test_cannot_report_yourself(async_client: AsyncClient, auth_headers, t
 
 
 @pytest.mark.asyncio
-async def test_get_report_by_id(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_get_report_by_id(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test retrieving a specific report"""
     # Arrange: Create report
     reporter_id = "507f1f77bcf86cd799439011"
@@ -424,7 +423,7 @@ async def test_get_report_by_id(async_client: AsyncClient, auth_headers, test_db
 
 
 @pytest.mark.asyncio
-async def test_get_user_reports_created_by_me(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_get_user_reports_created_by_me(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test getting reports created by current user"""
     # Arrange: Create multiple reports
     reporter_id = "507f1f77bcf86cd799439011"
@@ -454,7 +453,7 @@ async def test_get_user_reports_created_by_me(async_client: AsyncClient, auth_he
 
 
 @pytest.mark.asyncio
-async def test_get_user_reports_include_reported(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_get_user_reports_include_reported(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test getting reports about current user"""
     # Arrange: Create reports against current user
     current_user_id = "507f1f77bcf86cd799439011"
@@ -487,7 +486,7 @@ async def test_get_user_reports_include_reported(async_client: AsyncClient, auth
 # ============ Admin Endpoints Tests ============
 
 @pytest.mark.asyncio
-async def test_get_pending_reports_admin_only(async_client: AsyncClient, test_db: AsyncIOMotorDatabase):
+async def test_get_pending_reports_admin_only(async_client: AsyncClient, test_db: Any):
     """Test getting pending reports requires admin role"""
     # Arrange: Create non-admin user
     non_admin_headers = {"Authorization": "Bearer fake_non_admin_token"}
@@ -504,7 +503,7 @@ async def test_get_pending_reports_admin_only(async_client: AsyncClient, test_db
 
 
 @pytest.mark.asyncio
-async def test_get_pending_reports_success(async_client: AsyncClient, test_db: AsyncIOMotorDatabase):
+async def test_get_pending_reports_success(async_client: AsyncClient, test_db: Any):
     """Test admin can get pending reports"""
     # Arrange: Create pending reports
     admin_headers = {"Authorization": "Bearer admin_token"}
@@ -522,7 +521,7 @@ async def test_get_pending_reports_success(async_client: AsyncClient, test_db: A
     
     # Act: Get pending reports as admin
     # Note: This test assumes admin auth is mocked properly
-    response = await async_client.get(
+    await async_client.get(
         "/api/v1/moderation/admin/reports/pending?limit=10",
         headers=admin_headers
     )
@@ -532,7 +531,7 @@ async def test_get_pending_reports_success(async_client: AsyncClient, test_db: A
 
 
 @pytest.mark.asyncio
-async def test_get_reports_for_specific_user_admin(async_client: AsyncClient, test_db: AsyncIOMotorDatabase):
+async def test_get_reports_for_specific_user_admin(async_client: AsyncClient, test_db: Any):
     """Test admin getting all reports for a specific user"""
     # Arrange: Create reports for target user
     target_user_id = str(ObjectId())
@@ -550,7 +549,7 @@ async def test_get_reports_for_specific_user_admin(async_client: AsyncClient, te
         })
     
     # Act: Get reports for user
-    response = await async_client.get(
+    await async_client.get(
         f"/api/v1/moderation/admin/reports/user/{target_user_id}",
         headers=admin_headers
     )
@@ -559,7 +558,7 @@ async def test_get_reports_for_specific_user_admin(async_client: AsyncClient, te
 
 
 @pytest.mark.asyncio
-async def test_update_report_status_admin(async_client: AsyncClient, test_db: AsyncIOMotorDatabase):
+async def test_update_report_status_admin(async_client: AsyncClient, test_db: Any):
     """Test admin updating report status"""
     # Arrange: Create report
     report_id = ObjectId()
@@ -577,7 +576,7 @@ async def test_update_report_status_admin(async_client: AsyncClient, test_db: As
     })
     
     # Act: Update status to reviewing
-    response = await async_client.patch(
+    await async_client.patch(
         f"/api/v1/moderation/admin/reports/{str(report_id)}/status",
         json={
             "status": "reviewing",
@@ -590,7 +589,7 @@ async def test_update_report_status_admin(async_client: AsyncClient, test_db: As
 
 
 @pytest.mark.asyncio
-async def test_dismiss_report_admin(async_client: AsyncClient, test_db: AsyncIOMotorDatabase):
+async def test_dismiss_report_admin(async_client: AsyncClient, test_db: Any):
     """Test admin dismissing a report"""
     # Arrange: Create report
     report_id = ObjectId()
@@ -608,7 +607,7 @@ async def test_dismiss_report_admin(async_client: AsyncClient, test_db: AsyncIOM
     })
     
     # Act: Dismiss report
-    response = await async_client.post(
+    await async_client.post(
         f"/api/v1/moderation/admin/reports/{str(report_id)}/dismiss",
         json={
             "reason": "No evidence found"
@@ -620,7 +619,7 @@ async def test_dismiss_report_admin(async_client: AsyncClient, test_db: AsyncIOM
 
 
 @pytest.mark.asyncio
-async def test_take_action_on_report_ban_user(async_client: AsyncClient, test_db: AsyncIOMotorDatabase):
+async def test_take_action_on_report_ban_user(async_client: AsyncClient, test_db: Any):
     """Test admin taking ban action on report"""
     # Arrange: Create report
     report_id = ObjectId()
@@ -639,7 +638,7 @@ async def test_take_action_on_report_ban_user(async_client: AsyncClient, test_db
     })
     
     # Act: Ban user
-    response = await async_client.post(
+    await async_client.post(
         f"/api/v1/moderation/admin/reports/{str(report_id)}/action",
         json={
             "action": "ban",
@@ -652,7 +651,7 @@ async def test_take_action_on_report_ban_user(async_client: AsyncClient, test_db
 
 
 @pytest.mark.asyncio
-async def test_issue_warning_to_user(async_client: AsyncClient, test_db: AsyncIOMotorDatabase):
+async def test_issue_warning_to_user(async_client: AsyncClient, test_db: Any):
     """Test admin issuing warning to user"""
     # Arrange: Create user and report
     target_user_id = str(ObjectId())
@@ -667,7 +666,7 @@ async def test_issue_warning_to_user(async_client: AsyncClient, test_db: AsyncIO
     })
     
     # Act: Issue warning
-    response = await async_client.post(
+    await async_client.post(
         "/api/v1/moderation/admin/warnings",
         json={
             "user_id": target_user_id,
@@ -682,7 +681,7 @@ async def test_issue_warning_to_user(async_client: AsyncClient, test_db: AsyncIO
 
 
 @pytest.mark.asyncio
-async def test_get_user_warnings_admin(async_client: AsyncClient, test_db: AsyncIOMotorDatabase):
+async def test_get_user_warnings_admin(async_client: AsyncClient, test_db: Any):
     """Test admin getting all warnings for a user"""
     # Arrange: Create warnings
     target_user_id = str(ObjectId())
@@ -698,7 +697,7 @@ async def test_get_user_warnings_admin(async_client: AsyncClient, test_db: Async
         })
     
     # Act: Get warnings
-    response = await async_client.get(
+    await async_client.get(
         f"/api/v1/moderation/admin/warnings/user/{target_user_id}",
         headers=admin_headers
     )
@@ -707,7 +706,7 @@ async def test_get_user_warnings_admin(async_client: AsyncClient, test_db: Async
 
 
 @pytest.mark.asyncio
-async def test_report_priority_calculation(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_report_priority_calculation(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test that different reasons get correct priorities"""
     # Arrange: Create reported user
     reported_id = str(ObjectId())
@@ -750,7 +749,7 @@ async def test_report_priority_calculation(async_client: AsyncClient, auth_heade
 
 
 @pytest.mark.asyncio
-async def test_report_requires_authentication(async_client: AsyncClient, test_db: AsyncIOMotorDatabase):
+async def test_report_requires_authentication(async_client: AsyncClient, test_db: Any):
     """Test that creating reports requires authentication"""
     # Act: Try to create report without auth
     response = await async_client.post(

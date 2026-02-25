@@ -3,8 +3,8 @@ Integration tests for Group Admin API
 Tests group chat moderation and administration endpoints
 """
 import pytest
+from typing import Any
 from httpx import AsyncClient
-from motor.motor_asyncio import AsyncIOMotorDatabase
 from datetime import datetime, timezone, timedelta
 from bson import ObjectId
 
@@ -12,7 +12,7 @@ from bson import ObjectId
 # ============ Helper Fixtures ============
 
 @pytest.fixture
-async def test_conversation(test_db: AsyncIOMotorDatabase):
+async def test_conversation(test_db: Any):
     """Create a test group conversation"""
     conversation_id = ObjectId()
     await test_db.conversations.insert_one({
@@ -25,7 +25,7 @@ async def test_conversation(test_db: AsyncIOMotorDatabase):
 
 
 @pytest.fixture
-async def test_members(test_db: AsyncIOMotorDatabase, test_conversation: str):
+async def test_members(test_db: Any, test_conversation: str):
     """Create test members with different roles"""
     owner_id = str(ObjectId())
     admin_id = str(ObjectId())
@@ -55,7 +55,7 @@ async def test_members(test_db: AsyncIOMotorDatabase, test_conversation: str):
 # ============ Mute/Unmute Tests ============
 
 @pytest.mark.asyncio
-async def test_mute_member_success(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_mute_member_success(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test admin successfully muting a member"""
     # Act: Mute member for 24 hours
     response = await async_client.post(
@@ -83,7 +83,7 @@ async def test_mute_member_success(async_client: AsyncClient, auth_headers, test
 
 
 @pytest.mark.asyncio
-async def test_mute_member_indefinitely(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_mute_member_indefinitely(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test muting member without duration (indefinite)"""
     # Act: Mute indefinitely
     response = await async_client.post(
@@ -102,7 +102,7 @@ async def test_mute_member_indefinitely(async_client: AsyncClient, auth_headers,
 
 
 @pytest.mark.asyncio
-async def test_unmute_member_success(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_unmute_member_success(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test successfully unmuting a member"""
     # Arrange: Mute the member first
     await test_db.conversation_members.update_one(
@@ -132,13 +132,13 @@ async def test_unmute_member_success(async_client: AsyncClient, auth_headers, te
 
 
 @pytest.mark.asyncio
-async def test_non_admin_cannot_mute(async_client: AsyncClient, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_non_admin_cannot_mute(async_client: AsyncClient, test_db: Any, test_conversation: str, test_members: dict):
     """Test that non-admin members cannot mute others"""
     # Arrange: Headers for regular member
     member_headers = {"Authorization": "Bearer member_token"}
     
     # Act: Try to mute as member
-    response = await async_client.post(
+    await async_client.post(
         f"/api/v1/groups/{test_conversation}/mute",
         json={
             "user_id": test_members["owner_id"],
@@ -154,7 +154,7 @@ async def test_non_admin_cannot_mute(async_client: AsyncClient, test_db: AsyncIO
 # ============ Ban/Unban Tests ============
 
 @pytest.mark.asyncio
-async def test_ban_member_temporary(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_ban_member_temporary(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test banning member for specific duration"""
     # Act: Ban for 7 days
     response = await async_client.post(
@@ -182,7 +182,7 @@ async def test_ban_member_temporary(async_client: AsyncClient, auth_headers, tes
 
 
 @pytest.mark.asyncio
-async def test_ban_member_permanently(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_ban_member_permanently(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test permanent ban (no duration)"""
     # Act: Permanent ban
     response = await async_client.post(
@@ -201,7 +201,7 @@ async def test_ban_member_permanently(async_client: AsyncClient, auth_headers, t
 
 
 @pytest.mark.asyncio
-async def test_cannot_ban_owner(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_cannot_ban_owner(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test that owner cannot be banned"""
     # Act: Try to ban owner
     response = await async_client.post(
@@ -221,7 +221,7 @@ async def test_cannot_ban_owner(async_client: AsyncClient, auth_headers, test_db
 # ============ Remove Member Tests ============
 
 @pytest.mark.asyncio
-async def test_remove_member_success(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_remove_member_success(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test admin removing a member"""
     # Act: Remove member
     response = await async_client.delete(
@@ -245,7 +245,7 @@ async def test_remove_member_success(async_client: AsyncClient, auth_headers, te
 
 
 @pytest.mark.asyncio
-async def test_cannot_remove_owner(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_cannot_remove_owner(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test that owner cannot be removed"""
     # Act: Try to remove owner
     response = await async_client.delete(
@@ -261,13 +261,13 @@ async def test_cannot_remove_owner(async_client: AsyncClient, auth_headers, test
 # ============ Role Management Tests ============
 
 @pytest.mark.asyncio
-async def test_change_member_role_to_admin(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_change_member_role_to_admin(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test owner promoting member to admin"""
     # Note: Requires owner auth headers
     owner_headers = {"Authorization": "Bearer owner_token"}
     
     # Act: Change member to admin
-    response = await async_client.patch(
+    await async_client.patch(
         f"/api/v1/groups/{test_conversation}/members/{test_members['member_id']}/role",
         json={"new_role": "admin"},
         headers=owner_headers
@@ -278,12 +278,12 @@ async def test_change_member_role_to_admin(async_client: AsyncClient, auth_heade
 
 
 @pytest.mark.asyncio
-async def test_change_admin_role_to_member(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_change_admin_role_to_member(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test owner demoting admin to member"""
     owner_headers = {"Authorization": "Bearer owner_token"}
     
     # Act: Demote admin
-    response = await async_client.patch(
+    await async_client.patch(
         f"/api/v1/groups/{test_conversation}/members/{test_members['admin_id']}/role",
         json={"new_role": "member"},
         headers=owner_headers
@@ -293,13 +293,13 @@ async def test_change_admin_role_to_member(async_client: AsyncClient, auth_heade
 
 
 @pytest.mark.asyncio
-async def test_non_owner_cannot_change_roles(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_non_owner_cannot_change_roles(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test that only owner can change roles"""
     # Arrange: Admin trying to change roles
     admin_headers = {"Authorization": "Bearer admin_token"}
     
     # Act: Admin tries to change role
-    response = await async_client.patch(
+    await async_client.patch(
         f"/api/v1/groups/{test_conversation}/members/{test_members['member_id']}/role",
         json={"new_role": "admin"},
         headers=admin_headers
@@ -312,7 +312,7 @@ async def test_non_owner_cannot_change_roles(async_client: AsyncClient, auth_hea
 # ============ Message Moderation Tests ============
 
 @pytest.mark.asyncio
-async def test_delete_message_success(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_delete_message_success(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test admin deleting a message"""
     # Arrange: Create a test message
     message_id = ObjectId()
@@ -341,7 +341,7 @@ async def test_delete_message_success(async_client: AsyncClient, auth_headers, t
 
 
 @pytest.mark.asyncio
-async def test_pin_message_success(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_pin_message_success(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test admin pinning a message"""
     # Arrange: Create message to pin
     message_id = ObjectId()
@@ -372,7 +372,7 @@ async def test_pin_message_success(async_client: AsyncClient, auth_headers, test
 
 
 @pytest.mark.asyncio
-async def test_unpin_message(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_unpin_message(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test unpinning a message"""
     # Arrange: Create pinned message
     message_id = ObjectId()
@@ -398,12 +398,12 @@ async def test_unpin_message(async_client: AsyncClient, auth_headers, test_db: A
 # ============ Room Settings Tests ============
 
 @pytest.mark.asyncio
-async def test_lock_room_success(async_client: AsyncClient, test_db: AsyncIOMotorDatabase, test_conversation: str):
+async def test_lock_room_success(async_client: AsyncClient, test_db: Any, test_conversation: str):
     """Test owner locking the room"""
     owner_headers = {"Authorization": "Bearer owner_token"}
     
     # Act: Lock room
-    response = await async_client.patch(
+    await async_client.patch(
         f"/api/v1/groups/{test_conversation}/lock",
         json={"locked": True},
         headers=owner_headers
@@ -413,7 +413,7 @@ async def test_lock_room_success(async_client: AsyncClient, test_db: AsyncIOMoto
 
 
 @pytest.mark.asyncio
-async def test_unlock_room_success(async_client: AsyncClient, test_db: AsyncIOMotorDatabase, test_conversation: str):
+async def test_unlock_room_success(async_client: AsyncClient, test_db: Any, test_conversation: str):
     """Test owner unlocking the room"""
     owner_headers = {"Authorization": "Bearer owner_token"}
     
@@ -424,7 +424,7 @@ async def test_unlock_room_success(async_client: AsyncClient, test_db: AsyncIOMo
     )
     
     # Act: Unlock room
-    response = await async_client.patch(
+    await async_client.patch(
         f"/api/v1/groups/{test_conversation}/lock",
         json={"locked": False},
         headers=owner_headers
@@ -434,12 +434,12 @@ async def test_unlock_room_success(async_client: AsyncClient, test_db: AsyncIOMo
 
 
 @pytest.mark.asyncio
-async def test_non_owner_cannot_lock_room(async_client: AsyncClient, test_db: AsyncIOMotorDatabase, test_conversation: str):
+async def test_non_owner_cannot_lock_room(async_client: AsyncClient, test_db: Any, test_conversation: str):
     """Test that only owner can lock/unlock room"""
     admin_headers = {"Authorization": "Bearer admin_token"}
     
     # Act: Admin tries to lock
-    response = await async_client.patch(
+    await async_client.patch(
         f"/api/v1/groups/{test_conversation}/lock",
         json={"locked": True},
         headers=admin_headers
@@ -452,10 +452,10 @@ async def test_non_owner_cannot_lock_room(async_client: AsyncClient, test_db: As
 # ============ Audit Log Tests ============
 
 @pytest.mark.asyncio
-async def test_get_audit_log_success(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_get_audit_log_success(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test retrieving audit log"""
     # Arrange: Create audit log entries
-    for i in range(5):
+    for _ in range(5):
         await test_db.group_audit_logs.insert_one({
             "conversation_id": test_conversation,
             "admin_id": test_members["admin_id"],
@@ -478,7 +478,7 @@ async def test_get_audit_log_success(async_client: AsyncClient, auth_headers, te
 
 
 @pytest.mark.asyncio
-async def test_get_audit_log_pagination(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_get_audit_log_pagination(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test audit log pagination"""
     # Arrange: Create 25 audit entries
     for i in range(25):
@@ -513,12 +513,12 @@ async def test_get_audit_log_pagination(async_client: AsyncClient, auth_headers,
 
 
 @pytest.mark.asyncio
-async def test_non_admin_cannot_view_audit_log(async_client: AsyncClient, test_db: AsyncIOMotorDatabase, test_conversation: str):
+async def test_non_admin_cannot_view_audit_log(async_client: AsyncClient, test_db: Any, test_conversation: str):
     """Test that regular members cannot view audit log"""
     member_headers = {"Authorization": "Bearer member_token"}
     
     # Act: Member tries to view audit log
-    response = await async_client.get(
+    await async_client.get(
         f"/api/v1/groups/{test_conversation}/audit",
         headers=member_headers
     )
@@ -530,7 +530,7 @@ async def test_non_admin_cannot_view_audit_log(async_client: AsyncClient, test_d
 # ============ Permission Tests ============
 
 @pytest.mark.asyncio
-async def test_user_not_in_conversation_cannot_moderate(async_client: AsyncClient, test_db: AsyncIOMotorDatabase, test_conversation: str):
+async def test_user_not_in_conversation_cannot_moderate(async_client: AsyncClient, test_db: Any, test_conversation: str):
     """Test that users not in conversation cannot perform admin actions"""
     # Arrange: Create user not in conversation
     outsider_id = str(ObjectId())
@@ -544,7 +544,7 @@ async def test_user_not_in_conversation_cannot_moderate(async_client: AsyncClien
     outsider_headers = {"Authorization": "Bearer outsider_token"}
     
     # Act: Try to mute member
-    response = await async_client.post(
+    await async_client.post(
         f"/api/v1/groups/{test_conversation}/mute",
         json={
             "user_id": "some_user_id",
@@ -558,7 +558,7 @@ async def test_user_not_in_conversation_cannot_moderate(async_client: AsyncClien
 
 
 @pytest.mark.asyncio
-async def test_nonexistent_conversation_returns_error(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase):
+async def test_nonexistent_conversation_returns_error(async_client: AsyncClient, auth_headers, test_db: Any):
     """Test that operations on nonexistent conversation fail"""
     fake_conversation_id = str(ObjectId())
     
@@ -602,7 +602,7 @@ async def test_group_admin_requires_authentication(async_client: AsyncClient, te
 # ============ Audit Trail Verification Tests ============
 
 @pytest.mark.asyncio
-async def test_mute_action_creates_audit_log(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_mute_action_creates_audit_log(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test that muting creates audit log entry"""
     # Act: Mute member
     await async_client.post(
@@ -624,7 +624,7 @@ async def test_mute_action_creates_audit_log(async_client: AsyncClient, auth_hea
 
 
 @pytest.mark.asyncio
-async def test_ban_action_creates_audit_log(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_ban_action_creates_audit_log(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test that banning creates audit log entry"""
     # Act: Ban member
     await async_client.post(
@@ -646,7 +646,7 @@ async def test_ban_action_creates_audit_log(async_client: AsyncClient, auth_head
 
 
 @pytest.mark.asyncio
-async def test_remove_member_creates_audit_log(async_client: AsyncClient, auth_headers, test_db: AsyncIOMotorDatabase, test_conversation: str, test_members: dict):
+async def test_remove_member_creates_audit_log(async_client: AsyncClient, auth_headers, test_db: Any, test_conversation: str, test_members: dict):
     """Test that removing member creates audit log entry"""
     # Act: Remove member
     await async_client.delete(

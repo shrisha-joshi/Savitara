@@ -10,7 +10,7 @@ Tests message forwarding functionality including:
 """
 import pytest
 from unittest.mock import Mock, patch, AsyncMock
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId
 
 from app.services.forwarding_service import ForwardingService
@@ -48,13 +48,13 @@ class TestForwardingService:
                 "_id": ObjectId(conv1_id),
                 "participants": [ObjectId(user1_id), ObjectId(user2_id)],
                 "room_type": "direct",
-                "created_at": datetime.utcnow(),
+                "created_at": datetime.now(timezone.utc),
             },
             {
                 "_id": ObjectId(conv2_id),
                 "participants": [ObjectId(user1_id), ObjectId(user3_id)],
                 "room_type": "direct",
-                "created_at": datetime.utcnow(),
+                "created_at": datetime.now(timezone.utc),
             }
         ])
         
@@ -66,7 +66,7 @@ class TestForwardingService:
             "sender_id": ObjectId(user1_id),
             "content": "Test message",
             "message_type": "text",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         return {
@@ -139,7 +139,7 @@ class TestForwardingService:
             "_id": ObjectId(),
             "blocker_id": ObjectId(data["user3_id"]),
             "blocked_id": ObjectId(data["user1_id"]),
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         result = await forwarding_service.forward_message(
@@ -185,7 +185,7 @@ class TestForwardingService:
             "participants": [ObjectId(data["user1_id"]), ObjectId(data["user2_id"]), ObjectId(data["user3_id"])],
             "room_type": "private_group",
             "name": "Test Group",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         result = await forwarding_service.forward_message_to_conversation(
@@ -209,7 +209,7 @@ class TestForwardingService:
             "_id": ObjectId(group_conv_id),
             "participants": [ObjectId(data["user2_id"]), ObjectId(data["user3_id"])],
             "room_type": "private_group",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         with pytest.raises(ValueError, match="not a member"):
@@ -263,7 +263,7 @@ class TestForwardingService:
                 "sender_id": ObjectId(data["user1_id"]),
                 "message_type": "forwarded",
                 "forwarded_from": {"message_id": data["message_id"]},
-                "created_at": datetime.utcnow(),
+                "created_at": datetime.now(timezone.utc),
             })
         
         count = await forwarding_service.get_forward_count(data["message_id"])
@@ -333,13 +333,13 @@ class TestForwardingService:
                 "_id": ObjectId(),
                 "blocker_id": ObjectId(data["user2_id"]),
                 "blocked_id": ObjectId(data["user1_id"]),
-                "created_at": datetime.utcnow(),
+                "created_at": datetime.now(timezone.utc),
             },
             {
                 "_id": ObjectId(),
                 "blocker_id": ObjectId(data["user1_id"]),
                 "blocked_id": ObjectId(data["user3_id"]),
-                "created_at": datetime.utcnow(),
+                "created_at": datetime.now(timezone.utc),
             }
         ])
         

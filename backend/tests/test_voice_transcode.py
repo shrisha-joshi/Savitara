@@ -102,7 +102,7 @@ class TestVoiceTranscodingWorker:
             with patch('pathlib.Path.stat') as mock_stat:
                 mock_stat.return_value.st_size = 1000
                 
-                output_file = await transcode_worker._transcode_audio(sample_audio_file)
+                _ = await transcode_worker._transcode_audio(sample_audio_file)
                 
                 # Verify ffmpeg was called with correct parameters
                 mock_subprocess.assert_called_once()

@@ -12,7 +12,7 @@ import pytest
 from httpx import AsyncClient
 from unittest.mock import patch, MagicMock
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.security import SecurityManager
 
@@ -117,7 +117,7 @@ class TestVoiceAPI:
         await test_db.conversations.insert_one({
             "_id": ObjectId(conversation_id),
             "participants": [ObjectId(authenticated_client.user_id)],
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         response = await authenticated_client.post(
@@ -148,7 +148,7 @@ class TestVoiceAPI:
         await test_db.conversations.insert_one({
             "_id": ObjectId(conversation_id),
             "participants": [ObjectId(other_user_id)],
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         response = await authenticated_client.post(
@@ -183,7 +183,7 @@ class TestVoiceAPI:
             "sender_id": ObjectId(authenticated_client.user_id),
             "message_type": "voice",
             "media_url": "voice/test.ogg",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         response = await authenticated_client.delete(f"/api/v1/voice/messages/{message_id}")
@@ -211,7 +211,7 @@ class TestVoiceAPI:
             "sender_id": ObjectId(other_user_id),
             "message_type": "voice",
             "media_url": "voice/test.ogg",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         response = await authenticated_client.delete(f"/api/v1/voice/messages/{message_id}")
@@ -239,7 +239,7 @@ class TestVoiceAPI:
                 "message_type": "voice",
                 "media_url": f"voice/test_{i}.ogg",
                 "media_size_bytes": 1024000 * (i + 1),  # 1MB, 2MB, 3MB
-                "created_at": datetime.utcnow(),
+                "created_at": datetime.now(timezone.utc),
             })
         
         response = await authenticated_client.get("/api/v1/voice/storage-usage")
@@ -249,7 +249,7 @@ class TestVoiceAPI:
         assert data["success"] is True
         assert data["data"]["total_messages"] == 3
         assert data["data"]["total_bytes"] == 6144000  # 6MB
-        assert data["data"]["total_mb"] == 6.0
+        assert data["data"]["total_mb"] == pytest.approx(6.0)
 
     @pytest.mark.asyncio
     async def test_get_playback_url_success(self, authenticated_client, test_db):
@@ -270,7 +270,7 @@ class TestVoiceAPI:
             "message_type": "voice",
             "media_url": "voice/test.ogg",
             "storage_backend": "local",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         response = await authenticated_client.get(f"/api/v1/voice/playback-url/{message_id}")
@@ -300,7 +300,7 @@ class TestVoiceAPI:
             "sender_id": ObjectId(other_user_id),
             "message_type": "voice",
             "media_url": "voice/test.ogg",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         response = await authenticated_client.get(f"/api/v1/voice/playback-url/{message_id}")

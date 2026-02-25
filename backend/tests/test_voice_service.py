@@ -10,7 +10,7 @@ Tests voice message functionality including:
 """
 import pytest
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 
 from app.services.voice_service import VoiceService
@@ -186,7 +186,7 @@ class TestVoiceService:
             "sender_id": ObjectId(mock_user_id),
             "message_type": "voice",
             "media_url": "voice/123/456.ogg",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         # Delete message
@@ -216,7 +216,7 @@ class TestVoiceService:
             "sender_id": ObjectId(other_user_id),  # Different sender
             "message_type": "voice",
             "media_url": "voice/123/456.ogg",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         with pytest.raises(ValueError, match="not authorized"):
@@ -274,7 +274,7 @@ class TestVoiceService:
             "message_type": "voice",
             "media_url": "voice/1.ogg",
             "media_size_bytes": 1024000,
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         # Message 2: 2MB
@@ -285,7 +285,7 @@ class TestVoiceService:
             "message_type": "voice",
             "media_url": "voice/2.ogg",
             "media_size_bytes": 2048000,
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         usage = await voice_service.get_user_voice_storage_usage(mock_user_id)
@@ -293,7 +293,7 @@ class TestVoiceService:
         assert usage is not None
         assert usage["total_messages"] == 2
         assert usage["total_bytes"] == 3072000  # 3MB
-        assert usage["total_mb"] == 3.0
+        assert usage["total_mb"] == pytest.approx(3.0)
 
     @pytest.mark.asyncio
     async def test_validate_mime_type_valid_types(self, voice_service):

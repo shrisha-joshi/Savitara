@@ -327,17 +327,17 @@ class TestSanitizeContactInfo:
 
     def test_phone_number_blocked(self):
         from app.api.v1.chat import sanitize_message_content
-        content, blocked = sanitize_message_content("Call me at 9876543210")
+        _, blocked = sanitize_message_content("Call me at 9876543210")
         assert blocked is True
 
     def test_email_blocked(self):
         from app.api.v1.chat import sanitize_message_content
-        content, blocked = sanitize_message_content("Email me at test@example.com")
+        _, blocked = sanitize_message_content("Email me at test@example.com")
         assert blocked is True
 
     def test_url_blocked(self):
         from app.api.v1.chat import sanitize_message_content
-        content, blocked = sanitize_message_content("Visit http://example.com")
+        _, blocked = sanitize_message_content("Visit http://example.com")
         assert blocked is True
 
     def test_clean_message_allowed(self):
@@ -348,10 +348,10 @@ class TestSanitizeContactInfo:
 
     def test_whatsapp_handle_blocked(self):
         from app.api.v1.chat import sanitize_message_content
-        content, blocked = sanitize_message_content("Contact me on whatsapp:9876543210")
+        _, blocked = sanitize_message_content("Contact me on whatsapp:9876543210")
         assert blocked is True
 
     def test_indian_number_with_plus91(self):
         from app.api.v1.chat import sanitize_message_content
-        content, blocked = sanitize_message_content("+91 98765 43210")
+        _, blocked = sanitize_message_content("+91 98765 43210")
         assert blocked is True

@@ -160,9 +160,9 @@ class TestWebSocketEndpoint:
         with pytest.raises(Exception):
             async with client.websocket_connect(
                 f"/ws/{FAKE_USER_ID}"
-            ) as websocket:
+            ) as _:
                 # Server should close with 1008
-                pass
+                ...  # Connection rejected by server
 
     @pytest.mark.asyncio
     async def test_websocket_invalid_token_rejected(self, client):
@@ -170,8 +170,8 @@ class TestWebSocketEndpoint:
         with pytest.raises(Exception):
             async with client.websocket_connect(
                 f"/ws/{FAKE_USER_ID}?token=totally_invalid_jwt"
-            ) as ws:
-                pass
+            ) as _:
+                ...  # Connection rejected by server
 
     @pytest.mark.asyncio
     async def test_websocket_user_mismatch_rejected(self):
@@ -188,8 +188,8 @@ class TestWebSocketEndpoint:
             with pytest.raises(Exception):
                 async with ac.websocket_connect(
                     f"/ws/{FAKE_USER_ID}?token={token}"
-                ) as ws:
-                    pass
+                ) as _:
+                    ...  # Connection rejected by server
 
     @pytest.mark.asyncio
     async def test_websocket_valid_token_accepted(self):
@@ -246,6 +246,7 @@ class TestProcessWebSocketMessage:
         ) as mock_send:
             await process_websocket_message(FAKE_USER_ID, payload)
             # typing indicator should trigger a send to the receiver
+            mock_send.assert_called()
 
     @pytest.mark.asyncio
     async def test_ping_message_handled(self):

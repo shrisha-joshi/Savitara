@@ -11,7 +11,7 @@ Tests message forwarding API functionality including:
 import pytest
 from httpx import AsyncClient
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.security import SecurityManager
 
@@ -58,7 +58,7 @@ class TestForwardingAPI:
             "_id": ObjectId(source_conv_id),
             "participants": [ObjectId(authenticated_client.user_id), ObjectId(recipient1_id)],
             "room_type": "direct",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         # Create message to forward
@@ -69,7 +69,7 @@ class TestForwardingAPI:
             "sender_id": ObjectId(authenticated_client.user_id),
             "content": "Message to forward",
             "message_type": "text",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         # Create target conversation
@@ -78,7 +78,7 @@ class TestForwardingAPI:
             "_id": ObjectId(target_conv_id),
             "participants": [ObjectId(authenticated_client.user_id), ObjectId(recipient2_id)],
             "room_type": "direct",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         return {
@@ -173,7 +173,7 @@ class TestForwardingAPI:
             "sender_id": ObjectId(other_user_id),
             "content": "Message",
             "message_type": "text",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         response = await authenticated_client.post(
@@ -197,7 +197,7 @@ class TestForwardingAPI:
             "_id": ObjectId(),
             "blocker_id": ObjectId(data["recipient2_id"]),
             "blocked_id": ObjectId(authenticated_client.user_id),
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         response = await authenticated_client.post(
@@ -229,7 +229,7 @@ class TestForwardingAPI:
             ],
             "room_type": "private_group",
             "name": "Test Group",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         response = await authenticated_client.post(
@@ -257,7 +257,7 @@ class TestForwardingAPI:
             "_id": ObjectId(group_conv_id),
             "participants": [ObjectId(data["recipient1_id"]), ObjectId(data["recipient2_id"])],
             "room_type": "private_group",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         })
         
         response = await authenticated_client.post(
@@ -319,7 +319,7 @@ class TestForwardingAPI:
                 "sender_id": ObjectId(authenticated_client.user_id),
                 "message_type": "forwarded",
                 "forwarded_from": {"message_id": data["message_id"]},
-                "created_at": datetime.utcnow(),
+                "created_at": datetime.now(timezone.utc),
             })
         
         response = await authenticated_client.get(

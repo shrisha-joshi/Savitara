@@ -13,6 +13,7 @@ COPY requirements.txt .
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     curl \
+    ffmpeg \
     && pip install --no-cache-dir -r requirements.txt \
     && groupadd -r appuser && useradd -r -g appuser appuser \
     && mkdir -p /app/uploads/documents /app/logs \

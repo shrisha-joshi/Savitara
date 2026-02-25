@@ -265,7 +265,8 @@ class VoiceTranscodingWorker:
         path = Path(original_key)
         stem = path.stem
         parent = path.parent
-        return str(parent / f"{stem}_transcoded.{TARGET_FORMAT}")
+        # Use POSIX path (forward slashes) for storage keys (S3 compatible)
+        return (parent / f"{stem}_transcoded.{TARGET_FORMAT}").as_posix()
     
     async def _upload_transcoded_file(
         self,

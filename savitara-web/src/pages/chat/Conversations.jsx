@@ -20,7 +20,6 @@ import {
   MenuItem,
   ListItemIcon,
   Chip,
-  CircularProgress,
   Snackbar,
   Alert
 } from '@mui/material';
@@ -58,12 +57,8 @@ const Conversations = ({ onSelectConversation, selectedConversationId }) => {
     }, []);
     const [contextMenu, setContextMenu] = useState(null);
     const [selectedConv, setSelectedConv] = useState(null);
-    const [page, setPage] = useState(1);
-    const [hasMore, setHasMore] = useState(true);
-    const [loadingMore, setLoadingMore] = useState(false);
     const [showArchived, setShowArchived] = useState(false);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-    const listRef = useRef(null);
 
     const showNotification = useCallback((message, severity = 'success') => {
         setSnackbar({ open: true, message, severity });
@@ -80,58 +75,6 @@ const Conversations = ({ onSelectConversation, selectedConversationId }) => {
                 // Backend wraps in StandardResponse: { success, data: { conversations, pagination } }
                 const convData = response.data?.data?.conversations || response.data?.conversations || [];
                 setConversations(convData);
-                
-                // Set pagination
-                const pagination = response.data?.data?.pagination;
-                if (pagination) {
-                    setHasMore(pagination.page < pagination.pages);
-                }
-            } catch (error) {
-                console.error("Failed to fetch conversations", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchConversations();
-    }, []); // Only fetch on mount
-    
-    // Infinite scroll handler
-    const handleScroll = useCallback(() => {
-        if (!listRef.current || loadingMore || !hasMore) return;
-        
-        const { scrollTop, scrollHeight, clientHeight } = listRef.current;
-        // Load more when scrolled to bottom (within 100px)
-        if (scrollHeight - scrollTop - clientHeight < 100) {
-            loadMoreConversations();
-        }
-    }, [loadingMore, hasMore]);
-    
-    const loadMoreConversations = async () => {
-        if (loadingMore || !hasMore) return;
-        
-        setLoadingMore(true);
-        try {
-            const nextPage = page + 1;
-            const response = await api.get('/chat/conversations', {
-                params: { page: nextPage, limit: 20 }
-            });
-            const convData = response.data?.data?.conversations || response.data?.conversations || [];
-            setConversations(prev => [...prev, ...convData]);
-            setPage(nextPage);
-            
-            const pagination = response.data?.data?.pagination;
-            if (pagination) {
-                setHasMore(pagination.page < pagination.pages);
-            } else {
-                setHasMore(convData.length === 20);
-            }
-        } catch (error) {
-            console.error("Failed to load more conversations", error);
-        } finally {
-            setLoadingMore(false);
-        }
-    };
             } catch (error) {
                 console.error("Failed to fetch conversations", error);
             } finally {
@@ -253,7 +196,7 @@ const Conversations = ({ onSelectConversation, selectedConversationId }) => {
 
     const handleDeleteConversation = async () => {
         if (!selectedConv) return;
-        if (!window.confirm('Delete this conversation? This cannot be undone.')) {
+        if (!globalThis.confirm('Delete this conversation? This cannot be undone.')) {
             handleCloseContextMenu();
             return;
         }
@@ -346,10 +289,9 @@ const Conversations = ({ onSelectConversation, selectedConversationId }) => {
             <Paper elevation={2}>
                 <List sx={{ width: '100%', bgcolor: 'background.paper' }}>
                     {/* Archive Folder Entry (only show if not in archived view and has archived convs) */}
-                    {!showArchived && archivedCount > 0 && (
+                    {archivedCount > 0 && !showArchived && (
                         <>
-                            <ListItem 
-                                button
+                            <ListItem
                                 onClick={() => setShowArchived(true)}
                                 sx={{ 
                                     cursor: 'pointer', 
@@ -374,8 +316,7 @@ const Conversations = ({ onSelectConversation, selectedConversationId }) => {
                     {/* Back from Archive button */}
                     {showArchived && (
                         <>
-                            <ListItem 
-                                button
+                            <ListItem
                                 onClick={() => setShowArchived(false)}
                                 sx={{ 
                                     cursor: 'pointer', 

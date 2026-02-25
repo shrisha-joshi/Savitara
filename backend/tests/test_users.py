@@ -4,29 +4,31 @@ User API Tests
 import pytest
 from app.main import app
 
+@pytest.mark.asyncio
 class TestUserProfile:
     """Test user profile endpoints"""
     
-    def test_get_profile_without_auth(self, client):
+    async def test_get_profile_without_auth(self, async_client):
         """Test getting profile without authentication"""
-        response = client.get("/api/v1/users/me")
+        response = await async_client.get("/api/v1/users/me")
         assert response.status_code == 401
     
-    def test_update_profile_without_auth(self, client):
+    async def test_update_profile_without_auth(self, async_client):
         """Test updating profile without authentication"""
-        response = client.put("/api/v1/users/me", json={"name": "New Name"})
+        response = await async_client.put("/api/v1/users/me", json={"name": "New Name"})
         assert response.status_code == 401
     
-    def test_get_user_by_id_invalid_id(self, client):
+    async def test_get_user_by_id_invalid_id(self, async_client):
         """Test getting user with invalid ID"""
-        response = client.get("/api/v1/users/invalid_id")
+        response = await async_client.get("/api/v1/users/invalid_id")
         assert response.status_code in [400, 404, 422]
 
 
+@pytest.mark.asyncio
 class TestGrihastaProfile:
     """Test Grihasta profile endpoints"""
     
-    def test_create_grihasta_profile_without_auth(self, client):
+    async def test_create_grihasta_profile_without_auth(self, async_client):
         """Test creating grihasta profile without auth"""
         profile_data = {
             "location": {
@@ -36,7 +38,7 @@ class TestGrihastaProfile:
                 "pincode": "400001"
             }
         }
-        response = client.post("/api/v1/users/grihasta/profile", json=profile_data)
+        response = await async_client.post("/api/v1/users/grihasta/profile", json=profile_data)
         assert response.status_code == 401
 
 

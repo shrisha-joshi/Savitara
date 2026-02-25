@@ -4,40 +4,42 @@ Payment Tests
 import pytest
 from app.main import app
 
+@pytest.mark.asyncio
 class TestPaymentInitiation:
     """Test payment initiation"""
     
-    def test_initiate_payment_without_auth(self, client):
+    async def test_initiate_payment_without_auth(self, async_client):
         """Test initiating payment without authentication"""
-        response = client.post(
+        response = await async_client.post(
             "/api/v1/payments/initiate",
             json={"booking_id": "507f1f77bcf86cd799439011", "amount": 1000}
         )
         assert response.status_code == 401
     
-    def test_initiate_payment_invalid_amount(self, client):
+    async def test_initiate_payment_invalid_amount(self, async_client):
         """Test initiating payment with invalid amount"""
-        response = client.post(
+        response = await async_client.post(
             "/api/v1/payments/initiate",
             json={"booking_id": "507f1f77bcf86cd799439011", "amount": -100}
         )
         assert response.status_code in [400, 401, 422]
     
-    def test_initiate_payment_missing_booking_id(self, client):
+    async def test_initiate_payment_missing_booking_id(self, async_client):
         """Test initiating payment without booking ID"""
-        response = client.post(
+        response = await async_client.post(
             "/api/v1/payments/initiate",
             json={"amount": 1000}
         )
         assert response.status_code in [401, 422]
 
 
+@pytest.mark.asyncio
 class TestPaymentVerification:
     """Test payment verification"""
     
-    def test_verify_payment_without_signature(self, client):
+    async def test_verify_payment_without_signature(self, async_client):
         """Test verifying payment without signature"""
-        response = client.post(
+        response = await async_client.post(
             "/api/v1/payments/verify",
             json={
                 "razorpay_order_id": "order_123",
@@ -46,9 +48,9 @@ class TestPaymentVerification:
         )
         assert response.status_code in [400, 401, 422]
     
-    def test_verify_payment_invalid_signature(self, client):
+    async def test_verify_payment_invalid_signature(self, async_client):
         """Test verifying payment with invalid signature"""
-        response = client.post(
+        response = await async_client.post(
             "/api/v1/payments/verify",
             json={
                 "razorpay_order_id": "order_123",
@@ -59,31 +61,33 @@ class TestPaymentVerification:
         assert response.status_code in [400, 401, 422]
 
 
+@pytest.mark.asyncio
 class TestRefunds:
     """Test refund functionality"""
     
-    def test_initiate_refund_without_auth(self, client):
+    async def test_initiate_refund_without_auth(self, async_client):
         """Test initiating refund without authentication"""
-        response = client.post(
+        response = await async_client.post(
             "/api/v1/payments/507f1f77bcf86cd799439011/refund"
         )
         assert response.status_code == 401
     
-    def test_get_refund_status_without_auth(self, client):
+    async def test_get_refund_status_without_auth(self, async_client):
         """Test getting refund status without auth"""
-        response = client.get("/api/v1/payments/refunds/rfnd_123")
+        response = await async_client.get("/api/v1/payments/refunds/rfnd_123")
         assert response.status_code == 401
 
 
+@pytest.mark.asyncio
 class TestPaymentHistory:
     """Test payment history"""
     
-    def test_get_payment_history_without_auth(self, client):
+    async def test_get_payment_history_without_auth(self, async_client):
         """Test getting payment history without auth"""
-        response = client.get("/api/v1/payments/history")
+        response = await async_client.get("/api/v1/payments/history")
         assert response.status_code == 401
     
-    def test_get_payment_by_id_without_auth(self, client):
+    async def test_get_payment_by_id_without_auth(self, async_client):
         """Test getting payment details without auth"""
-        response = client.get("/api/v1/payments/507f1f77bcf86cd799439011")
+        response = await async_client.get("/api/v1/payments/507f1f77bcf86cd799439011")
         assert response.status_code == 401

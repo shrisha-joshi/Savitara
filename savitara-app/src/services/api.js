@@ -1,51 +1,19 @@
-import axios from 'axios';
+/**
+ * Savitara App – API Client
+ * Storage adapter: AsyncStorage (React Native)
+ */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_CONFIG } from '../config/api.config';
+import { createApiClient } from './createApiClient';
 
-const api = axios.create(API_CONFIG);
-
-// Request interceptor for adding auth token
-api.interceptors.request.use(
-  async (config) => {
-    const token = await AsyncStorage.getItem('accessToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-// Response interceptor for token refresh
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-    
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      
-      try {
-        const refreshToken = await AsyncStorage.getItem('refreshToken');
-        const response = await axios.post(
-          `${API_CONFIG.baseURL}/auth/refresh`,
-          { refresh_token: refreshToken }
-        );
-        
-        const { access_token } = response.data;
-        await AsyncStorage.setItem('accessToken', access_token);
-        
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
-        return api(originalRequest);
-      } catch (refreshError) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw refreshError;
-      }
-    }
-    
-    throw error;
-  }
-);
+const api = createApiClient({
+  baseURL: API_CONFIG.baseURL,
+  getToken:   () => AsyncStorage.getItem('accessToken'),
+  getRefresh: () => AsyncStorage.getItem('refreshToken'),
+  setToken:   (t) => AsyncStorage.setItem('accessToken', t),
+  setRefresh: (t) => AsyncStorage.setItem('refreshToken', t),
+  clearAuth:  () => AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']),
+});
 
 // Auth APIs
 export const authAPI = {

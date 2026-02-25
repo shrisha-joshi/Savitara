@@ -32,17 +32,21 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install flake8 black mypy
-      
-      - name: Run Black formatter check
-        run: black --check app tests
-      
-      - name: Run Flake8 linter
-        run: flake8 app tests --max-line-length=100 --extend-ignore=E203,W503
-      
+          pip install ruff black mypy pip-audit
+
+      - name: Run Ruff linter (replaces flake8 + isort)
+        run: ruff check app tests --output-format=github
+
+      - name: Run Ruff formatter check
+        run: ruff format --check app tests
+
       - name: Run type checker (optional - will not fail build)
         continue-on-error: true
         run: mypy app --ignore-missing-imports
+
+      - name: Audit Python dependencies for known vulnerabilities
+        run: pip-audit --requirement requirements.txt --format=columns
+        continue-on-error: true
 
   # Backend Unit Tests
   backend-unit-tests:
@@ -94,9 +98,11 @@ jobs:
       
       - name: Run unit tests with coverage
         env:
+          APP_ENV: development
           MONGODB_URL: mongodb://test:testpass@localhost:27017
           REDIS_URL: redis://localhost:6379
-          JWT_SECRET_KEY: test-secret-key-for-ci
+          SECRET_KEY: test-secret-key-for-ci-minimum-32-chars-xxxx
+          JWT_SECRET_KEY: test-secret-key-for-ci-minimum-32-chars-xxxx
           JWT_ALGORITHM: HS256
         run: |
           pytest tests/ \
@@ -137,8 +143,12 @@ jobs:
         run: npm ci
       
       - name: Run ESLint
-        run: npm run lint || echo "Lint warnings found"
-      
+        run: npm run lint
+
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
       - name: Build project
         run: npm run build
         env:
@@ -166,8 +176,12 @@ jobs:
         run: npm ci
       
       - name: Run ESLint
-        run: npm run lint || echo "Lint warnings found"
-      
+        run: npm run lint
+
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
       - name: Build project
         run: npm run build
         env:
@@ -218,9 +232,11 @@ jobs:
       
       - name: Run integration tests
         env:
+          APP_ENV: development
           MONGODB_URL: mongodb://test:testpass@localhost:27017
           REDIS_URL: redis://localhost:6379
-          JWT_SECRET_KEY: test-secret-key-for-ci
+          SECRET_KEY: test-secret-key-for-ci-minimum-32-chars-xxxx
+          JWT_SECRET_KEY: test-secret-key-for-ci-minimum-32-chars-xxxx
           JWT_ALGORITHM: HS256
         run: |
           pytest tests/test_auth.py tests/test_users.py tests/test_bookings.py tests/test_payments.py \
@@ -231,20 +247,61 @@ jobs:
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
+      # ── Python dependency vulnerability scan ────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Audit Python dependencies (pip-audit)
+        run: |
+          pip install pip-audit
+          pip-audit --requirement backend/requirements.txt --format=columns
+        continue-on-error: true
+
+      # ── JavaScript dependency vulnerability scan ────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install savitara-app deps
+        working-directory: ./savitara-app
+        run: npm ci --prefer-offline
+        continue-on-error: true
+
+      - name: Audit savitara-app (mobile)
+        working-directory: ./savitara-app
+        run: npm audit --audit-level=critical
+        continue-on-error: true
+
+      - name: Install admin-savitara-app deps
+        working-directory: ./admin-savitara-app
+        run: npm ci --prefer-offline
+        continue-on-error: true
+
+      - name: Audit admin-savitara-app (mobile admin)
+        working-directory: ./admin-savitara-app
+        run: npm audit --audit-level=critical
+        continue-on-error: true
+
+      # ── Filesystem vulnerability scan (Trivy) ──────────────────────
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
-          scan-ref: './backend'
+          scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
-      
+          severity: 'CRITICAL,HIGH'
+
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
           sarif_file: 'trivy-results.sarif'
 
@@ -266,7 +323,7 @@ jobs:
   build-summary:
     name: Build Summary
     runs-on: ubuntu-latest
-    needs: [backend-lint, backend-unit-tests, frontend-web-lint, frontend-admin-lint]
+    needs: [backend-lint, backend-unit-tests, frontend-web-lint, frontend-admin-lint, security-scan]
     if: always()
     
     steps:
@@ -281,8 +338,8 @@ jobs:
              [[ "${{ needs.backend-unit-tests.result }}" != "success" ]] || \
              [[ "${{ needs.frontend-web-lint.result }}" != "success" ]] || \
              [[ "${{ needs.frontend-admin-lint.result }}" != "success" ]]; then
-            echo "❌ Build failed"
+            echo "Build failed — core checks did not pass"
             exit 1
           else
-            echo "✅ All checks passed"
+            echo "All checks passed"
           fi

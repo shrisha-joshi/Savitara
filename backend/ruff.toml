@@ -1,0 +1,73 @@
+# ruff.toml — Savitara backend linter configuration
+# Replaces: flake8, isort, pyupgrade, bandit (subset), pep8-naming
+# Docs: https://docs.astral.sh/ruff/configuration/
+
+# Match the target Python version
+target-version = "py311"
+line-length = 100
+
+# Directories to include
+src = ["app", "tests"]
+
+exclude = [
+    ".venv",
+    "venv",
+    "__pycache__",
+    "migrations",
+    "alembic",
+    ".git",
+]
+
+[lint]
+# Rule sets enabled:
+#   E / W  — pycodestyle errors & warnings
+#   F      — pyflakes (undefined names, unused imports)
+#   I      — isort (import ordering)
+#   N      — pep8-naming
+#   UP     — pyupgrade (modernise syntax to py3.11)
+#   B      — flake8-bugbear (opinionated bug detection)
+#   S      — flake8-bandit (security) — subset
+#   C4     — flake8-comprehensions
+#   SIM    — flake8-simplify
+#   RUF    — ruff-specific rules
+select = ["E", "W", "F", "I", "N", "UP", "B", "S", "C4", "SIM", "RUF"]
+
+ignore = [
+    "E203",   # whitespace before ':' (conflicts with black)
+    "E501",   # line too long — handled by formatter
+    "W503",   # line break before binary operator (deprecated)
+    "S101",   # use of assert — needed in tests
+    "S105",   # hardcoded password string — noisy in config defaults
+    "S106",   # hardcoded password in function call
+    "S311",   # standard pseudo-random not suitable for crypto — we always note this
+    "B008",   # do not perform function calls in default arguments (FastAPI Depends pattern)
+    "N805",   # first argument of a method should be named `self` — pydantic validators use `cls`
+    "RUF012", # mutable class attributes — pydantic fields pattern
+]
+
+# Allow auto-fix for safe rules only
+fixable = ["E", "W", "F", "I", "UP", "C4", "SIM"]
+unfixable = ["B", "S"]  # never auto-fix security or bugbear issues
+
+[lint.per-file-ignores]
+# Tests can use assert and access private members
+"tests/**" = ["S101", "S105", "S106", "N802"]
+# Scripts are standalone — relax a bit
+"scripts/**" = ["S101", "S603", "S607", "T201"]
+# Config files may have long strings
+"app/core/config/**" = ["S105"]
+
+[lint.isort]
+known-first-party = ["app"]
+force-sort-within-sections = true
+
+[lint.pep8-naming]
+# Allow class-level variable names matching pydantic conventions
+classmethod-decorators = ["classmethod", "validator", "field_validator", "model_validator"]
+
+[format]
+# Black-compatible formatting
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"

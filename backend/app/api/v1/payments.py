@@ -194,20 +194,48 @@ async def initiate_refund(
     if not payment:
         raise ResourceNotFoundError(message=PAYMENT_NOT_FOUND_MSG)
 
-    # Mock refund logic for now or call service
-    # refund = razorpay_service.refund(payment['razorpay_payment_id'], request.amount)
+    # Validate refund amount
+    refund_amount: Optional[float] = getattr(request, "amount", None)
+    if refund_amount is not None and refund_amount <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Refund amount must be positive",
+        )
+
+    # Initiate refund via Razorpay
+    razorpay_payment_id = payment.get("razorpay_payment_id")
+    if not razorpay_payment_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No Razorpay payment ID found for this payment",
+        )
+
+    try:
+        refund_result = razorpay_service.initiate_refund(
+            payment_id=razorpay_payment_id,
+            amount=refund_amount,
+            notes={"internal_payment_id": payment_id},
+        )
+    except Exception as exc:
+        logger.error(f"Razorpay refund failed for {payment_id}: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Refund initiation failed: {exc}",
+        )
 
     await db.payments.update_one(
         {"_id": ObjectId(payment_id)},
         {
             "$set": {
                 "status": "refunded",
+                "razorpay_refund_id": refund_result.get("refund_id"),
+                "refund_amount": refund_result.get("amount"),
                 "refund_processed_at": datetime.now(timezone.utc),
             }
         },
     )
 
-    return StandardResponse(success=True, data={"status": "refunded"})
+    return StandardResponse(success=True, data={"status": "refunded", **refund_result})
 
 
 @router.get("/refunds/{refund_id}", response_model=StandardResponse)
@@ -216,5 +244,19 @@ async def get_refund_status(
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    # Mock implementation to pass test
-    return StandardResponse(success=True, data={"status": "processed"})
+    """Look up a refund by its Razorpay refund ID stored in the payments collection."""
+    payment = await db.payments.find_one(
+        {"razorpay_refund_id": refund_id, "user_id": current_user["id"]}
+    )
+    if not payment:
+        raise ResourceNotFoundError(message="Refund not found")
+
+    return StandardResponse(
+        success=True,
+        data={
+            "refund_id": refund_id,
+            "status": payment.get("status", "unknown"),
+            "amount": payment.get("refund_amount"),
+            "processed_at": payment.get("refund_processed_at"),
+        },
+    )

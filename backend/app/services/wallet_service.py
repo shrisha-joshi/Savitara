@@ -9,6 +9,12 @@ from enum import Enum
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.core.exceptions import InsufficientCreditsError, InvalidInputError
+from app.core.constants import (
+    MIN_WITHDRAWAL_AMOUNT, MAX_WITHDRAWAL_AMOUNT,
+    MIN_RECHARGE_AMOUNT, MAX_RECHARGE_AMOUNT,
+    PLATFORM_COMMISSION_PERCENT,
+)
+from app.utils.decorators import handle_service_errors
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +51,7 @@ class WalletService:
         self.wallets = db.wallets
         self.transactions = db.wallet_transactions
 
+    @handle_service_errors("get_or_create_wallet")
     async def get_or_create_wallet(self, user_id: str) -> Dict[str, Any]:
         """
         Get user's wallet or create if doesn't exist
@@ -77,6 +84,7 @@ class WalletService:
 
         return wallet
 
+    @handle_service_errors("get_balance")
     async def get_balance(self, user_id: str) -> Dict[str, Any]:
         """
         Get wallet balance

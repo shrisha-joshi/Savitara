@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any
 from jose import JWTError, jwt
 import warnings
 import secrets
+import uuid
 import logging
 
 # Suppress passlib/bcrypt warnings before importing passlib
@@ -20,8 +21,10 @@ logging.getLogger("passlib").setLevel(logging.ERROR)
 from passlib.context import CryptContext
 from fastapi import HTTPException, Security, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from redis.asyncio import Redis
 
 from app.core.config import settings
+from app.db.redis import get_redis
 
 # Password hashing context - SonarQube: Use bcrypt with sufficient rounds
 # Configured to auto-truncate passwords to 72 bytes
@@ -34,7 +37,6 @@ pwd_context = CryptContext(
 
 # HTTP Bearer for JWT tokens
 security = HTTPBearer(auto_error=False)
-
 
 class SecurityManager:
     """Centralized security management"""
@@ -75,7 +77,12 @@ class SecurityManager:
             )
 
         to_encode.update(
-            {"exp": expire, "iat": datetime.now(timezone.utc), "type": "access"}
+            {
+                "exp": expire,
+                "iat": datetime.now(timezone.utc),
+                "type": "access",
+                "jti": str(uuid.uuid4()),  # Unique token ID for blacklist support
+            }
         )
 
         # SonarQube: Ensure secret key is from environment
@@ -97,6 +104,7 @@ class SecurityManager:
             "exp": expire,
             "iat": datetime.now(timezone.utc),
             "type": "refresh",
+            "jti": str(uuid.uuid4()),  # Unique token ID for blacklist support
         }
 
         return jwt.encode(
@@ -135,11 +143,13 @@ class SecurityManager:
         return secrets.token_urlsafe(length)
 
 
-def get_current_user(
+async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
+    redis: Optional[Redis] = Depends(get_redis),
 ) -> Dict[str, Any]:
     """
-    Dependency to get current authenticated user
+    Dependency to get current authenticated user.
+    Checks token blacklist (populated by logout) when Redis is available.
     SonarQube: Validates token on every request
     """
     if not credentials:
@@ -160,11 +170,28 @@ def get_current_user(
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid token payload")
 
+    # Check token blacklist (logout invalidation) — gracefully skip if Redis unavailable
+    jti = payload.get("jti")
+    if jti and redis is not None:
+        try:
+            is_blacklisted = await redis.exists(f"blacklist:{jti}") == 1
+            if is_blacklisted:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Token has been revoked. Please log in again.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            logger.warning("Redis blacklist check failed — skipping (Redis unavailable)")
+
     # Return user info with consistent field names
     return {
         "id": user_id,
         "role": payload.get("role"),
         "sub": user_id,  # Keep for backwards compatibility
+        "jti": jti,
     }
 
 

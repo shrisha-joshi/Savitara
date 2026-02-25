@@ -6,6 +6,9 @@ from typing import Dict, Any, List, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import logging
 
+from app.utils.decorators import fire_and_forget
+from app.core.constants import MONGO_GROUP
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,6 +22,7 @@ class AnalyticsService:
     """
 
     @staticmethod
+    @fire_and_forget("track_event")
     async def track_event(
         db: AsyncIOMotorDatabase,
         event_name: str,
@@ -35,11 +39,8 @@ class AnalyticsService:
             "hour": datetime.now().hour,
         }
 
-        try:
-            await db.analytics_events.insert_one(event)
-            logger.info(f"Event tracked: {event_name} for user {user_id}")
-        except Exception as e:
-            logger.error(f"Failed to track event: {e}")
+        await db.analytics_events.insert_one(event)
+        logger.info(f"Event tracked: {event_name} for user {user_id}")
 
     # User Events
 
@@ -199,7 +200,7 @@ class AnalyticsService:
                     "created_at": {"$gte": start_date, "$lte": end_date},
                 }
             },
-            {"$group": {"_id": None, "total_revenue": {"$sum": "$total_amount"}}},
+            {MONGO_GROUP: {"_id": None, "total_revenue": {"$sum": "$total_amount"}}},  # noqa: E501
         ]
         revenue_result = await db.bookings.aggregate(revenue_pipeline).to_list(1)
         total_revenue = revenue_result[0]["total_revenue"] if revenue_result else 0
@@ -211,7 +212,7 @@ class AnalyticsService:
 
         # Average rating
         rating_pipeline = [
-            {"$group": {"_id": None, "avg_rating": {"$avg": "$ratings.average"}}}
+            {MONGO_GROUP: {"_id": None, "avg_rating": {"$avg": "$ratings.average"}}}
         ]
         rating_result = await db.acharya_profiles.aggregate(rating_pipeline).to_list(1)
         avg_rating = rating_result[0]["avg_rating"] if rating_result else 0
@@ -234,7 +235,7 @@ class AnalyticsService:
         pipeline = [
             {"$match": {"created_at": {"$gte": start_date}}},
             {
-                "$group": {
+                MONGO_GROUP: {
                     "_id": {
                         "$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}
                     },

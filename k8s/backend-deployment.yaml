@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: savitara-backend
+  namespace: savitara
   labels:
     app: savitara-backend
     tier: backend
@@ -24,18 +25,95 @@ spec:
         - containerPort: 8000
           name: http
         env:
+        # Non-sensitive config — explicitly referenced from ConfigMap (one source per var)
         - name: APP_ENV
-          value: "production"
+          valueFrom:
+            configMapKeyRef:
+              name: savitara-config
+              key: APP_ENV
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: savitara-config
+              key: LOG_LEVEL
+        - name: PYTHONUNBUFFERED
+          valueFrom:
+            configMapKeyRef:
+              name: savitara-config
+              key: PYTHONUNBUFFERED
+        - name: MONGODB_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: savitara-config
+              key: MONGODB_DB_NAME
+        - name: ELASTICSEARCH_HOSTS
+          valueFrom:
+            configMapKeyRef:
+              name: savitara-config
+              key: ELASTICSEARCH_HOSTS
+        - name: ENABLE_ELASTICSEARCH
+          valueFrom:
+            configMapKeyRef:
+              name: savitara-config
+              key: ENABLE_ELASTICSEARCH
+        - name: RATE_LIMIT_PER_MINUTE
+          valueFrom:
+            configMapKeyRef:
+              name: savitara-config
+              key: RATE_LIMIT_PER_MINUTE
+        - name: RATE_LIMIT_AUTH_PER_MINUTE
+          valueFrom:
+            configMapKeyRef:
+              name: savitara-config
+              key: RATE_LIMIT_AUTH_PER_MINUTE
+        - name: ACCESS_TOKEN_EXPIRE_MINUTES
+          valueFrom:
+            configMapKeyRef:
+              name: savitara-config
+              key: ACCESS_TOKEN_EXPIRE_MINUTES
+        - name: REFRESH_TOKEN_EXPIRE_DAYS
+          valueFrom:
+            configMapKeyRef:
+              name: savitara-config
+              key: REFRESH_TOKEN_EXPIRE_DAYS
+        - name: SKIP_OTP_VERIFICATION
+          valueFrom:
+            configMapKeyRef:
+              name: savitara-config
+              key: SKIP_OTP_VERIFICATION
+        - name: TEST_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: savitara-config
+              key: TEST_MODE
+        - name: ALLOWED_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: savitara-config
+              key: ALLOWED_ORIGINS
+        - name: ALLOWED_HOSTS
+          valueFrom:
+            configMapKeyRef:
+              name: savitara-config
+              key: ALLOWED_HOSTS
+        # Secrets
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: savitara-secrets
+              key: secret-key
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: savitara-secrets
+              key: jwt-secret-key
         - name: MONGODB_URL
           valueFrom:
             secretKeyRef:
               name: savitara-secrets
               key: mongodb-url
         - name: REDIS_URL
-          valueFrom:
-            secretKeyRef:
-              name: savitara-secrets
-              key: redis-url
+          value: "redis://savitara-redis:6379/0"
         - name: GOOGLE_CLIENT_ID
           valueFrom:
             secretKeyRef:
@@ -61,13 +139,12 @@ spec:
             secretKeyRef:
               name: savitara-secrets
               key: sentry-dsn
-        - name: ELASTICSEARCH_URL
-          value: "http://elasticsearch-service:9200"
+        # JWT_SECRET kept for backward compatibility with any legacy code
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
               name: savitara-secrets
-              key: jwt-secret
+              key: jwt-secret-key
         resources:
           requests:
             memory: "512Mi"
@@ -118,10 +195,12 @@ apiVersion: v1
 kind: Service
 metadata:
   name: savitara-backend
+  namespace: savitara
   labels:
     app: savitara-backend
 spec:
-  type: LoadBalancer
+  # ClusterIP — external traffic enters via Ingress (k8s/ingress.yaml)
+  type: ClusterIP
   ports:
   - port: 80
     targetPort: 8000
@@ -134,6 +213,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: savitara-backend-hpa
+  namespace: savitara
 spec:
   scaleTargetRef:
     apiVersion: apps/v1

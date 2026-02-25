@@ -9,36 +9,32 @@ import logging
 from typing import Dict, Tuple, Optional
 from functools import wraps
 
+# OCP: rules are loaded from config — no need to modify this file to change limits
+from app.core.rate_limit_config import (
+    get_endpoint_limit,
+    get_burst_limit,
+    DEFAULT_LIMIT,
+    ENDPOINT_LIMITS,
+    BURST_LIMITS,
+)
+
 logger = logging.getLogger(__name__)
 
 
 class AdvancedRateLimiter:
     """
-    Advanced rate limiting with sliding window algorithm
-    Supports per-endpoint, per-user, and per-IP rate limits
+    Advanced rate limiting with sliding window algorithm.
+    Supports per-endpoint, per-user, and per-IP rate limits.
+    All limit values are sourced from app.core.rate_limit_config (OCP).
     """
 
     def __init__(self, redis_client: Redis):
         self.redis = redis_client
 
-        # Rate limit configurations (requests, window_seconds)
-        self.endpoint_limits: Dict[str, Tuple[int, int]] = {
-            "/api/v1/auth/login": (5, 300),  # 5 per 5 minutes
-            "/api/v1/auth/register": (3, 3600),  # 3 per hour
-            "/api/v1/bookings": (20, 60),  # 20 per minute
-            "/api/v1/payments/create": (10, 60),  # 10 per minute
-            "/api/v1/users/acharyas/search": (60, 60),  # 60 per minute
-            "/api/v1/chat/messages": (100, 60),  # 100 per minute
-        }
-
-        # Default rate limit for unlisted endpoints
-        self.default_limit = (100, 60)  # 100 per minute
-
-        # Burst limits (max requests in short burst)
-        self.burst_limits: Dict[str, int] = {
-            "/api/v1/auth/login": 10,
-            "/api/v1/payments/create": 5,
-        }
+        # Loaded from rate_limit_config — not hardcoded here (OCP)
+        self.endpoint_limits: Dict[str, Tuple[int, int]] = ENDPOINT_LIMITS
+        self.default_limit: Tuple[int, int] = DEFAULT_LIMIT
+        self.burst_limits: Dict[str, int] = BURST_LIMITS
 
     async def check_rate_limit(
         self, key: str, limit: int, window: int, burst_limit: Optional[int] = None
@@ -185,11 +181,52 @@ async def rate_limit_middleware(
     return response
 
 
+def _extract_request_from_call_args(args, kwargs) -> Optional[Request]:
+    """Extract FastAPI Request from positional or keyword arguments."""
+    if request := kwargs.get("request"):
+        return request
+    for arg in args:
+        if isinstance(arg, Request):
+            return arg
+    return None
+
+
+async def _apply_rate_limit_check(
+    request: Request, requests: int, window: int
+) -> None:
+    """
+    Apply rate limit check for a decorated endpoint.
+    Raises HTTP 429 when the limit is exceeded.
+    """
+    if not hasattr(request.app.state, "rate_limiter"):
+        return
+
+    limiter = request.app.state.rate_limiter
+    endpoint = request.url.path
+    client_ip = request.client.host if request.client else "unknown"
+    user_id = getattr(request.state, "user_id", None)
+
+    identifier = f"user:{user_id}" if user_id else f"ip:{client_ip}"
+    key = f"rate_limit:{identifier}:{endpoint}"
+
+    allowed, metadata = await limiter.check_rate_limit(key, requests, window)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"Rate limit exceeded. "
+                f"Try again in {metadata.get('retry_after', window)} seconds."
+            ),
+            headers=limiter.get_rate_limit_headers(metadata),
+        )
+
+
 def rate_limit(requests: int, window: int):
     """
-    Decorator for applying rate limits to specific endpoints
+    Decorator for applying rate limits to specific endpoints.
 
-    Usage:
+    Usage::
+
         @app.get("/api/endpoint")
         @rate_limit(requests=10, window=60)
         async def my_endpoint():
@@ -199,35 +236,9 @@ def rate_limit(requests: int, window: int):
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            # Get request from kwargs
-            request = kwargs.get("request")
-            if not request:
-                # Try to find in args
-                for arg in args:
-                    if isinstance(arg, Request):
-                        request = arg
-                        break
-
-            if request and hasattr(request.app.state, "rate_limiter"):
-                rate_limiter = request.app.state.rate_limiter
-                endpoint = request.url.path
-                client_ip = request.client.host
-                user_id = getattr(request.state, "user_id", None)
-
-                identifier = f"user:{user_id}" if user_id else f"ip:{client_ip}"
-                key = f"rate_limit:{identifier}:{endpoint}"
-
-                allowed, metadata = await rate_limiter.check_rate_limit(
-                    key, requests, window
-                )
-
-                if not allowed:
-                    raise HTTPException(
-                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                        detail=f"Rate limit exceeded. Try again in {metadata.get('retry_after', window)} seconds.",
-                        headers=rate_limiter.get_rate_limit_headers(metadata),
-                    )
-
+            request = _extract_request_from_call_args(args, kwargs)
+            if request:
+                await _apply_rate_limit_check(request, requests, window)
             return await func(*args, **kwargs)
 
         return wrapper

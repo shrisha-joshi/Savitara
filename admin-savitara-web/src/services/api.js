@@ -1,38 +1,26 @@
-import axios from 'axios';
+/**
+ * Admin Savitara Web – API Client
+ * Storage adapter: localStorage (browser, adminToken key)
+ * No token refresh – admin sessions redirect to /login on 401.
+ */
+import { createApiClient } from './createApiClient';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1';
 
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
+const api = createApiClient({
+  baseURL:    API_BASE_URL,
+  getToken:   () => Promise.resolve(localStorage.getItem('adminToken')),
+  // Admin web has no refresh flow – returning null forces the factory to trigger clearAuth
+  getRefresh: () => Promise.resolve(null),
+  setToken:   (t) => { localStorage.setItem('adminToken', t); return Promise.resolve() },
+  setRefresh: () => Promise.resolve(),
+  clearAuth: () => {
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminUser');
+    return Promise.resolve();
   },
+  onAuthFailure: () => { globalThis.location.href = '/login' },
 });
-
-// Request interceptor for adding auth token
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('adminToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => { throw error; }
-);
-
-// Response interceptor for handling errors
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('adminToken');
-      localStorage.removeItem('adminUser');
-      globalThis.location.href = '/login';
-    }
-    throw error;
-  }
-);
 
 // Admin APIs
 export const adminAPI = {

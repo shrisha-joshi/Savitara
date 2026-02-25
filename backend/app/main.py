@@ -17,21 +17,19 @@ from fastapi import (
     WebSocketDisconnect,
     HTTPException,
 )
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from contextlib import asynccontextmanager
 import logging
 import sys
 import time
 
 from app.core.config import settings
+from app.core.lifespan import lifespan          # extracted: async context manager
+from app.core.middleware_config import register_middleware  # extracted: all middleware
 from app.core.security import SecurityManager
 from app.core.exceptions import SavitaraException
 from app.db.connection import DatabaseManager
-from app.middleware.rate_limit import rate_limiter, handle_rate_limit_exceeded
-from app.services.cache_service import cache
+from app.middleware.rate_limit import handle_rate_limit_exceeded
 from app.services.websocket_manager import manager, process_websocket_message
 
 # Include API routers
@@ -62,12 +60,6 @@ from app.api.v1 import (
     group_admin,
 )
 
-from app.middleware.advanced_rate_limit import AdvancedRateLimiter
-from app.middleware.compression import CompressionMiddleware
-from app.middleware.security_headers import SecurityHeadersMiddleware
-from app.services.query_optimizer import QueryOptimizer
-from app.services.audit_service import AuditService
-from app.services.search_service import search_service
 from slowapi.errors import RateLimitExceeded  # type: ignore
 import sentry_sdk
 
@@ -99,128 +91,8 @@ API_REDOC_PATH = "/api/redoc"
 DOCS_PATH = "/docs"
 
 
-async def _connect_database():
-    """Connect to MongoDB with error handling"""
-    try:
-        await DatabaseManager.connect_to_database()
-    except Exception as e:
-        logger.error(f"MongoDB connection failed: {e}")
-        logger.warning(
-            "Application starting without MongoDB - some features may not work"
-        )
-
-
-async def _connect_redis_services():
-    """Connect Redis for rate limiting, caching, and WebSocket"""
-    if not settings.REDIS_URL:
-        logger.info("Redis services disabled (no REDIS_URL configured)")
-        return
-
-    try:
-        await rate_limiter.connect_redis()
-    except Exception as e:
-        logger.warning(f"Redis rate limiter connection failed: {e}")
-
-    try:
-        await cache.connect()
-    except Exception as e:
-        logger.warning(f"Redis cache connection failed: {e}")
-
-    try:
-        await manager.connect_redis()
-    except Exception as e:
-        logger.warning(f"WebSocket Redis connection failed: {e}")
-
-
-async def _initialize_search():
-    """Initialize Elasticsearch search service"""
-    if not settings.ENABLE_ELASTICSEARCH:
-        logger.info("Search service disabled")
-        return
-
-    try:
-        await search_service.create_index()
-        logger.info("Search service initialized")
-    except Exception as e:
-        logger.warning(f"Search service initialization failed: {e}")
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Application lifespan events
-    SonarQube: S2095 - Proper resource management
-    """
-    # Startup
-    logger.info("Starting Savitara application...")
-
-    try:
-        await _connect_database()
-        await _connect_redis_services()
-        await _initialize_search()
-        app.search_service = search_service
-
-        # Create database indexes for performance (non-blocking)
-        try:
-            # Check db connection before index creation
-            if DatabaseManager.client is not None and DatabaseManager.db is not None:
-                db = DatabaseManager.db
-                optimizer = QueryOptimizer(db)
-                await optimizer.create_all_indexes()
-                logger.info("Database indexes created")
-
-                # Initialize services collection with default data
-                try:
-                    from app.db.init_services import initialize_services_collection
-
-                    await initialize_services_collection(db)
-                except ImportError:
-                    logger.warning(
-                        "Services initialization module not found - skipping"
-                    )
-                except Exception as svc_error:
-                    logger.warning(f"Services initialization failed: {svc_error}")
-        except Exception as e:
-            logger.warning(f"Index creation failed: {e}")
-
-        # Initialize advanced rate limiter
-        redis_client = None
-        if hasattr(rate_limiter, "redis_client"):
-            redis_client = rate_limiter.redis_client
-        advanced_rate_limiter = AdvancedRateLimiter(redis_client)
-        app.state.rate_limiter = advanced_rate_limiter
-
-        # Initialize audit service (only if DB is available)
-        if DatabaseManager.db is not None:
-            app.state.audit_service = AuditService(DatabaseManager.db)
-        else:
-            app.state.audit_service = None
-            logger.warning("Audit service not initialized - database unavailable")
-
-        logger.info("Application startup complete")
-
-        yield
-
-    finally:
-        # Shutdown
-        logger.info("Shutting down Savitara application...")
-
-        # Close MongoDB connection
-        await DatabaseManager.close_database_connection()
-
-        # Close Redis connection
-        await rate_limiter.close()
-
-        # Close cache Redis connection
-        await cache.disconnect()
-
-        # Close search service connection
-        try:
-            await search_service.close()
-        except Exception as e:
-            logger.error(f"Search service shutdown failed: {e}")
-
-        logger.info("Application shutdown complete")
+# Startup/shutdown logic lives in app.core.startup (SRP).
+# Lifespan context manager lives in app.core.lifespan (SRP).
 
 
 # Create FastAPI application
@@ -234,79 +106,8 @@ app = FastAPI(
 )
 
 
-# Compression Middleware - Compress responses for faster transfer
-app.add_middleware(
-    CompressionMiddleware,
-    minimum_size=1024,  # Only compress responses > 1KB
-    compression_level=6,  # Balanced compression
-)
-
-# Security Headers Middleware - SonarQube: S5122
-app.add_middleware(SecurityHeadersMiddleware)
-
-# CORS Middleware - SonarQube: S5122 - Properly configured
-# Supports both HTTP and WebSocket connections
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["*"],
-    expose_headers=[
-        "X-Total-Count",
-        "X-Request-ID",
-        "X-RateLimit-Limit",
-        "X-RateLimit-Remaining",
-        "X-RateLimit-Reset",
-    ],
-    # Allow WebSocket upgrade requests
-    max_age=86400,  # Cache preflight for 24 hours
-)
-
-
-# Trusted Host Middleware - SonarQube: Security
-if settings.is_production:
-    app.add_middleware(
-        TrustedHostMiddleware, allowed_hosts=["savitara.com", "*.savitara.com"]
-    )
-
-
-# Request ID and timing middleware
-@app.middleware("http")
-async def add_request_id_and_timing(request: Request, call_next):
-    """
-    Add request ID and measure response time
-    SonarQube: Proper logging and monitoring
-    """
-    # Generate request ID
-    request_id = f"{int(time.time() * 1000)}"
-    request.state.request_id = request_id
-
-    # Measure time
-    start_time = time.time()
-
-    # Process request
-    response = await call_next(request)
-
-    # Calculate duration
-    process_time = time.time() - start_time
-
-    # Add headers
-    response.headers["X-Request-ID"] = request_id
-    response.headers["X-Process-Time"] = str(process_time)
-
-    # Fix for Firebase Auth COOP
-    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
-
-    # Log
-    logger.info(
-        f"Request: {request.method} {request.url.path} - "
-        f"Status: {response.status_code} - "
-        f"Duration: {process_time:.3f}s - "
-        f"Request-ID: {request_id}"
-    )
-
-    return response
+# All middleware registered in app.core.middleware_config (SRP).
+register_middleware(app)
 
 
 def get_cors_origin(request: Request) -> str:
@@ -357,7 +158,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     """
     logger.warning(f"Validation Error: {exc.errors()}")
     response = JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "success": False,
             "error": {
@@ -472,51 +273,6 @@ async def health_check():
     }
 
 
-# Temporary test endpoint for debugging database connection
-@app.get("/test-db", tags=["Debug"])
-async def test_database_connection():
-    """
-    Test database connection - TEMPORARY ENDPOINT FOR DEBUGGING
-    Remove this endpoint after fixing deployment issues
-    """
-    try:
-        if DatabaseManager.client is None:
-            return {
-                "status": "error",
-                "message": "Database client not initialized",
-                "mongodb_url": settings.MONGODB_URL[:50] + "..." if settings.MONGODB_URL else None
-            }
-
-        # Test connection
-        await DatabaseManager.client.admin.command("ping")
-
-        # Test database access
-        db = DatabaseManager.db
-        if db is None:
-            return {"status": "error", "message": "Database not initialized"}
-
-        # Get collection count
-        collections = await db.list_collection_names()
-        user_count = await db.users.count_documents({})
-
-        return {
-            "status": "success",
-            "message": "Database connection successful",
-            "database": settings.MONGODB_DB_NAME,
-            "collections": len(collections),
-            "user_count": user_count,
-            "mongodb_url": settings.MONGODB_URL[:50] + "..." if settings.MONGODB_URL else None
-        }
-
-    except Exception as e:
-        logger.error(f"Database test failed: {e}", exc_info=True)
-        return {
-            "status": "error",
-            "message": f"Database connection failed: {str(e)}",
-            "mongodb_url": settings.MONGODB_URL[:50] + "..." if settings.MONGODB_URL else None
-        }
-
-
 # Simple readiness probe for Railway
 @app.get("/", tags=["Root"], status_code=200)
 async def root():
@@ -577,9 +333,43 @@ app.include_router(moderation.router, prefix=API_V1_PREFIX)  # User blocking and
 app.include_router(group_admin.router, prefix=API_V1_PREFIX)  # Group chat moderation
 
 
+async def _authenticate_ws_ticket(ticket: str, user_id: str) -> bool:
+    """Validate a one-time WebSocket ticket against Redis. Returns True if valid."""
+    redis_url = settings.REDIS_URL or ""
+    if not redis_url:
+        logger.error("Redis not configured — cannot validate WS ticket")
+        return False
+    from redis.asyncio import from_url as _redis_from_url
+    redis_client = _redis_from_url(redis_url, encoding="utf-8", decode_responses=True)
+    try:
+        stored_user_id = await redis_client.getdel(f"ws_ticket:{ticket}")
+        return stored_user_id == user_id
+    finally:
+        await redis_client.aclose()
+
+
+def _authenticate_ws_token(token: str, user_id: str) -> bool:
+    """Validate a legacy JWT token for WebSocket auth (dev/staging only)."""
+    try:
+        payload = SecurityManager.verify_token(token)
+        return payload.get("sub") == user_id
+    except HTTPException:
+        return False
+
+
+def _ws_origin_allowed(origin: Optional[str]) -> bool:
+    """Return True when origin is absent (non-browser) or in the allow-list."""
+    return origin is None or origin in settings.ALLOWED_ORIGINS
+
+
 # WebSocket endpoint for real-time communication
 @app.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str, token: str = None):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    user_id: str,
+    ticket: Optional[str] = None,
+    token: Optional[str] = None,
+):
     """
     WebSocket endpoint for real-time features:
     - Chat messages
@@ -588,53 +378,50 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, token: str = No
     - Online status
     - Typing indicators
 
-    Requires 'token' query parameter for authentication.
-    Enhanced with origin validation and reconnection support.
+    Preferred auth: 'ticket' query parameter (one-time, Redis-backed, 60 s TTL).
+    Legacy fallback:  'token' query parameter (JWT) — accepted only in non-production.
     """
     # SECURITY: Validate origin header (CORS for WebSocket)
     origin = websocket.headers.get("origin")
-    if origin and origin not in settings.ALLOWED_ORIGINS:
-        logger.warning(f"WebSocket connection blocked from unauthorized origin: {origin}")
+    if not _ws_origin_allowed(origin):
+        logger.warning(f"WebSocket blocked from origin: {origin}")
         await websocket.close(code=1008, reason="Invalid origin")
         return
 
-    # Verify token before connecting
-    try:
-        if not token:
-            logger.warning(
-                f"WebSocket connection attempt without token for user {user_id}"
-            )
-            await websocket.close(code=1008, reason="Token required")
-            return
+    authenticated_user_id: Optional[str] = None
 
-        # Verify JWT token
-        # Note: We catch the HTTPException from verify_token as we need to close the socket gracefully
+    # --- Ticket-based auth (preferred) ---
+    if ticket:
         try:
-            payload = SecurityManager.verify_token(token)
-        except HTTPException:
-            logger.warning(f"Invalid token for WebSocket connection user {user_id}")
+            valid = await _authenticate_ws_ticket(ticket, user_id)
+        except Exception as exc:
+            logger.error(f"WS ticket validation error: {exc}")
+            await websocket.close(code=1011, reason="Authentication error")
+            return
+        if not valid:
+            logger.warning(f"Invalid or expired WS ticket for user {user_id}")
+            await websocket.close(code=1008, reason="Invalid ticket")
+            return
+        authenticated_user_id = user_id
+
+    # --- Token-based auth (legacy, blocked in production) ---
+    elif token:
+        if settings.is_production:
+            logger.warning("JWT token in WS URL rejected in production")
+            await websocket.close(code=1008, reason="Use /auth/ws-ticket")
+            return
+        if not _authenticate_ws_token(token, user_id):
+            logger.warning(f"Invalid/mismatched token for WS user {user_id}")
             await websocket.close(code=1008, reason="Invalid token")
             return
-
-        # Verify user_id matches token subject
-        token_sub = payload.get("sub")
-        if not token_sub or token_sub != user_id:
-            logger.warning(
-                f"Token user mismatch: token={token_sub}, requested={user_id}"
-            )
-            await websocket.close(code=1008, reason="User mismatch")
-            return
-
-    except Exception as e:
-        logger.error(f"WebSocket auth error: {e}")
-        try:
-            await websocket.close(code=1011, reason="Authentication error")
-        except RuntimeError:
-            pass  # Socket might be already closed
+        authenticated_user_id = user_id
+    else:
+        logger.warning(f"WebSocket connection without auth for user {user_id}")
+        await websocket.close(code=1008, reason="Authentication required")
         return
 
-    await manager.connect(user_id, websocket)
-    logger.info(f"WebSocket connection established for user {user_id} from origin {origin}")
+    await manager.connect(authenticated_user_id, websocket)
+    logger.info(f"WebSocket connected: user {authenticated_user_id} from origin {origin}")
 
     try:
         while True:

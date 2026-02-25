@@ -4,18 +4,23 @@ SonarQube: S2095 - Ensure resources are properly closed
 SonarQube: S1192 - No duplicated strings
 """
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from typing import Optional
+from typing import Optional, Any
 import logging
 
 from app.core.config import settings
 from app.core.constants import FIELD_LOCATION_CITY
+# SOLID: DatabaseManager satisfies both IConnectionManager and IIndexManager.
+# - Code that only needs a DB handle should type-annotate against IConnectionManager.
+# - Startup code that also creates indexes can use DatabaseManager directly.
+from app.core.interfaces import IConnectionManager, IIndexManager
 
 logger = logging.getLogger(__name__)
 
 
-class DatabaseManager:
+class DatabaseManager(IConnectionManager, IIndexManager):
     """
-    Singleton database connection manager
+    Singleton database connection manager.
+    Implements IConnectionManager (lifecycle) + IIndexManager (index ops).
     SonarQube: Proper resource management
     """
 
@@ -71,9 +76,10 @@ class DatabaseManager:
             logger.info("MongoDB connection closed")
 
     @classmethod
-    async def _create_index_safe(cls, collection, *args, **kwargs):
+    async def _create_index_safe(cls, collection: Any, *args: Any, **kwargs: Any) -> None:
         """
-        Safely create index, ignore if it already exists
+        Safely create index, ignore if it already exists.
+        Satisfies IIndexManager contract.
         """
         try:
             await collection.create_index(*args, **kwargs)

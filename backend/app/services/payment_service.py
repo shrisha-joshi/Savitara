@@ -12,12 +12,13 @@ from datetime import datetime, timezone
 
 from app.core.config import get_settings
 from app.core.exceptions import PaymentFailedError
+from app.core.interfaces import IPaymentService
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-class RazorpayService:
+class RazorpayService(IPaymentService):
     """Razorpay payment integration service"""
 
     def __init__(self):

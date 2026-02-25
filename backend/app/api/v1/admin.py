@@ -474,14 +474,14 @@ async def moderate_review(
         admin_id = current_user["id"]
 
         # Get review
-        review = await db.reviews.find_one({"_id": review_id})
+        review = await db.reviews.find_one({"_id": ObjectId(review_id)})
         if not review:
             raise ResourceNotFoundError(resource_type="Review", resource_id=review_id)
 
         if action == "approve":
             # Make review public
             await db.reviews.update_one(
-                {"_id": review_id},
+                {"_id": ObjectId(review_id)},
                 {
                     "$set": {
                         "is_public": True,
@@ -499,7 +499,7 @@ async def moderate_review(
         else:
             # Reject review (keep private, add admin notes)
             await db.reviews.update_one(
-                {"_id": review_id},
+                {"_id": ObjectId(review_id)},
                 {
                     "$set": {
                         "moderated_by": admin_id,
@@ -560,7 +560,7 @@ async def update_acharya_rating(acharya_id: str, db: AsyncIOMotorDatabase):
 
     if rating_data:
         await db.acharya_profiles.update_one(
-            {"_id": acharya_id},
+            {"user_id": acharya_id},
             {
                 "$set": {
                     "rating": round(rating_data[0]["average_rating"], 2),

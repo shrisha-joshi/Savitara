@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import logging
 
 from app.schemas.requests import (
@@ -17,12 +17,15 @@ from app.schemas.requests import (
     RefreshTokenRequest,
     StandardResponse,
 )
+from bson import ObjectId
 from app.core.config import get_settings
 from app.core.security import SecurityManager, get_current_user
 from app.core.exceptions import AuthenticationError, InvalidInputError
 from app.db.connection import get_db
+from app.db.redis import get_redis, blacklist_token
 from app.models.database import User, UserRole, UserStatus
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from redis.asyncio import Redis
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -385,7 +388,7 @@ async def refresh_token(
             raise AuthenticationError(message="Invalid token payload")
 
         # Verify user still exists and is active
-        user_doc = await db.users.find_one({"_id": user_id})
+        user_doc = await db.users.find_one({"_id": ObjectId(user_id)})
         if not user_doc:
             raise AuthenticationError(message="User not found")
 
@@ -426,16 +429,31 @@ async def refresh_token(
     summary="Logout",
     description="Invalidate user session (client should delete tokens)",
 )
-async def logout(current_user: Dict[str, Any] = Depends(get_current_user)):
+async def logout(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    redis: Optional[Redis] = Depends(get_redis),
+):
     """
-    Logout endpoint
-
-    Note: JWT tokens are stateless. Client must delete tokens.
-    In production, implement token blacklist with Redis for immediate invalidation.
-
+    Logout endpoint — blacklists the token JTI in Redis so it cannot be reused.
+    Client MUST also delete tokens locally.
     SonarQube: S2068 - No password in code
     """
-    logger.info(f"User {current_user['id']} logged out")
+    user_id = current_user["id"]
+    jti = current_user.get("jti")
+    logger.info(f"User {user_id} logged out")
+
+    # Blacklist the access token so it is rejected on future requests
+    if jti and redis is not None:
+        try:
+            from app.core.config import settings
+            ttl_seconds = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+            await blacklist_token(redis, jti, ttl_seconds)
+            logger.info(f"Token {jti[:8]}... blacklisted for user {user_id}")
+        except Exception as exc:
+            # Non-fatal — client still deletes tokens; log for ops awareness
+            logger.warning(f"Could not blacklist token in Redis: {exc}")
+    elif not redis:
+        logger.warning("Redis unavailable — token not server-side blacklisted")
 
     return StandardResponse(
         success=True,
@@ -492,6 +510,53 @@ async def get_current_user_info(
             "onboarded": has_completed_onboarding,
             "onboarding_completed": has_completed_onboarding,
         },
+    )
+
+
+@router.post(
+    "/ws-ticket",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Issue WebSocket Ticket",
+    description=(
+        "Issues a short-lived one-time ticket for authenticating a WebSocket "
+        "connection. Pass the returned ticket as the 'ticket' query parameter "
+        "instead of the JWT token to avoid exposing long-lived credentials in URLs."
+    ),
+)
+async def issue_ws_ticket(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    redis: Optional[Redis] = Depends(get_redis),
+):
+    """
+    Generates a 64-byte random ticket stored in Redis (TTL=60 s).
+    The WebSocket endpoint redeems and deletes the ticket on first use.
+    """
+    import secrets as _secrets
+
+    ticket = _secrets.token_urlsafe(48)  # 64 URL-safe chars
+    user_id = current_user["id"]
+
+    if redis is not None:
+        try:
+            # Store as "ws_ticket:<ticket>" → user_id with 60 s TTL
+            await redis.setex(f"ws_ticket:{ticket}", 60, user_id)
+        except Exception as exc:
+            logger.warning(f"Could not store WS ticket in Redis: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Ticket service temporarily unavailable",
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Redis not available — cannot issue WebSocket ticket",
+        )
+
+    return StandardResponse(
+        success=True,
+        data={"ticket": ticket, "ttl_seconds": 60},
+        message="Connect within 60 seconds using this ticket",
     )
 
 

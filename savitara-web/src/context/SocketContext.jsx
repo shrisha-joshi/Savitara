@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { useAuth } from './AuthContext';
+import api from '../services/api';
 
 const SocketContext = createContext(null);
 
@@ -73,7 +74,7 @@ export const SocketProvider = ({ children }) => {
     }
   }, []);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (!user || !token || socket?.readyState === WebSocket.OPEN || connectingRef.current) return;
 
     if (socket) {
@@ -93,10 +94,23 @@ export const SocketProvider = ({ children }) => {
       const apiUrl = import.meta.env.VITE_BACKEND_API_URL || `http://localhost:8000`;
       wsHost = apiUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     }
-    
-    const wsUrl = `${protocol}//${wsHost}/ws/${user.id}?token=${token}`;
 
-    console.log('[WS] Connecting to:', wsUrl.split('?')[0]); // Don't log token
+    // Fetch a short-lived WS ticket to avoid exposing the JWT in the URL
+    let wsAuthParam;
+    try {
+      const ticketRes = await api.post('/auth/ws-ticket');
+      const ticket = ticketRes.data?.data?.ticket;
+      if (!ticket) throw new Error('No ticket in response');
+      wsAuthParam = `ticket=${ticket}`;
+    } catch (err) {
+      console.error('[WS] Failed to get WS ticket, falling back to token:', err);
+      // Fallback: use token (will be blocked by server in production)
+      wsAuthParam = `token=${token}`;
+    }
+    
+    const wsUrl = `${protocol}//${wsHost}/ws/${user.id}?${wsAuthParam}`;
+
+    console.log('[WS] Connecting to:', `${protocol}//${wsHost}/ws/${user.id}`);
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
@@ -132,7 +146,7 @@ export const SocketProvider = ({ children }) => {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('WS Message:', data);
+        // Do NOT log message content — may contain private chat data
         
         if (data.type === 'new_message') {
           setMessages(prev => [...prev, data]);

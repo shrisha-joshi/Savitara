@@ -11,12 +11,13 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.core.exceptions import ExternalServiceError
+from app.core.interfaces import INotificationService
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-class NotificationService:
+class NotificationService(INotificationService):
     """Firebase Cloud Messaging service"""
 
     def __init__(self):
@@ -139,6 +140,26 @@ class NotificationService:
             raise ExternalServiceError(
                 service_name="Firebase", details={"error": str(e)}
             )
+
+    def send_multicast_notification(
+        self,
+        tokens: List[str],
+        title: str,
+        body: str,
+        data: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Any]:
+        """Interface-required alias for send_multicast (without image_url)."""
+        return self.send_multicast(tokens=tokens, title=title, body=body, data=data)
+
+    def send_topic_notification(
+        self,
+        topic: str,
+        title: str,
+        body: str,
+        data: Optional[Dict[str, str]] = None,
+    ) -> str:
+        """Interface-required alias for send_to_topic (without image_url)."""
+        return self.send_to_topic(topic=topic, title=title, body=body, data=data)
 
     def send_multicast(
         self,

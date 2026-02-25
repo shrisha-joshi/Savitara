@@ -47,6 +47,15 @@ from app.models.database import Booking, BookingStatus, PaymentStatus, UserRole
 # Module-level constants
 BOOKING_COMPLETED = "Booking Completed"
 
+# Valid booking status transitions – enforced in update_booking_status and cancel_booking
+_BOOKING_TRANSITIONS: Dict[str, list] = {
+    BookingStatus.PENDING.value:     [BookingStatus.CONFIRMED.value, BookingStatus.CANCELLED.value],
+    BookingStatus.CONFIRMED.value:   [BookingStatus.IN_PROGRESS.value, BookingStatus.CANCELLED.value],
+    BookingStatus.IN_PROGRESS.value: [BookingStatus.COMPLETED.value],
+    BookingStatus.COMPLETED.value:   [],
+    BookingStatus.CANCELLED.value:   [],
+}
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/bookings", tags=["Bookings"])
 
@@ -260,9 +269,9 @@ def _create_razorpay_order(
         return None
 
     try:
-        from app.services.payment_service import PaymentService
+        from app.services.payment_service import RazorpayService
 
-        payment_service = PaymentService()
+        payment_service = RazorpayService()
         razorpay_order = payment_service.create_order(
             amount=total_amount,
             currency="INR",
@@ -272,11 +281,13 @@ def _create_razorpay_order(
                 "pooja_id": booking_data.pooja_id,
             },
         )
-        return razorpay_order.get("id")
+        return razorpay_order.get("order_id")
     except Exception as e:
         logger.warning(f"Razorpay order creation warning: {e}")
-        # In development, use dummy order ID
-        return f"order_dev_{secrets.token_hex(8)}"
+        # Fallback dummy order ID only in non-production environments
+        if not settings.is_production:
+            return f"order_dev_{secrets.token_hex(8)}"
+        raise
 
 
 def _send_booking_notification(
@@ -292,7 +303,7 @@ def _send_booking_notification(
             notification_service.send_notification(
                 token=acharya["fcm_token"],
                 title="New Booking Request",
-                body=f"Request from {current_user['full_name']} for {pooja_name}",
+                body=f"Request from {current_user.get('full_name', 'a user')} for {pooja_name}",
                 data={"type": "booking_request", "booking_id": booking_id},
             )
     except Exception as e:
@@ -473,8 +484,59 @@ async def get_bookings_root(
     return await get_my_bookings(status_filter, page, limit, current_user, db)
 
 
-@router.put(
-    "/{booking_id}/status",
+async def _notify_booking_status_update(
+    db: AsyncIOMotorDatabase,
+    booking: Dict[str, Any],
+    booking_id: str,
+    status_update,
+    update_doc: Dict[str, Any],
+) -> None:
+    """Send WS + FCM notifications after a booking status change."""
+    try:
+        from app.services.websocket_manager import manager  # noqa: PLC0415
+
+        grihasta = await db.users.find_one({"_id": booking.get("grihasta_id")})
+        grihasta_id = str(booking.get("grihasta_id"))
+        acharya_id = str(booking.get("acharya_id"))
+
+        payment_required = (
+            status_update.status == BookingStatus.CONFIRMED.value
+            and booking.get("booking_mode") == "request"
+            and status_update.amount is not None
+        )
+
+        websocket_data = {
+            "type": "payment_required" if payment_required else "booking_update",
+            "booking_id": booking_id,
+            "status": status_update.status,
+            "payment_status": update_doc.get("payment_status", booking.get("payment_status")),
+            "amount": update_doc.get("total_amount", booking.get("total_amount")),
+            "message": f"Booking {status_update.status}",
+        }
+
+        await manager.send_personal_message(grihasta_id, websocket_data)
+        await manager.send_personal_message(acharya_id, websocket_data)
+
+        if payment_required and grihasta and grihasta.get("fcm_token"):
+            try:
+                from app.services.notification_service import NotificationService  # noqa: PLC0415
+
+                NotificationService().send_notification(
+                    token=grihasta["fcm_token"],
+                    title="Booking Approved!",
+                    body=f"Acharya approved your request. Amount: \u20B9{status_update.amount}. Please complete payment.",
+                    data={
+                        "type": "payment_required",
+                        "booking_id": booking_id,
+                        "amount": str(status_update.amount),
+                    },
+                )
+            except Exception as fcm_exc:  # noqa: BLE001
+                logger.warning(f"Failed to send FCM notification: {fcm_exc}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Failed to send notifications: {exc}")
+
+
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Update Booking Status",
@@ -486,9 +548,18 @@ async def update_booking_status(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Update booking status"""
+    # Booking status transition matrix – prevent illegal state changes
     booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
     if not booking:
         raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
+
+    current_status = booking.get("status", "")
+    new_status = status_update.status
+    if new_status != current_status and new_status not in _BOOKING_TRANSITIONS.get(current_status, []):
+        raise InvalidInputError(
+            field="status",
+            message=f"Cannot transition booking from '{current_status}' to '{new_status}'",
+        )
 
     if current_user["role"] not in [UserRole.ADMIN.value, UserRole.ACHARYA.value]:
         raise PermissionDeniedError(action="Update status")
@@ -525,60 +596,10 @@ async def update_booking_status(
         update_doc["payment_status"] = PaymentStatus.PENDING.value
 
     await db.bookings.update_one({"_id": ObjectId(booking_id)}, {"$set": update_doc})
-    
+
     # Send notifications after status update
-    try:
-        # Get grihasta details for notifications
-        grihasta = await db.users.find_one({"_id": booking.get("grihasta_id")})
-        
-        # Send WebSocket notification
-        from app.services.websocket_manager import manager
-        
-        grihasta_id = str(booking.get("grihasta_id"))
-        acharya_id = str(booking.get("acharya_id"))
-        
-        # Determine if payment is required (request mode + confirmed + amount set)
-        payment_required = (
-            status_update.status == BookingStatus.CONFIRMED.value 
-            and booking.get("booking_mode") == "request"
-            and status_update.amount is not None
-        )
-        
-        websocket_data = {
-            "type": "payment_required" if payment_required else "booking_update",
-            "booking_id": booking_id,
-            "status": status_update.status,
-            "payment_status": update_doc.get("payment_status", booking.get("payment_status")),
-            "amount": update_doc.get("total_amount", booking.get("total_amount")),
-            "message": f"Booking {status_update.status}"
-        }
-        
-        # Send to both Grihasta and Acharya
-        await manager.send_personal_message(grihasta_id, websocket_data)
-        await manager.send_personal_message(acharya_id, websocket_data)
-        
-        # Send FCM notification to Grihasta for payment required
-        if payment_required and grihasta and grihasta.get("fcm_token"):
-            try:
-                from app.services.notification_service import NotificationService
-                
-                notification_service = NotificationService()
-                notification_service.send_notification(
-                    token=grihasta["fcm_token"],
-                    title="Booking Approved!",
-                    body=f"Acharya approved your request. Amount: ₹{status_update.amount}. Please complete payment.",
-                    data={
-                        "type": "payment_required",
-                        "booking_id": booking_id,
-                        "amount": str(status_update.amount)
-                    },
-                )
-            except Exception as e:
-                logger.warning(f"Failed to send FCM notification: {e}")
-                
-    except Exception as e:
-        logger.warning(f"Failed to send notifications: {e}")
-    
+    await _notify_booking_status_update(db, booking, booking_id, status_update, update_doc)
+
     return StandardResponse(success=True, message="Status updated")
 
 
@@ -613,6 +634,38 @@ async def cancel_booking(
             }
         },
     )
+
+    # Trigger Razorpay refund if payment was already collected
+    if (
+        booking.get("payment_status") == PaymentStatus.COMPLETED.value
+        and booking.get("razorpay_payment_id")
+    ):
+        try:
+            from app.services.payment_service import RazorpayService
+
+            razorpay_svc = RazorpayService()
+            refund_amount_paise = int(booking.get("total_amount", 0) * 100)
+            refund_result = razorpay_svc.initiate_refund(
+                payment_id=booking["razorpay_payment_id"],
+                amount=refund_amount_paise,
+                notes={"reason": "Booking cancelled by user", "booking_id": booking_id},
+            )
+            await db.bookings.update_one(
+                {"_id": ObjectId(booking_id)},
+                {
+                    "$set": {
+                        "payment_status": "refunded",
+                        "razorpay_refund_id": refund_result.get("id"),
+                        "refund_amount": booking.get("total_amount", 0),
+                    }
+                },
+            )
+        except Exception as refund_exc:  # noqa: BLE001
+            logger.error(
+                f"[cancel_booking] Auto-refund failed for booking {booking_id}: {refund_exc}"
+            )
+            # Don't block cancellation — refund can be retried manually by admin
+
     return StandardResponse(success=True, message="Booking cancelled")
 
 
@@ -786,17 +839,20 @@ async def verify_payment(
 
         # Verify Razorpay signature
         try:
-            from app.services.payment_service import PaymentService
+            from app.services.payment_service import RazorpayService
 
-            payment_service = PaymentService()
+            payment_service = RazorpayService()
             is_valid = payment_service.verify_payment_signature(
                 razorpay_order_id=booking_doc["razorpay_order_id"],
                 razorpay_payment_id=razorpay_payment_id,
                 razorpay_signature=razorpay_signature,
             )
         except Exception as e:
-            logger.warning(f"Payment verification warning: {e}")
-            is_valid = True  # In development, allow continuation
+            logger.error(f"Payment verification failed unexpectedly: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail="Payment verification error — please contact support",
+            )
 
         if not is_valid:
             raise PaymentFailedError(

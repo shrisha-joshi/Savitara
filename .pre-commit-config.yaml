@@ -1,0 +1,84 @@
+# .pre-commit-config.yaml
+# ---------------------------------------------------------------
+# Pre-commit hooks for Savitara platform
+#
+# Install pre-commit once:
+#   pip install pre-commit
+#   pre-commit install        # installs git hook
+#
+# Run manually against all files:
+#   pre-commit run --all-files
+#
+# Update hook versions:
+#   pre-commit autoupdate
+# ---------------------------------------------------------------
+
+repos:
+  # ── General file hygiene ──────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--unsafe]        # allow custom YAML tags in k8s manifests
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key  # SonarQube: S6437 - never commit secrets
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-case-conflict
+
+  # ── Python — Black formatter ──────────────────────────────────────────
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks:
+      - id: black
+        language_version: python3.11
+        files: ^backend/
+
+  # ── Python — Ruff linter (replaces flake8 + isort + many more) ───────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.4
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^backend/
+      - id: ruff-format   # Ruff's formatter (black-compatible)
+        files: ^backend/
+
+  # ── Python — detect secrets ───────────────────────────────────────────
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: [--baseline, .secrets.baseline]
+        exclude: (\.env\.example|package-lock\.json|poetry\.lock)
+
+  # ── JavaScript / TypeScript — ESLint ─────────────────────────────────
+  - repo: local
+    hooks:
+      - id: eslint-savitara-web
+        name: ESLint (savitara-web)
+        language: node
+        entry: bash -c 'cd savitara-web && npx eslint --max-warnings=0 src/'
+        files: ^savitara-web/src/.*\.[jt]sx?$
+        pass_filenames: false
+
+      - id: eslint-admin-web
+        name: ESLint (admin-savitara-web)
+        language: node
+        entry: bash -c 'cd admin-savitara-web && npx eslint --max-warnings=0 src/ pages/'
+        files: ^admin-savitara-web/(src|pages)/.*\.[jt]sx?$
+        pass_filenames: false
+
+  # ── Dockerfile lint ───────────────────────────────────────────────────
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: [--ignore, DL3008, --ignore, DL3009]

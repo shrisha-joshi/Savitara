@@ -12,13 +12,14 @@ from datetime import datetime, timezone
 from app.core.security import SecurityManager, get_current_admin
 from app.db.connection import get_db
 from app.schemas.requests import StandardResponse
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/auth", tags=["Admin Authentication"])
 security_manager = SecurityManager()
 
-# Super admin email - has authority to manage other admins
-SUPER_ADMIN_EMAIL = "shrishajoshi133@gmail.com"
+# Super admin email read from environment — SonarQube: S6437 no hardcoded secrets
+SUPER_ADMIN_EMAIL = settings.SUPER_ADMIN_EMAIL
 
 
 # Request/Response Models

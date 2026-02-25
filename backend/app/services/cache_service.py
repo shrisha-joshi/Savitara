@@ -7,12 +7,13 @@ import asyncio
 import time
 from typing import Optional, Any, List, Callable, Awaitable
 from app.core.config import settings
+from app.core.interfaces import ICacheService
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-class CacheService:
+class CacheService(ICacheService):
     """
     Redis-based caching service for:
     - API responses
@@ -155,6 +156,10 @@ class CacheService:
         except Exception as e:
             logger.error(f"Cache delete error for key {key}: {e}")
             return False
+
+    async def clear_pattern(self, pattern: str) -> int:
+        """Delete all keys matching pattern (satisfies ICacheService interface)."""
+        return await self.delete_pattern(pattern)
 
     async def delete_pattern(self, pattern: str) -> int:
         """Delete all keys matching pattern"""

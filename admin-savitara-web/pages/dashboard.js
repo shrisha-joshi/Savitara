@@ -124,9 +124,10 @@ const StatCard = ({ title, value, icon, growth, color, subtitle }) => (
               mt={1.5}
               sx={(theme) => {
                 const isPositive = growth >= 0;
+                const alphaOpacity = theme.palette.mode === 'dark' ? 0.15 : 0.1;
                 const avatarBg = isPositive
-                  ? alpha('#22C55E', theme.palette.mode === 'dark' ? 0.15 : 0.1)
-                  : alpha('#EF4444', theme.palette.mode === 'dark' ? 0.15 : 0.1);
+                  ? alpha('#22C55E', alphaOpacity)
+                  : alpha('#EF4444', alphaOpacity);
                 return {
                   px: 1.5,
                   py: 0.5,
@@ -202,6 +203,7 @@ TabPanel.propTypes = {
 const Dashboard = () => {
   const theme = useTheme();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [timeRange, setTimeRange] = useState('30days');
   const [activeTab, setActiveTab] = useState(0);
   
@@ -275,7 +277,7 @@ const Dashboard = () => {
 
       console.log('Analytics Overview Response:', statsResponse.data);
       console.log('Stats Data:', statsResponse.data.data);
-      
+      setError(null);
       setStats(statsResponse.data.data);
       setRevenueData(revenueResponse.data.data);
       setUserGrowthData(userGrowthResponse.data.data);
@@ -290,7 +292,7 @@ const Dashboard = () => {
       setAcharyaPerformanceData(performanceResponse.data.data);
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
-      console.error('Error details:', error.response?.data || error.message);
+      setError('Failed to load dashboard data. Please try refreshing.');
     } finally {
       if (!silent) setLoading(false);
     }
@@ -331,6 +333,19 @@ const Dashboard = () => {
       <Layout>
         <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
           <CircularProgress size={60} sx={{ color: SAFFRON }} />
+        </Box>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout>
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh" flexDirection="column" gap={2}>
+          <Typography color="error" variant="h6">{error}</Typography>
+          <Button variant="contained" onClick={() => fetchDashboardData()} sx={{ bgcolor: SAFFRON }}>
+            Retry
+          </Button>
         </Box>
       </Layout>
     );

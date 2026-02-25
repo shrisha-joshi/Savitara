@@ -48,7 +48,6 @@ export default function Wallet() {
 
   // Wallet data
   const [balance, setBalance] = useState({ main_balance: 0, bonus_balance: 0, total_balance: 0 });
-  const [summary, setSummary] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [earnings, setEarnings] = useState(null);
 
@@ -70,19 +69,14 @@ export default function Wallet() {
     try {
       setLoading(true);
       
-      // Fetch balance and summary in parallel
-      const [balanceRes, summaryRes, transactionsRes] = await Promise.all([
+      // Fetch balance and transactions in parallel
+      const [balanceRes, transactionsRes] = await Promise.all([
         api.get('/wallet/balance'),
-        api.get('/wallet/summary'),
         api.get('/wallet/transactions?limit=50')
       ]);
 
       if (balanceRes.data.success) {
         setBalance(balanceRes.data.data);
-      }
-
-      if (summaryRes.data.success) {
-        setSummary(summaryRes.data.data);
       }
 
       if (transactionsRes.data.success) {
@@ -139,7 +133,7 @@ export default function Wallet() {
       }
 
       // Create Razorpay order
-      const orderRes = await api.post('/payments/razorpay/order', {
+      const orderRes = await api.post('/payments/initiate', {
         amount,
         currency: 'INR',
         receipt: `wallet_${Date.now()}`
@@ -172,6 +166,7 @@ export default function Wallet() {
               fetchWalletData();
             }
           } catch (err) {
+            console.error('Wallet update after payment failed:', err);
             setError('Payment completed but wallet update failed');
           }
         },
@@ -271,6 +266,12 @@ export default function Wallet() {
       default:
         return 'text.primary';
     }
+  };
+
+  const getStatusColor = (status) => {
+    if (status === 'completed') return 'success';
+    if (status === 'pending') return 'warning';
+    return 'default';
   };
 
   if (loading && !balance) {
@@ -516,7 +517,7 @@ export default function Wallet() {
                         <Chip
                           label={txn.status || 'completed'}
                           size="small"
-                          color={txn.status === 'completed' ? 'success' : txn.status === 'pending' ? 'warning' : 'default'}
+                          color={getStatusColor(txn.status)}
                         />
                       </TableCell>
                     </TableRow>
@@ -609,7 +610,7 @@ export default function Wallet() {
               disabled={
                 loading ||
                 !withdrawAmount ||
-                parseFloat(withdrawAmount) < 100 ||
+                Number.parseFloat(withdrawAmount) < 100 ||
                 !bankDetails.account_holder ||
                 !bankDetails.account_number ||
                 !bankDetails.ifsc_code ||

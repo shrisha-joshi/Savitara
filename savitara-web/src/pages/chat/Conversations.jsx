@@ -306,7 +306,7 @@ const Conversations = ({ onSelectConversation, selectedConversationId }) => {
                                 </ListItemAvatar>
                                 <ListItemText
                                     primary="Archived"
-                                    secondary={`${archivedCount} conversation${archivedCount !== 1 ? 's' : ''}`}
+                                    secondary={`${archivedCount} conversation${archivedCount > 1 ? 's' : ''}`}
                                 />
                             </ListItem>
                             <Divider />

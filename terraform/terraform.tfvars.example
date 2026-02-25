@@ -1,0 +1,63 @@
+# =============================================================================
+# Savitara — Terraform variable values (copy to terraform.tfvars and fill in)
+#
+# DO NOT commit terraform.tfvars to git — it contains secrets.
+# Add terraform.tfvars to .gitignore (already done).
+#
+# Usage:
+#   cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+#   # edit terraform.tfvars with real values
+#   terraform -chdir=terraform init
+#   terraform -chdir=terraform plan
+#   terraform -chdir=terraform apply
+# =============================================================================
+
+# ── Deployment target ─────────────────────────────────────────────────────────
+environment = "production"
+aws_region  = "ap-south-1"
+project     = "savitara"
+domain_name = "savitara.in"
+
+# ── Networking ────────────────────────────────────────────────────────────────
+vpc_cidr             = "10.0.0.0/16"
+availability_zones   = ["ap-south-1a", "ap-south-1b", "ap-south-1c"]
+public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24", "10.0.13.0/24"]
+
+# ── ECS ───────────────────────────────────────────────────────────────────────
+# Run: terraform output ecr_repository_url — then build+push, then set here
+backend_image         = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/savitara-production-backend:v1.0.0"
+backend_cpu           = 512
+backend_memory        = 1024
+backend_desired_count = 2
+backend_min_count     = 1
+backend_max_count     = 6
+
+# ── ElastiCache ───────────────────────────────────────────────────────────────
+redis_node_type       = "cache.t4g.small"
+redis_num_cache_nodes = 1
+
+# ── ACM certificate ───────────────────────────────────────────────────────────
+# Get from: aws acm list-certificates --region ap-south-1
+acm_certificate_arn = "arn:aws:acm:ap-south-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# ── MongoDB Atlas ─────────────────────────────────────────────────────────────
+atlas_public_key   = "REPLACE_WITH_ATLAS_PUBLIC_KEY"
+atlas_private_key  = "REPLACE_WITH_ATLAS_PRIVATE_KEY"
+atlas_org_id       = "REPLACE_WITH_ATLAS_ORG_ID"
+atlas_project_name = "savitara-production"
+atlas_cluster_tier = "M10"
+atlas_region       = "AP_SOUTH_1"
+
+# ── Application secrets ───────────────────────────────────────────────────────
+# Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+secret_key     = "REPLACE_WITH_32_CHAR_SECRET_KEY_HEX"
+jwt_secret_key = "REPLACE_WITH_32_CHAR_JWT_SECRET_KEY_HEX"
+
+google_client_id     = "REPLACE_WITH_GOOGLE_CLIENT_ID"
+google_client_secret = "REPLACE_WITH_GOOGLE_CLIENT_SECRET"
+
+razorpay_key_id     = "rzp_live_REPLACE"
+razorpay_key_secret = "REPLACE_WITH_RAZORPAY_SECRET"
+
+sentry_dsn = "https://REPLACE@sentry.io/PROJECT_ID"

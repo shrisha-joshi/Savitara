@@ -1,0 +1,30 @@
+---
+# Non-sensitive configuration mounted into backend pods
+# Secrets go into k8s/secrets.yaml (sealed-secrets pattern)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: savitara-config
+  namespace: savitara
+  labels:
+    app: savitara-backend
+data:
+  APP_ENV: "production"
+  LOG_LEVEL: "INFO"
+  PYTHONUNBUFFERED: "1"
+  # MongoDB (host injected via StatefulSet / external operator)
+  MONGODB_DB_NAME: "savitara"
+  # ElasticSearch
+  ELASTICSEARCH_HOSTS: "http://savitara-elasticsearch:9200"
+  ENABLE_ELASTICSEARCH: "true"
+  # Rate limits
+  RATE_LIMIT_PER_MINUTE: "60"
+  RATE_LIMIT_AUTH_PER_MINUTE: "10"
+  # Application tuning
+  ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+  REFRESH_TOKEN_EXPIRE_DAYS: "30"
+  SKIP_OTP_VERIFICATION: "false"
+  TEST_MODE: "false"
+  # CORS (comma-separated; set to real domains in production)
+  ALLOWED_ORIGINS: "https://www.savitara.in,https://admin.savitara.in"
+  ALLOWED_HOSTS: "api.savitara.in,localhost"

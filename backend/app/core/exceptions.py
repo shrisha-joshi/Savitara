@@ -231,7 +231,7 @@ class ValidationError(SavitaraException):
         super().__init__(
             message=message,
             error_code="VAL_001",
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             details=details,
         )
 
@@ -243,7 +243,7 @@ class RequiredFieldMissingError(SavitaraException):
         super().__init__(
             message=f"Required field missing: {field}",
             error_code="VAL_002",
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             details={"field": field},
         )
 

@@ -46,25 +46,27 @@ pip-delete-this-directory.txt
 MANIFEST
 
 # ===========================
-# Documentation and Logs
+# Generated Output / Temp Files
 # ===========================
 *.log
 *.txt
-*.md
-!README.md
-!CHANGELOG.md
+# NOTE: .md files are NOT excluded — docs and READMEs should be shared.
+# Markdown clutter (session notes, etc.) should be deleted, not gitignored.
 
 # ===========================
-# Temporary Scripts
+# Temporary Root-Level Scripts
+# (Scoped to repo root only so backend/tests/ and backend/scripts/ are unaffected)
 # ===========================
-check_*.py
-test_*.py
-fix_*.py
-debug_*.py
-list_*.py
-setup_*.py
-update_files.js
-deploy.py
+/check_*.py
+/test_*.py
+/fix_*.py
+/debug_*.py
+/list_*.py
+/setup_*.py
+/update_files.js
+/deploy.py
+/test-*.ps1
+/test-*.sh
 
 .env
 .env.local
@@ -173,6 +175,8 @@ out/
 # Vite build output
 dist-ssr
 *.local
+# Vite dependency pre-bundle cache
+.vite/
 
 # ===========================
 # Database
@@ -219,6 +223,9 @@ firebase-debug.log
 .firebase/
 google-services.json
 GoogleService-Info.plist
+# Service account key (required by notification service — never commit)
+firebase-key.json
+*firebase-adminsdk*.json
 
 # ===========================
 # Certificates & Keys
@@ -270,3 +277,15 @@ media/
 .yarn/unplugged
 .yarn/build-state.yml
 .yarn/install-state.gz
+
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars
+terraform/*.tfplan
+# State files can contain sensitive infrastructure secrets — never commit
+terraform/*.tfstate
+terraform/*.tfstate.backup
+*.tfstate
+*.tfstate.backup
+

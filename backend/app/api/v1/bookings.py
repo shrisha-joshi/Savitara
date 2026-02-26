@@ -630,6 +630,15 @@ async def cancel_booking(
     ):
         raise PermissionDeniedError(action="Cancel booking")
 
+    # Enforce state machine transitions from _BOOKING_TRANSITIONS
+    current_status = booking.get("status")
+    allowed_transitions = _BOOKING_TRANSITIONS.get(current_status, [])
+    if BookingStatus.CANCELLED.value not in allowed_transitions:
+        raise InvalidInputError(
+            message=f"Cannot cancel booking in '{current_status}' status. Cancellation is only allowed from pending_payment, requested, or confirmed states.",
+            details={"current_status": current_status, "allowed_transitions": allowed_transitions}
+        )
+
     await db.bookings.update_one(
         {"_id": ObjectId(booking_id)},
         {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import {
   Container,
@@ -63,16 +63,7 @@ function Users() {
     active: 0,
   });
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  useEffect(() => {
-    filterUsers();
-    calculateStats();
-  }, [users, search, roleFilter]);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       setLoading(true);
       // Fetch all users
@@ -85,9 +76,9 @@ function Users() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const filterUsers = () => {
+  const filterUsers = useCallback(() => {
     let filtered = [...users];
 
     // Filter by role
@@ -107,9 +98,9 @@ function Users() {
     }
 
     setFilteredUsers(filtered);
-  };
+  }, [users, roleFilter, search]);
 
-  const calculateStats = () => {
+  const calculateStats = useCallback(() => {
     setStats({
       total: users.length,
       acharyas: users.filter(u => u.role === 'acharya').length,
@@ -118,7 +109,16 @@ function Users() {
       pending: users.filter(u => u.status === 'pending').length,
       active: users.filter(u => u.status === 'active').length,
     });
-  };
+  }, [users]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  useEffect(() => {
+    filterUsers();
+    calculateStats();
+  }, [filterUsers, calculateStats]);
 
   const handleViewUser = async (user) => {
     try {

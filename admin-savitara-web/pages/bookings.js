@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import {
   Container,
@@ -66,15 +66,7 @@ function Bookings() {
     cancelled: 0,
   });
 
-  useEffect(() => {
-    loadBookings();
-  }, [statusFilter, startDate, endDate, page]);
-
-  useEffect(() => {
-    calculateStats();
-  }, [bookings]);
-
-  const loadBookings = async () => {
+  const loadBookings = useCallback(async () => {
     try {
       setLoading(true);
       const params = {
@@ -97,9 +89,9 @@ function Bookings() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, statusFilter, startDate, endDate]);
 
-  const calculateStats = () => {
+  const calculateStats = useCallback(() => {
     setStats({
       total: pagination.total,
       pending: bookings.filter(b => b.status === 'pending' || b.status === 'requested').length,
@@ -107,7 +99,15 @@ function Bookings() {
       completed: bookings.filter(b => b.status === 'completed').length,
       cancelled: bookings.filter(b => b.status === 'cancelled').length,
     });
-  };
+  }, [bookings, pagination.total]);
+
+  useEffect(() => {
+    loadBookings();
+  }, [loadBookings]);
+
+  useEffect(() => {
+    calculateStats();
+  }, [calculateStats]);
 
   const handleViewBooking = (booking) => {
     setSelectedBooking(booking);

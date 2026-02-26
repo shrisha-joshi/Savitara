@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Layout from '../src/components/Layout'
 import withAuth from '../src/hoc/withAuth'
 import api from '../src/services/api'
@@ -12,11 +12,7 @@ function KYCVerification() {
   const [verificationNote, setVerificationNote] = useState('')
   const [processing, setProcessing] = useState(false)
 
-  useEffect(() => {
-    fetchAcharyas()
-  }, [filter])
-
-  const fetchAcharyas = async () => {
+  const fetchAcharyas = useCallback(async () => {
     try {
       setLoading(true)
       const response = await api.get(`/admin/acharyas?kyc_status=${filter}`)
@@ -29,7 +25,11 @@ function KYCVerification() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filter])
+
+  useEffect(() => {
+    fetchAcharyas()
+  }, [fetchAcharyas])
 
   const handleVerify = async (acharyaId, action) => {
     const actionText = action === 'approve' ? 'approve' : 'reject'

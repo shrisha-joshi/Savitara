@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Autocomplete, TextField, Box, InputAdornment, Typography, Chip } from '@mui/material';
 import { Country, State, City } from 'country-state-city';
 
@@ -20,8 +20,14 @@ const CascadingLocationSelect = ({
   const [selectedCity, setSelectedCity] = useState(null);
 
   const countries = Country.getAllCountries();
-  const states = selectedCountry ? State.getStatesOfCountry(selectedCountry.isoCode) : [];
-  const cities = selectedState ? City.getCitiesOfState(selectedCountry.isoCode, selectedState.isoCode) : [];
+  const states = useMemo(() => 
+    selectedCountry ? State.getStatesOfCountry(selectedCountry.isoCode) : [],
+    [selectedCountry]
+  );
+  const cities = useMemo(() => 
+    selectedState ? City.getCitiesOfState(selectedCountry.isoCode, selectedState.isoCode) : [],
+    [selectedCountry, selectedState]
+  );
 
   // Initialize with provided values
   useEffect(() => {

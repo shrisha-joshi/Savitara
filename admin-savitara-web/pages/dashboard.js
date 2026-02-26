@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import {
   Grid, Card, CardContent, Typography, Box,
@@ -235,15 +235,17 @@ const Dashboard = () => {
   useEffect(() => {
     fetchDashboardData();
     
+    fetchDashboardData();
+    
     // Auto-refresh every 30 seconds
     const interval = setInterval(() => {
       fetchDashboardData(true);
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [timeRange]);
+  }, [fetchDashboardData, timeRange]);
 
-  const fetchDashboardData = async (silent = false) => {
+  const fetchDashboardData = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
       
@@ -296,7 +298,7 @@ const Dashboard = () => {
     } finally {
       if (!silent) setLoading(false);
     }
-  };
+  }, [timeRange]);
 
   const exportData = () => {
     const dataToExport = {

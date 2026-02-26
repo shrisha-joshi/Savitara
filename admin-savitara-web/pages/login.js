@@ -39,7 +39,7 @@ export default function Login() {
       }
     };
     init();
-  }, []);
+  }, [initSuperAdmin]);
 
   const handleEmailSubmit = async (e) => {
     e.preventDefault();

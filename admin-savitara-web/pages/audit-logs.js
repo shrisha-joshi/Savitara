@@ -175,7 +175,7 @@ function AuditLogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, rowsPerPage, filters]);
+  }, [page, rowsPerPage, filters, stats]);
 
   useEffect(() => {
     fetchAuditLogs();

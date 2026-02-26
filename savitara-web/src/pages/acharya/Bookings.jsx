@@ -125,8 +125,12 @@ export default function AcharyaBookings() {
     try {
       setLoading(true)
       const response = await api.get('/bookings/my-bookings')
+      console.log('AcharyaBookings - Full response:', response.data);
       const raw = response.data?.data
       const bookingData = Array.isArray(raw) ? raw : (raw?.bookings || response.data?.bookings || [])
+      console.log('AcharyaBookings - Extracted bookings:', bookingData);
+      console.log('AcharyaBookings - Count:', bookingData.length);
+      console.log('AcharyaBookings - Statuses:', bookingData.map(b => b.status));
       setBookings(bookingData)
     } catch (error) {
       console.error('Failed to load bookings:', error)
@@ -141,7 +145,12 @@ export default function AcharyaBookings() {
 
     // Filter by tab
     if (selectedTab !== 'all') {
-      filtered = filtered.filter(b => b.status === selectedTab)
+      // Handle special case for pending tab (includes both pending and pending_payment)
+      if (selectedTab === 'pending') {
+        filtered = filtered.filter(b => b.status === 'pending_payment' || b.status === 'pending')
+      } else {
+        filtered = filtered.filter(b => b.status === selectedTab)
+      }
     }
 
     // Filter by search

@@ -44,6 +44,9 @@ export default function Login() {
       if (password.length < 8) {
         tempErrors.password = 'Password must be at least 8 characters'
         isValid = false
+      } else if (password.length > 128) {
+        tempErrors.password = 'Password must be less than 128 characters'
+        isValid = false
       } else if (!/(?=.*[a-z])/.test(password)) {
         tempErrors.password = 'Password must contain at least one lowercase letter'
         isValid = false
@@ -250,6 +253,7 @@ export default function Login() {
                 required
                 error={!!errors.password}
                 helperText={errors.password || (mode === 'register' ? 'Min. 8 characters with uppercase, lowercase & number' : '')}
+                inputProps={{ maxLength: 128 }}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">

@@ -211,9 +211,13 @@ export default function MyBookings() {
     try {
       setLoading(true);
       // Fetch all bookings and filter client side for better UX on small datasets
-      const response = await api.get('/bookings?limit=50');
+      const response = await api.get('/bookings/my-bookings');
+      console.log('MyBookings - Full response:', response.data);
       if (response.data.success) {
-        setBookings(response.data.data.bookings || response.data.data || []);
+        const bookingsData = response.data.data.bookings || response.data.data || [];
+        console.log('MyBookings - Extracted bookings:', bookingsData);
+        console.log('MyBookings - Count:', bookingsData.length);
+        setBookings(bookingsData);
       }
     } catch (err) {
       console.error('Fetch bookings failed:', err);
@@ -258,13 +262,16 @@ export default function MyBookings() {
 
   // Filter bookings based on tab
   const getFilteredBookings = () => {
-    if (tabIndex === 0) return bookings.filter(b => ['confirmed', 'pending_payment'].includes(b.status));
+    console.log('MyBookings - Filtering. Tab:', tabIndex, 'Total bookings:', bookings.length);
+    console.log('MyBookings - All booking statuses:', bookings.map(b => b.status));
+    if (tabIndex === 0) return bookings.filter(b => ['requested', 'confirmed', 'pending_payment'].includes(b.status));
     if (tabIndex === 1) return bookings.filter(b => b.status === 'completed');
     if (tabIndex === 2) return bookings.filter(b => ['cancelled', 'failed'].includes(b.status));
     return bookings;
   };
 
   const filtered = getFilteredBookings();
+  console.log('MyBookings - Filtered count:', filtered.length);
 
   if (loading) return <Layout><Box p={4} textAlign="center"><CircularProgress /></Box></Layout>;
 

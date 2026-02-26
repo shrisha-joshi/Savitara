@@ -341,7 +341,14 @@ async def create_booking(
     5. Create booking record (PENDING_PAYMENT)
     """
     try:
-        grihasta_id = current_user["id"]
+        grihasta_id_str = current_user["id"]
+        # Convert to ObjectId for consistent storage
+        try:
+            grihasta_id = ObjectId(grihasta_id_str)
+        except Exception:
+            grihasta_id = grihasta_id_str
+        
+        logger.info(f"Creating booking for grihasta_id: {grihasta_id} (type: {type(grihasta_id)})")
 
         # 1 & 2. Validate Acharya and Pooja
         acharya, pooja = await _validate_acharya_and_pooja(
@@ -432,11 +439,22 @@ async def create_booking(
         if "_id" in booking_dict and booking_dict["_id"] is None:
             del booking_dict["_id"]
         
+        # Convert ID strings back to ObjectId for proper MongoDB storage
+        # PyObjectId serializes to string during model_dump, but MongoDB needs ObjectId
+        if "grihasta_id" in booking_dict and isinstance(booking_dict["grihasta_id"], str):
+            booking_dict["grihasta_id"] = ObjectId(booking_dict["grihasta_id"])
+        if "acharya_id" in booking_dict and isinstance(booking_dict["acharya_id"], str):
+            booking_dict["acharya_id"] = ObjectId(booking_dict["acharya_id"])
+        if "pooja_id" in booking_dict and booking_dict["pooja_id"] and isinstance(booking_dict["pooja_id"], str):
+            booking_dict["pooja_id"] = ObjectId(booking_dict["pooja_id"])
+        
         # Remove unique fields that are None to avoid duplicate key errors with sparse indexes
         if "razorpay_order_id" in booking_dict and booking_dict["razorpay_order_id"] is None:
             del booking_dict["razorpay_order_id"]
         if "razorpay_payment_id" in booking_dict and booking_dict["razorpay_payment_id"] is None:
             del booking_dict["razorpay_payment_id"]
+        
+        logger.info(f"Inserting booking with grihasta_id={booking_dict.get('grihasta_id')} (type: {type(booking_dict.get('grihasta_id'))})")
             
         result = await db.bookings.insert_one(booking_dict)
         booking.id = str(result.inserted_id)
@@ -1233,23 +1251,35 @@ async def get_my_bookings(
             user_obj_id = ObjectId(user_id)
         except Exception:
             user_obj_id = None
+            logger.warning(f"Could not convert user_id to ObjectId: {user_id}")
 
         # Build query
         query = {}
         if role == UserRole.GRIHASTA.value:
-            query["grihasta_id"] = user_obj_id or user_id
+            # Use ObjectId if valid, since we now store as ObjectId
+            query["grihasta_id"] = user_obj_id if user_obj_id else user_id
+            logger.info(f"Grihasta query: {query}")
         elif role == UserRole.ACHARYA.value:
             # Acharya bookings are stored by acharya_profile _id; resolve profile by user_id
             acharya_profile = await db.acharya_profiles.find_one(
                 {"user_id": user_obj_id or user_id}, {"_id": 1}
             )
             acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
-            query["acharya_id"] = acharya_profile_id or user_obj_id or user_id
+            logger.info(f"Acharya profile lookup: user_id={user_id}, found_profile_id={acharya_profile_id}")
+            
+            # Use the profile ObjectId directly
+            query["acharya_id"] = acharya_profile_id if acharya_profile_id else (user_obj_id or user_id)
+            logger.info(f"Acharya query: {query}")
         else:
             raise PermissionDeniedError(action="View bookings")
 
         if status_filter:
             query["status"] = status_filter
+        
+        logger.info(f"Final query before pipeline: {query}")
+        # Count bookings matching query before pipeline
+        count_before_pipeline = await db.bookings.count_documents(query)
+        logger.info(f"Bookings matching query: {count_before_pipeline}")
 
         # Get bookings with details
         pipeline = [
@@ -1317,6 +1347,20 @@ async def get_my_bookings(
         ]
 
         bookings = await db.bookings.aggregate(pipeline).to_list(length=limit)
+
+        # Convert ObjectIds to strings for JSON serialization
+        for booking in bookings:
+            if "_id" in booking and booking["_id"]:
+                booking["id"] = str(booking["_id"])
+                booking["_id"] = str(booking["_id"])
+            if "grihasta_id" in booking and booking["grihasta_id"]:
+                booking["grihasta_id"] = str(booking["grihasta_id"])
+            if "acharya_id" in booking and booking["acharya_id"]:
+                booking["acharya_id"] = str(booking["acharya_id"])
+            if "pooja_id" in booking and booking["pooja_id"]:
+                booking["pooja_id"] = str(booking["pooja_id"])
+            if "acharya_user_id" in booking and booking["acharya_user_id"]:
+                booking["acharya_user_id"] = str(booking["acharya_user_id"])
 
         # Get total count
         total_count = await db.bookings.count_documents(query)

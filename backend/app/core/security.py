@@ -18,6 +18,19 @@ warnings.filterwarnings("ignore", message=".*error reading bcrypt.*")
 # Suppress passlib logger output for bcrypt version detection issues
 logging.getLogger("passlib").setLevel(logging.ERROR)
 
+# --- MONKEYPATCH FOR PASSLIB + BCRYPT 4.0+ ---
+# passlib tries to detect a bug by hashing a 255-byte password during initialization,
+# which crashes bcrypt 4.0+ because it strictly enforces a 72-byte limit.
+# We monkeypatch bcrypt.hashpw to truncate passwords to 72 bytes to prevent this crash.
+import bcrypt
+_original_hashpw = bcrypt.hashpw
+def _patched_hashpw(password: bytes, salt: bytes) -> bytes:
+    if len(password) > 72:
+        password = password[:72]
+    return _original_hashpw(password, salt)
+bcrypt.hashpw = _patched_hashpw
+# ---------------------------------------------
+
 from passlib.context import CryptContext
 from fastapi import HTTPException, Security, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -43,15 +56,29 @@ class SecurityManager:
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """Verify password against hash - auto-truncates to 72 bytes via passlib"""
-        # Passlib auto-truncates with truncate_error=False
-        return pwd_context.verify(plain_password, hashed_password)
+        """
+        Verify password against hash.
+        Apply same 72-byte truncation as during hashing for consistency.
+        """
+        # Truncate to 72 bytes same as during hashing
+        password_bytes = plain_password.encode('utf-8')[:72]
+        truncated_password = password_bytes.decode('utf-8', errors='ignore')
+        return pwd_context.verify(truncated_password, hashed_password)
 
     @staticmethod
     def get_password_hash(password: str) -> str:
-        """Generate password hash - auto-truncates to 72 bytes via passlib"""
-        # Passlib auto-truncates with truncate_error=False
-        return pwd_context.hash(password)
+        """
+        Generate password hash with bcrypt.
+        Bcrypt has a 72-byte limit, so we truncate to ensure compatibility.
+        This is safe because:
+        1. 72 bytes = 72 ASCII chars or ~24 UTF-8 chars - plenty for security
+        2. Truncating consistently on both hash and verify maintains security
+        """
+        # Encode to bytes and truncate to 72 bytes for bcrypt compatibility
+        password_bytes = password.encode('utf-8')[:72]
+        # Decode back to string for passlib (it will re-encode internally)
+        truncated_password = password_bytes.decode('utf-8', errors='ignore')
+        return pwd_context.hash(truncated_password)
 
     @staticmethod
     def create_access_token(

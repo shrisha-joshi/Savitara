@@ -475,11 +475,11 @@ const Conversations = ({ onSelectConversation, selectedConversationId }) => {
             <Menu
                 anchorReference="anchorPosition"
                 anchorPosition={
-                    contextMenu.mouseY !== null && contextMenu.mouseX !== null
+                    contextMenu !== null && contextMenu.mouseY !== null && contextMenu.mouseX !== null
                         ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
                         : undefined
                 }
-                open={contextMenu.mouseY !== null}
+                open={contextMenu !== null && contextMenu.mouseY !== null}
                 onClose={handleCloseContextMenu}
             >
                 {selectedConv && (

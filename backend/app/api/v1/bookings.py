@@ -49,11 +49,14 @@ BOOKING_COMPLETED = "Booking Completed"
 
 # Valid booking status transitions – enforced in update_booking_status and cancel_booking
 _BOOKING_TRANSITIONS: Dict[str, list] = {
-    BookingStatus.PENDING.value:     [BookingStatus.CONFIRMED.value, BookingStatus.CANCELLED.value],
-    BookingStatus.CONFIRMED.value:   [BookingStatus.IN_PROGRESS.value, BookingStatus.CANCELLED.value],
-    BookingStatus.IN_PROGRESS.value: [BookingStatus.COMPLETED.value],
-    BookingStatus.COMPLETED.value:   [],
-    BookingStatus.CANCELLED.value:   [],
+    BookingStatus.PENDING_PAYMENT.value: [BookingStatus.CONFIRMED.value, BookingStatus.CANCELLED.value, BookingStatus.FAILED.value],
+    BookingStatus.REQUESTED.value:       [BookingStatus.CONFIRMED.value, BookingStatus.CANCELLED.value, BookingStatus.REJECTED.value],
+    BookingStatus.CONFIRMED.value:       [BookingStatus.IN_PROGRESS.value, BookingStatus.CANCELLED.value],
+    BookingStatus.IN_PROGRESS.value:     [BookingStatus.COMPLETED.value],
+    BookingStatus.COMPLETED.value:       [],
+    BookingStatus.CANCELLED.value:       [],
+    BookingStatus.REJECTED.value:        [],
+    BookingStatus.FAILED.value:          [],
 }
 
 logger = logging.getLogger(__name__)
@@ -92,7 +95,7 @@ async def refer_booking(
     # Update booking's acharya_id and add note
     update_doc = {
         "acharya_id": ObjectId(new_acharya_id),
-        "status": BookingStatus.PENDING.value,  # Optionally reset status
+        "status": BookingStatus.REQUESTED.value,  # Reset to requested for new Acharya
         "updated_at": datetime.now(timezone.utc),
     }
     if notes:

@@ -27,10 +27,13 @@ MONGO_ADD_FIELDS = "$addFields"
 MONGO_FIRST = "$first"
 MONGO_PUSH = "$push"
 MONGO_COUNT = "$count"
+MONGO_IF_NULL = "$ifNull"
 
 # ---------------------------------------------------------------------------
 # Field Names
 # ---------------------------------------------------------------------------
+FIELD_POOJA_NAME = "$pooja.name"
+FIELD_SERVICE_NAME = "$service_name"
 FIELD_RATING = "$rating"
 FIELD_LOCATION_CITY = "location.city"
 FIELD_ID = "_id"

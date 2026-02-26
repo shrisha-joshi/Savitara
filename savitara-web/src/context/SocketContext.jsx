@@ -60,7 +60,7 @@ export const SocketProvider = ({ children }) => {
     }
 
     heartbeatIntervalRef.current = setInterval(() => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
+      if (ws?.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'ping' }));
       }
     }, HEARTBEAT_INTERVAL);
@@ -71,6 +71,37 @@ export const SocketProvider = ({ children }) => {
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
       heartbeatIntervalRef.current = null;
+    }
+  }, []);
+
+  // Handle typing indicator with auto-clear
+  const handleTypingIndicator = useCallback((data) => {
+    const fromId = data.sender_id || data.user_id;
+    if (fromId) {
+      setTypingIndicators(prev => ({ ...prev, [fromId]: { isTyping: data.is_typing, at: Date.now() } }));
+      // auto-clear typing after 5s
+      setTimeout(() => {
+        setTypingIndicators(prev => {
+          const clone = { ...prev };
+          delete clone[fromId];
+          return clone;
+        });
+      }, 5000);
+    }
+  }, []);
+
+  // Handle payment required notifications
+  const handlePaymentRequired = useCallback((data) => {
+    setPaymentNotifications(prev => [...prev.slice(-5), { ...data, received_at: Date.now(), read: false }]);
+    setBookingUpdates(prev => [...prev.slice(-10), { ...data, received_at: Date.now() }]);
+    
+    // Show browser notification if permitted
+    if ('Notification' in globalThis && Notification.permission === 'granted') {
+      new Notification('Booking Approved!', {
+        body: `Amount: ₹${data.amount}. Please complete payment.`,
+        icon: '/logo.png',
+        tag: `payment-${data.booking_id}`
+      });
     }
   }, []);
 
@@ -85,7 +116,7 @@ export const SocketProvider = ({ children }) => {
     setIsConnecting(true);
 
     // Determine WS protocol and host dynamically
-    const isSecure = window.location.protocol === 'https:';
+    const isSecure = globalThis.location.protocol === 'https:';
     const protocol = isSecure ? 'wss:' : 'ws:';
     
     // Get WebSocket host from environment or derive from current location
@@ -158,31 +189,9 @@ export const SocketProvider = ({ children }) => {
             return msg;
           }));
         } else if (data.type === 'typing_indicator') {
-          const fromId = data.sender_id || data.user_id
-          if (fromId) {
-            setTypingIndicators(prev => ({ ...prev, [fromId]: { isTyping: data.is_typing, at: Date.now() } }))
-            // auto-clear typing after 5s
-            setTimeout(() => {
-              setTypingIndicators(prev => {
-                const clone = { ...prev }
-                delete clone[fromId]
-                return clone
-              })
-            }, 5000)
-          }
+          handleTypingIndicator(data);
         } else if (data.type === 'payment_required') {
-          // Handle payment required notifications
-          setPaymentNotifications(prev => [...prev.slice(-5), { ...data, received_at: Date.now(), read: false }]);
-          setBookingUpdates(prev => [...prev.slice(-10), { ...data, received_at: Date.now() }]);
-          
-          // Show browser notification if permitted
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('Booking Approved!', {
-              body: `Amount: ₹${data.amount}. Please complete payment.`,
-              icon: '/logo.png',
-              tag: `payment-${data.booking_id}`
-            });
-          }
+          handlePaymentRequired(data);
         } else if (data.type === 'booking_update') {
           setBookingUpdates(prev => [...prev.slice(-10), { ...data, received_at: Date.now() }]);
         }
@@ -214,7 +223,7 @@ export const SocketProvider = ({ children }) => {
         console.error('[WS] Max reconnection attempts reached');
         
         // Notify user of connection failure
-        window.dispatchEvent(new CustomEvent('websocket_failed', {
+        globalThis.dispatchEvent(new CustomEvent('websocket_failed', {
           detail: { message: 'Unable to connect to chat. Please refresh the page.' }
         }));
       }
@@ -225,7 +234,7 @@ export const SocketProvider = ({ children }) => {
       // Let onclose handle reconnection
     };
 
-  }, [user, token, socket, offlineQueue, startHeartbeat, stopHeartbeat]);
+  }, [user, token, socket, offlineQueue, startHeartbeat, stopHeartbeat, handleTypingIndicator, handlePaymentRequired]);
 
   useEffect(() => {
     if (user && token) {

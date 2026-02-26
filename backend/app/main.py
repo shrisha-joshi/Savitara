@@ -9,6 +9,7 @@ import warnings
 warnings.filterwarnings("ignore", message=".*error reading bcrypt.*")
 warnings.filterwarnings("ignore", category=UserWarning, module="passlib")
 
+from typing import Optional
 from fastapi import (
     FastAPI,
     Request,

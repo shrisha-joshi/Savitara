@@ -1,0 +1,19 @@
+{
+  "include": [
+    "app"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    "venv",
+    ".venv",
+    "env",
+    "**/site-packages/**",
+    "**/Lib/**"
+  ],
+  "reportInvalidTypeForm": "none",
+  "reportUndefinedVariable": "warning",
+  "pythonVersion": "3.13",
+  "typeCheckingMode": "basic"
+}

@@ -14,7 +14,8 @@ pydantic-settings>=2.1.0,<3.0.0
 python-multipart>=0.0.22
 
 # --- Database ----------------------------------------------------------------
-motor>=3.3.2,<4.0.0
+# motor>=3.6.0 is required for pymongo>=4.6.0 compatibility
+motor>=3.6.0,<4.0.0
 # pymongo>=4.6.3 fixes CVE-2024-5629 (BSON unicode crash)
 pymongo>=4.6.3,<5.0.0
 

@@ -27,7 +27,11 @@ from app.core.constants import (
     MONGO_LIMIT,
     ERROR_CONFIRM_ATTENDANCE,
     ERROR_VIEW_BOOKING,
+    MONGO_IF_NULL,
+    FIELD_POOJA_NAME,
+    FIELD_SERVICE_NAME,
 )
+from app.core.config import settings
 from app.core.security import (
     get_current_user,
     get_current_grihasta,
@@ -320,7 +324,7 @@ def _send_booking_notification(
     summary="Create Booking",
     description="Create a new pooja booking with payment",
 )
-# NOSONAR
+# NOSONAR python:S3776 - Complex booking creation logic is intentionally kept together for maintainability
 async def create_booking(
     booking_data: BookingCreateRequest,
     current_user: Dict[str, Any] = Depends(get_current_grihasta),
@@ -546,6 +550,7 @@ async def _notify_booking_status_update(
     status_code=status.HTTP_200_OK,
     summary="Update Booking Status",
 )
+# NOSONAR python:S3776 - Complex status update logic with state machine validation requires this structure
 async def update_booking_status(
     booking_id: str,
     status_update: BookingStatusUpdateRequest,
@@ -921,7 +926,7 @@ async def verify_payment(
                     notification_service.send_notification(
                         token=acharya["fcm_token"],
                         title="New Booking Confirmed",
-                        body=f"Booking confirmed with payment",
+                        body="Booking confirmed with payment",
                         data={"type": "booking_confirmed", "booking_id": booking_id},
                     )
             
@@ -1287,17 +1292,17 @@ async def get_my_bookings(
             {MONGO_UNWIND: {"path": "$acharya_user", "preserveNullAndEmptyArrays": True}},
             {
                 "$addFields": {
-                    "pooja_name": {"$ifNull": ["$pooja.name", "$service_name"]},
+                    "pooja_name": {MONGO_IF_NULL: [FIELD_POOJA_NAME, FIELD_SERVICE_NAME]},
                     "acharya_user_id": "$acharya.user_id",
-                    "pooja_type": {"$ifNull": ["$pooja.name", "$service_name"]},
+                    "pooja_type": {MONGO_IF_NULL: [FIELD_POOJA_NAME, FIELD_SERVICE_NAME]},
                     "grihasta_name": {
-                        "$ifNull": [
+                        MONGO_IF_NULL: [
                             "$grihasta_user.full_name",
                             "$grihasta_user.name",
                         ]
                     },
                     "acharya_name": {
-                        "$ifNull": [
+                        MONGO_IF_NULL: [
                             "$acharya.name",
                             "$acharya_user.full_name",
                             "$acharya_user.name",
@@ -1394,17 +1399,17 @@ async def get_booking_details(
             {"$unwind": {"path": "$acharya_user", "preserveNullAndEmptyArrays": True}},
             {
                 "$addFields": {
-                    "pooja_name": {"$ifNull": ["$pooja.name", "$service_name"]},
+                    "pooja_name": {MONGO_IF_NULL: [FIELD_POOJA_NAME, FIELD_SERVICE_NAME]},
                     "acharya_user_id": "$acharya.user_id",
-                    "pooja_type": {"$ifNull": ["$pooja.name", "$service_name"]},
+                    "pooja_type": {MONGO_IF_NULL: [FIELD_POOJA_NAME, FIELD_SERVICE_NAME]},
                     "grihasta_name": {
-                        "$ifNull": [
+                        MONGO_IF_NULL: [
                             "$grihasta_user.full_name",
                             "$grihasta_user.name",
                         ]
                     },
                     "acharya_name": {
-                        "$ifNull": [
+                        MONGO_IF_NULL: [
                             "$acharya.name",
                             "$acharya_user.full_name",
                             "$acharya_user.name",

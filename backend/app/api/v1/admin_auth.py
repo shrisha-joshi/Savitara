@@ -4,7 +4,7 @@ Email/Password based admin authentication with super admin management
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, Optional
+from typing import Annotated, Dict, Any, Optional
 from pydantic import BaseModel, EmailStr
 import logging
 from datetime import datetime, timezone
@@ -49,10 +49,10 @@ class RemoveAdminRequest(BaseModel):
 
 class AdminUserResponse(BaseModel):
     email: str
-    name: Optional[str]
+    name: Optional[str] = None
     is_super_admin: bool
     created_at: datetime
-    last_login: Optional[datetime]
+    last_login: Optional[datetime] = None
     has_password: bool
 
 
@@ -64,7 +64,7 @@ class AdminUserResponse(BaseModel):
     description="Authenticate admin with email and password",
 )
 async def admin_login(
-    request: AdminLoginRequest, db: AsyncIOMotorDatabase = Depends(get_db)
+    request: AdminLoginRequest, db: Annotated[AsyncIOMotorDatabase, Depends(get_db)]
 ):
     """
     Admin login with email/password
@@ -147,7 +147,7 @@ async def admin_login(
     description="Check if an email is registered as admin and if password is set",
 )
 async def check_admin_email(
-    request: AdminEmailCheckRequest, db: AsyncIOMotorDatabase = Depends(get_db)
+    request: AdminEmailCheckRequest, db: Annotated[AsyncIOMotorDatabase, Depends(get_db)]
 ):
     """Check if email is registered and if password is set"""
     try:
@@ -186,7 +186,7 @@ async def check_admin_email(
     description="Set password for first-time admin login",
 )
 async def setup_admin_password(
-    request: AdminSetupPasswordRequest, db: AsyncIOMotorDatabase = Depends(get_db)
+    request: AdminSetupPasswordRequest, db: Annotated[AsyncIOMotorDatabase, Depends(get_db)]
 ):
     """
     Setup password for first-time admin login
@@ -247,8 +247,8 @@ async def setup_admin_password(
     description="Get list of all admin users (Super Admin only)",
 )
 async def list_admins(
-    current_admin: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_admin: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """List all admin users - Super Admin only"""
     # Get current admin email
@@ -291,8 +291,8 @@ async def list_admins(
 )
 async def add_admin(
     request: AddAdminRequest,
-    current_admin: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_admin: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Add new admin - Super Admin only"""
     # Get current admin email
@@ -341,8 +341,8 @@ async def add_admin(
 )
 async def remove_admin(
     request: RemoveAdminRequest,
-    current_admin: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_admin: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Remove admin - Super Admin only"""
     # Get current admin email
@@ -381,7 +381,7 @@ async def remove_admin(
     summary="Initialize Super Admin",
     description="Create super admin account if not exists (internal use)",
 )
-async def init_super_admin(db: AsyncIOMotorDatabase = Depends(get_db)):
+async def init_super_admin(db: Annotated[AsyncIOMotorDatabase, Depends(get_db)]):
     """
     Initialize super admin account
     This endpoint creates the super admin if it doesn't exist

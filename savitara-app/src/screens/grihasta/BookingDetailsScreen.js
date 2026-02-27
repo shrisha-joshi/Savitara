@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, Button, Divider, Chip } from 'react-native-paper';
-import { bookingAPI, reviewAPI } from '../../services/api';
+import PropTypes from 'prop-types';
+import { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { Button, Chip, Divider, Text } from 'react-native-paper';
+import { bookingAPI } from '../../services/api';
 
 const BookingDetailsScreen = ({ route, navigation }) => {
   const { bookingId } = route.params;
@@ -76,7 +77,9 @@ const BookingDetailsScreen = ({ route, navigation }) => {
         <Button 
           mode="text" 
           onPress={() => navigation.navigate('Conversation', { 
-            conversationId: booking.conversation_id 
+            conversationId: booking.conversation_id,
+            otherUserId: booking.acharya_id || booking.acharya_user_id,
+            otherUserName: booking.acharya_name || 'Acharya',
           })}
           style={styles.chatButton}
         >
@@ -201,5 +204,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF6B35',
   },
 });
+
+BookingDetailsScreen.propTypes = {
+  route: PropTypes.shape({
+    params: PropTypes.shape({
+      bookingId: PropTypes.string.isRequired,
+    }).isRequired,
+  }).isRequired,
+  navigation: PropTypes.shape({
+    navigate: PropTypes.func.isRequired,
+  }).isRequired,
+};
 
 export default BookingDetailsScreen;

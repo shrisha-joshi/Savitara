@@ -3,11 +3,12 @@
  * Uses native WebSockets compatible with FastAPI backend
  * Features: Auto-reconnection, offline queue, typing indicators
  */
-import React, { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from 'react';
-import PropTypes from 'prop-types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_CONFIG } from '../config/api.config';
+import * as SecureStore from 'expo-secure-store';
+import PropTypes from 'prop-types';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
+import { API_CONFIG } from '../config/api.config';
 
 const SocketContext = createContext(null);
 
@@ -40,8 +41,9 @@ export const SocketProvider = ({ children }) => {
   // Get WebSocket URL from API config
   const getWebSocketUrl = useCallback(async () => {
     try {
-      const token = await AsyncStorage.getItem('access_token');
-      const userId = await AsyncStorage.getItem('user_id');
+      const token = await SecureStore.getItemAsync('accessToken');
+      const userJson = await AsyncStorage.getItem('user');
+      const userId = userJson ? JSON.parse(userJson)?.id || JSON.parse(userJson)?._id : null;
       
       if (!token || !userId) {
         console.log('[WS] No token or userId found');
@@ -53,6 +55,12 @@ export const SocketProvider = ({ children }) => {
         .replace('http://', 'ws://')
         .replace('https://', 'wss://')
         .replace('/api/v1', '');
+
+      // Enforce WSS in production
+      if (!__DEV__ && wsUrl.startsWith('ws://')) {
+        console.warn('[WS] Insecure ws:// not allowed in production, upgrading to wss://');
+        wsUrl = wsUrl.replace('ws://', 'wss://');
+      }
 
       return {
         url: `${wsUrl}/ws/${userId}?token=${token}`,
@@ -72,7 +80,7 @@ export const SocketProvider = ({ children }) => {
     }
 
     heartbeatIntervalRef.current = setInterval(() => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
+      if (ws?.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'ping' }));
       }
     }, HEARTBEAT_INTERVAL);
@@ -127,6 +135,93 @@ export const SocketProvider = ({ children }) => {
     }
   }, []);
 
+  // Helper: remove a user from typing state
+  const removeTypingUser = useCallback((userId) => {
+    setTypingUsers(prev => {
+      const newState = { ...prev };
+      delete newState[userId];
+      return newState;
+    });
+  }, []);
+
+  // Handle incoming WebSocket message
+  const handleWsMessage = useCallback((event) => {
+    try {
+      const data = JSON.parse(event.data);
+      console.log('[WS] Message received:', data.type);
+
+      const payload = data.data || data;
+
+      switch (data.type) {
+        case 'pong':
+        case 'connection_established':
+          break;
+
+        case 'chat_message':
+        case 'new_message':
+          setChatMessages(prev => [...prev.slice(-99), payload]);
+          break;
+
+        case 'typing_indicator':
+          if (payload.is_typing) {
+            setTypingUsers(prev => ({
+              ...prev,
+              [payload.user_id]: {
+                conversation_id: payload.conversation_id,
+                timestamp: Date.now(),
+              },
+            }));
+            setTimeout(() => removeTypingUser(payload.user_id), 3000);
+          } else {
+            removeTypingUser(payload.user_id);
+          }
+          break;
+
+        case 'booking_update':
+          setBookingUpdates(prev => [
+            ...prev.slice(-10),
+            { ...payload, received_at: Date.now() },
+          ]);
+          break;
+
+        case 'payment_required':
+          setPaymentNotifications(prev => [
+            ...prev.slice(-5),
+            { ...payload, received_at: Date.now(), read: false },
+          ]);
+          setBookingUpdates(prev => [
+            ...prev.slice(-10),
+            { ...payload, received_at: Date.now() },
+          ]);
+          break;
+
+        case 'message_read':
+          setChatMessages(prev =>
+            prev.map(msg =>
+              msg.id === payload.message_id || msg._id === payload.message_id
+                ? { ...msg, read: true, status: 'read' }
+                : msg
+            )
+          );
+          break;
+
+        case 'reaction_added':
+        case 'reaction_removed':
+          setChatMessages(prev => [...prev.slice(-99), payload]);
+          break;
+
+        case 'conversation_updated':
+          console.log('[WS] Conversation updated:', payload);
+          break;
+
+        default:
+          console.log('[WS] Unknown message type:', data.type);
+      }
+    } catch (error) {
+      console.error('[WS] Error parsing message:', error);
+    }
+  }, [removeTypingUser]);
+
   // Connect to WebSocket
   const connect = useCallback(async () => {
     const wsConfig = await getWebSocketUrl();
@@ -152,90 +247,7 @@ export const SocketProvider = ({ children }) => {
         await processOfflineQueue(ws);
       };
 
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('[WS] Message received:', data.type);
-
-          // Handle different message types
-          switch (data.type) {
-            case 'pong':
-              // Heartbeat response
-              break;
-
-            case 'chat_message':
-            case 'new_message':
-              setChatMessages(prev => [...prev.slice(-99), data.data]);
-              break;
-
-            case 'typing_indicator':
-              if (data.data.is_typing) {
-                setTypingUsers(prev => ({
-                  ...prev,
-                  [data.data.user_id]: {
-                    conversation_id: data.data.conversation_id,
-                    timestamp: Date.now(),
-                  },
-                }));
-                
-                // Auto-remove typing indicator after 3 seconds
-                setTimeout(() => {
-                  setTypingUsers(prev => {
-                    const newState = { ...prev };
-                    delete newState[data.data.user_id];
-                    return newState;
-                  });
-                }, 3000);
-              } else {
-                setTypingUsers(prev => {
-                  const newState = { ...prev };
-                  delete newState[data.data.user_id];
-                  return newState;
-                });
-              }
-              break;
-
-            case 'booking_update':
-              setBookingUpdates(prev => [
-                ...prev.slice(-10),
-                { ...data.data, received_at: Date.now() },
-              ]);
-              break;
-
-            case 'payment_required':
-              setPaymentNotifications(prev => [
-                ...prev.slice(-5),
-                { ...data.data, received_at: Date.now(), read: false },
-              ]);
-              setBookingUpdates(prev => [
-                ...prev.slice(-10),
-                { ...data.data, received_at: Date.now() },
-              ]);
-              break;
-
-            case 'message_read':
-              // Update message read status
-              setChatMessages(prev =>
-                prev.map(msg =>
-                  msg.id === data.data.message_id
-                    ? { ...msg, read: true }
-                    : msg
-                )
-              );
-              break;
-
-            case 'conversation_updated':
-              // Trigger conversation list refresh
-              console.log('[WS] Conversation updated:', data.data);
-              break;
-
-            default:
-              console.log('[WS] Unknown message type:', data.type);
-          }
-        } catch (error) {
-          console.error('[WS] Error parsing message:', error);
-        }
-      };
+      ws.onmessage = handleWsMessage;
 
       ws.onerror = (error) => {
         console.error('[WS] Error:', error);
@@ -294,7 +306,7 @@ export const SocketProvider = ({ children }) => {
 
   // Send message with offline queue support
   const sendMessage = useCallback(async (message) => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify(message));
     } else {
       console.log('[WS] Queueing message for offline delivery');

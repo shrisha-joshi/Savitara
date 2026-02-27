@@ -4,7 +4,7 @@ Handles group chat moderation and administration
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, Optional
+from typing import Annotated, Dict, Any, Optional
 import logging
 from pydantic import BaseModel
 
@@ -74,8 +74,8 @@ class LockRoomRequest(BaseModel):
 async def mute_member(
     conversation_id: str,
     request: MuteMemberRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         admin_id = current_user["id"]
@@ -115,8 +115,8 @@ async def mute_member(
 async def unmute_member(
     conversation_id: str,
     user_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         admin_id = current_user["id"]
@@ -150,8 +150,8 @@ async def unmute_member(
 async def ban_member(
     conversation_id: str,
     request: BanMemberRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         admin_id = current_user["id"]
@@ -189,8 +189,8 @@ async def ban_member(
 async def remove_member(
     conversation_id: str,
     user_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         admin_id = current_user["id"]
@@ -227,8 +227,8 @@ async def change_member_role(
     conversation_id: str,
     user_id: str,
     request: ChangeRoleRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         owner_id = current_user["id"]
@@ -269,8 +269,8 @@ async def change_member_role(
 async def delete_message(
     conversation_id: str,
     message_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         admin_id = current_user["id"]
@@ -304,8 +304,8 @@ async def delete_message(
 async def pin_message(
     conversation_id: str,
     request: PinMessageRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         admin_id = current_user["id"]
@@ -343,8 +343,8 @@ async def pin_message(
 async def lock_room(
     conversation_id: str,
     request: LockRoomRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         owner_id = current_user["id"]
@@ -380,10 +380,10 @@ async def lock_room(
 )
 async def get_audit_log(
     conversation_id: str,
-    limit: int = Query(50, ge=1, le=100),
-    skip: int = Query(0, ge=0),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         admin_id = current_user["id"]

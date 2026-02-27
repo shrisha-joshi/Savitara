@@ -1,18 +1,23 @@
 /**
  * Savitara App – API Client
- * Storage adapter: AsyncStorage (React Native)
+ * Storage adapter: expo-secure-store for tokens, AsyncStorage for non-sensitive data
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { API_CONFIG } from '../config/api.config';
 import { createApiClient } from './createApiClient';
 
 const api = createApiClient({
   baseURL: API_CONFIG.baseURL,
-  getToken:   () => AsyncStorage.getItem('accessToken'),
-  getRefresh: () => AsyncStorage.getItem('refreshToken'),
-  setToken:   (t) => AsyncStorage.setItem('accessToken', t),
-  setRefresh: (t) => AsyncStorage.setItem('refreshToken', t),
-  clearAuth:  () => AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']),
+  getToken:   () => SecureStore.getItemAsync('accessToken'),
+  getRefresh: () => SecureStore.getItemAsync('refreshToken'),
+  setToken:   (t) => SecureStore.setItemAsync('accessToken', t),
+  setRefresh: (t) => SecureStore.setItemAsync('refreshToken', t),
+  clearAuth:  async () => {
+    await SecureStore.deleteItemAsync('accessToken');
+    await SecureStore.deleteItemAsync('refreshToken');
+    await AsyncStorage.removeItem('user');
+  },
 });
 
 // Auth APIs
@@ -46,7 +51,7 @@ export const bookingAPI = {
   createPaymentOrder: (id) => api.post(`/bookings/${id}/create-payment-order`),
   verifyPayment: (id, data) => api.post(`/bookings/${id}/payment/verify`, data),
   startBooking: (id, otp) => api.post(`/bookings/${id}/start`, { otp }),
-  confirmAttendance: (id, data) => api.post(`/bookings/${id}/attendance`, data),
+  confirmAttendance: (id, data) => api.post(`/bookings/${id}/attendance/confirm`, data),
   referBooking: (bookingId, newAcharyaId, notes) => api.put(`/bookings/${bookingId}/refer`, { new_acharya_id: newAcharyaId, notes }),
   fetchAcharyas: async () => {
     const res = await api.get('/users/acharyas/search', { params: { limit: 100 } });

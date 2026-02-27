@@ -4,17 +4,15 @@
 import { API_CONFIG } from '../config/api.config';
 
 class WebSocketService {
-  constructor() {
-    this.ws = null;
-    this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
-    this.reconnectDelay = 1000;
-    this.listeners = {};
-    this.isConnecting = false;
-  }
+  ws = null;
+  reconnectAttempts = 0;
+  maxReconnectAttempts = 5;
+  reconnectDelay = 1000;
+  listeners = {};
+  isConnecting = false;
 
   connect(userId, token) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
       console.log('WebSocket already connected');
       return;
     }
@@ -84,7 +82,7 @@ class WebSocketService {
   }
 
   send(data) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
     } else {
       console.error('WebSocket is not connected');
@@ -170,7 +168,7 @@ class WebSocketService {
   }
 
   isConnected() {
-    return this.ws && this.ws.readyState === WebSocket.OPEN;
+    return this.ws?.readyState === WebSocket.OPEN;
   }
 }
 

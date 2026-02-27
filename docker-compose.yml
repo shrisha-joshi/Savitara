@@ -10,8 +10,8 @@ services:
     ports:
       - "27017:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: savitara_admin_pass
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ADMIN_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ADMIN_PASSWORD:?Set MONGO_ADMIN_PASSWORD in .env}
       MONGO_INITDB_DATABASE: savitara
     volumes:
       - mongodb_data:/data/db
@@ -30,13 +30,14 @@ services:
     container_name: savitara-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"]
     volumes:
       - redis_data:/data
     networks:
       - savitara-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -48,11 +49,11 @@ services:
     restart: unless-stopped
     environment:
       - discovery.type=single-node
-      - xpack.security.enabled=false
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-changeme}
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
     ports:
-      - "9200:9200"
-      - "9300:9300"
+      - "127.0.0.1:9200:9200"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
     networks:
@@ -73,10 +74,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MONGODB_URL=mongodb://admin:${MONGO_ADMIN_PASSWORD:-savitara_admin_pass}@mongodb:27017/savitara?authSource=admin
-      - REDIS_URL=redis://redis:6379/0
+      - MONGODB_URL=mongodb://${MONGO_ADMIN_USERNAME:-admin}:${MONGO_ADMIN_PASSWORD:?Set MONGO_ADMIN_PASSWORD in .env}@mongodb:27017/savitara?authSource=admin
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}@redis:6379/0
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-super-secret-jwt-key-change-in-production}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}

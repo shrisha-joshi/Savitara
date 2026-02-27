@@ -59,6 +59,7 @@ from app.api.v1 import (
     forwarding,
     moderation,
     group_admin,
+    strategy_features,
 )
 
 from slowapi.errors import RateLimitExceeded  # type: ignore
@@ -332,6 +333,9 @@ app.include_router(voice.router, prefix=API_V1_PREFIX)  # Voice messages
 app.include_router(forwarding.router, prefix=API_V1_PREFIX)  # Message forwarding
 app.include_router(moderation.router, prefix=API_V1_PREFIX)  # User blocking and reporting
 app.include_router(group_admin.router, prefix=API_V1_PREFIX)  # Group chat moderation
+app.include_router(
+    strategy_features.router, prefix=API_V1_PREFIX
+)  # Strategy features (subscriptions, bundles, penalties, guarantee)
 
 
 async def _authenticate_ws_ticket(ticket: str, user_id: str) -> bool:
@@ -445,7 +449,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
+        host=os.getenv("HOST", "0.0.0.0"),  # noqa: S104 — bind address configurable via env
         port=8000,
         reload=settings.DEBUG,
         log_level=settings.LOG_LEVEL.lower(),

@@ -5,7 +5,7 @@ Endpoints for forwarding messages to users and conversations with proper
 authorization and real-time notifications.
 """
 
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field, field_validator
 
@@ -94,7 +94,7 @@ class ForwardCountResponse(BaseModel):
 async def forward_message_to_users(
     message_id: str,
     request: ForwardToUsersRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
 ) -> StandardResponse:
     """Forward a message to multiple users"""
     forwarding_service = ForwardingService()
@@ -167,7 +167,7 @@ async def forward_message_to_users(
 async def forward_message_to_conversation(
     message_id: str,
     request: ForwardToConversationRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
 ) -> StandardResponse:
     """Forward a message to an existing conversation"""
     forwarding_service = ForwardingService()
@@ -226,7 +226,7 @@ async def forward_message_to_conversation(
 )
 async def get_forward_count(
     message_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
 ) -> StandardResponse:
     """Get the number of times a message has been forwarded"""
     forwarding_service = ForwardingService()

@@ -34,7 +34,7 @@ export default function appConfig({ config }) {
         ]
       ],
       extra: {
-        apiUrl: process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1',
+        apiUrl: process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__ ? 'http://localhost:8000/api/v1' : (() => { throw new Error('EXPO_PUBLIC_API_BASE_URL must be set for production builds'); })()),
         googleClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '',
         razorpayKeyId: process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID || '',
         eas: {

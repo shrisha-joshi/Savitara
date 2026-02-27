@@ -3,7 +3,7 @@ Panchanga API Endpoints
 Hindu calendar information - Tithi, Nakshatra, Muhurat, Festivals
 """
 from fastapi import APIRouter, Depends, Query, status
-from typing import Dict, Any
+from typing import Annotated, Dict, Any
 import logging
 from datetime import date, datetime
 
@@ -23,11 +23,11 @@ router = APIRouter(prefix="/panchanga", tags=["Panchanga"])
     description="Get complete Panchanga for today including Tithi, Nakshatra, Muhurat, and festivals",
 )
 async def get_today_panchanga(
-    latitude: float = Query(28.6139, description="Location latitude (default: Delhi)"),
-    longitude: float = Query(
-        77.2090, description="Location longitude (default: Delhi)"
-    ),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    latitude: Annotated[float, Query(description="Location latitude (default: Delhi)")] = 28.6139,
+    longitude: Annotated[float, Query(
+        description="Location longitude (default: Delhi)"
+    )] = 77.2090,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
 ):
     """Get today's Panchanga information"""
     try:
@@ -53,9 +53,9 @@ async def get_today_panchanga(
 )
 async def get_panchanga_for_date(
     date_str: str,
-    latitude: float = Query(28.6139, description="Location latitude"),
-    longitude: float = Query(77.2090, description="Location longitude"),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    latitude: Annotated[float, Query(description="Location latitude")] = 28.6139,
+    longitude: Annotated[float, Query(description="Location longitude")] = 77.2090,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
 ):
     """Get Panchanga for a specific date"""
     try:
@@ -88,7 +88,7 @@ async def get_panchanga_for_date(
     description="Get auspicious muhurat timings for a specific date",
 )
 async def get_muhurat_timings(
-    date_str: str, current_user: Dict[str, Any] = Depends(get_current_user)
+    date_str: str, current_user: Annotated[Dict[str, Any], Depends(get_current_user)]
 ):
     """Get muhurat timings for a date"""
     try:
@@ -118,8 +118,8 @@ async def get_muhurat_timings(
     description="Get list of upcoming Hindu festivals",
 )
 async def get_upcoming_festivals(
-    count: int = Query(10, ge=1, le=50, description="Number of festivals to return"),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    count: Annotated[int, Query(ge=1, le=50, description="Number of festivals to return")] = 10,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
 ):
     """Get upcoming festivals"""
     try:
@@ -143,7 +143,7 @@ async def get_upcoming_festivals(
     description="Get all Ekadashi dates for a specific year",
 )
 async def get_ekadashi_dates(
-    year: int, current_user: Dict[str, Any] = Depends(get_current_user)
+    year: int, current_user: Annotated[Dict[str, Any], Depends(get_current_user)]
 ):
     """Get Ekadashi dates for a year"""
     try:
@@ -167,11 +167,11 @@ async def get_ekadashi_dates(
     description="Check if a date is auspicious for a specific activity",
 )
 async def check_auspicious_date(
-    date_str: str = Query(..., description="Date in YYYY-MM-DD format"),
-    activity: str = Query(
+    date_str: Annotated[str, Query(..., description="Date in YYYY-MM-DD format")],
+    activity: Annotated[str, Query(
         ..., description="Activity: marriage, travel, grihapravesh, business, purchase"
-    ),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    )],
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
 ):
     """Check if date is auspicious for activity"""
     try:
@@ -202,7 +202,7 @@ async def check_auspicious_date(
     description="Get Tithi (lunar day) information for a specific date",
 )
 async def get_tithi(
-    date_str: str, current_user: Dict[str, Any] = Depends(get_current_user)
+    date_str: str, current_user: Annotated[Dict[str, Any], Depends(get_current_user)]
 ):
     """Get Tithi for a date"""
     try:
@@ -227,7 +227,7 @@ async def get_tithi(
     description="Get Nakshatra (lunar mansion) information for a specific date",
 )
 async def get_nakshatra(
-    date_str: str, current_user: Dict[str, Any] = Depends(get_current_user)
+    date_str: str, current_user: Annotated[Dict[str, Any], Depends(get_current_user)]
 ):
     """Get Nakshatra for a date"""
     try:

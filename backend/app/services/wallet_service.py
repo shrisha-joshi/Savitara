@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 from enum import Enum
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from app.core.exceptions import InsufficientCreditsError, InvalidInputError
+from app.core.exceptions import InsufficientCreditsError, InvalidInputError, PaymentFailedError
 from app.core.constants import (
     MIN_WITHDRAWAL_AMOUNT, MAX_WITHDRAWAL_AMOUNT,
     MIN_RECHARGE_AMOUNT, MAX_RECHARGE_AMOUNT,
@@ -129,6 +129,34 @@ class WalletService:
         if amount <= 0:
             raise InvalidInputError(
                 message="Amount must be greater than 0", field="amount"
+            )
+
+        # C12 fix: Verify payment with Razorpay before crediting wallet
+        try:
+            from app.services.payment_service import PaymentService
+            payment_service = PaymentService()
+            payment_details = payment_service.fetch_payment(payment_id)
+            if not payment_details.get("captured"):
+                raise InvalidInputError(
+                    message="Payment has not been captured", field="payment_id"
+                )
+            if abs(payment_details["amount"] - amount) > 0.01:
+                raise InvalidInputError(
+                    message="Payment amount mismatch", field="amount"
+                )
+        except (InvalidInputError, PaymentFailedError):
+            raise
+        except Exception as e:
+            logger.error(f"Payment verification failed for {payment_id}: {e}")
+            raise InvalidInputError(
+                message="Unable to verify payment", field="payment_id"
+            )
+
+        # Check for duplicate payment_id to prevent double-credit
+        existing_txn = await self.transactions.find_one({"payment_id": payment_id})
+        if existing_txn:
+            raise InvalidInputError(
+                message="Payment already processed", field="payment_id"
             )
 
         wallet = await self.get_or_create_wallet(user_id)

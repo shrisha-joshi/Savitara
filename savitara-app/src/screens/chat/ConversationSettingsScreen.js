@@ -1,20 +1,20 @@
-import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
+import { useEffect, useState } from 'react';
 import {
-  View,
-  StyleSheet,
-  ScrollView,
-  Alert,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    View,
 } from 'react-native';
 import {
-  Appbar,
-  List,
-  Switch,
-  Divider,
-  Button,
-  Avatar,
-  Text,
-  ActivityIndicator,
+    ActivityIndicator,
+    Appbar,
+    Avatar,
+    Button,
+    Divider,
+    List,
+    Switch,
+    Text,
 } from 'react-native-paper';
 import { chatAPI } from '../../services/api';
 
@@ -58,6 +58,7 @@ const ConversationSettingsScreen = ({ navigation, route }) => {
       });
       setSettings((prev) => ({ ...prev, is_muted: !prev.is_muted }));
     } catch (error) {
+      console.error('Failed to toggle mute:', error);
       Alert.alert('Error', 'Failed to update notification settings');
     } finally {
       setUpdating(false);
@@ -70,6 +71,7 @@ const ConversationSettingsScreen = ({ navigation, route }) => {
       await chatAPI.pinConversation(conversationId);
       setSettings((prev) => ({ ...prev, is_pinned: !prev.is_pinned }));
     } catch (error) {
+      console.error('Failed to toggle pin:', error);
       Alert.alert('Error', 'Failed to pin/unpin conversation');
     } finally {
       setUpdating(false);
@@ -82,6 +84,7 @@ const ConversationSettingsScreen = ({ navigation, route }) => {
       await chatAPI.archiveConversation(conversationId);
       setSettings((prev) => ({ ...prev, is_archived: !prev.is_archived }));
     } catch (error) {
+      console.error('Failed to toggle archive:', error);
       Alert.alert('Error', 'Failed to archive/unarchive conversation');
     } finally {
       setUpdating(false);
@@ -102,7 +105,8 @@ const ConversationSettingsScreen = ({ navigation, route }) => {
               await chatAPI.deleteConversation(conversationId);
               Alert.alert('Success', 'Conversation deleted');
               navigation.navigate('ChatList');
-            } catch (error) {
+            } catch (deleteError) {
+              console.error('Failed to delete conversation:', deleteError);
               Alert.alert('Error', 'Failed to delete conversation');
             }
           },

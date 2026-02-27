@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { Text, Card, Chip, SegmentedButtons, Button, Snackbar } from 'react-native-paper';
-import { bookingAPI } from '../../services/api';
+import { useEffect, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { Button, Card, Chip, SegmentedButtons, Snackbar, Text } from 'react-native-paper';
 import { useSocket } from '../../context/SocketContext';
+import { bookingAPI } from '../../services/api';
 
 const MyBookingsScreen = ({ navigation }) => {
   const socketContext = useSocket();
@@ -82,7 +82,9 @@ const MyBookingsScreen = ({ navigation }) => {
       setLoading(true);
       const params = filter !== 'all' ? { status: filter } : {};
       const response = await bookingAPI.getMyBookings(params);
-      setBookings(response.data.bookings || []);
+      const raw = response.data?.data;
+      const bookingData = Array.isArray(raw) ? raw : (raw?.bookings || response.data?.bookings || []);
+      setBookings(bookingData);
     } catch (error) {
       console.error('Failed to load bookings:', error);
     } finally {
@@ -94,10 +96,12 @@ const MyBookingsScreen = ({ navigation }) => {
     const colors = {
       requested: '#42A5F5', // Blue for requested
       pending: '#FFA726',
+      pending_payment: '#FFA726',
       confirmed: '#42A5F5',
       in_progress: '#66BB6A',
       completed: '#4CAF50',
       cancelled: '#EF5350',
+      rejected: '#EF5350',
     };
     return colors[status] || '#999';
   };

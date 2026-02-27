@@ -2,6 +2,7 @@
 Reactions API Router
 Handles message reaction endpoints
 """
+from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -27,8 +28,8 @@ router = APIRouter(prefix="/messages", tags=["reactions"])
 async def add_reaction(
     message_id: str,
     request: AddReactionRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Add a reaction to a message
@@ -69,8 +70,8 @@ async def add_reaction(
 async def remove_reaction(
     message_id: str,
     emoji: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Remove a reaction from a message
@@ -107,8 +108,8 @@ async def remove_reaction(
 )
 async def get_reactions(
     message_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Get aggregated reaction summary for a message

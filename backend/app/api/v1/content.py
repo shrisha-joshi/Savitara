@@ -4,7 +4,7 @@ Handles testimonials, announcements, and site content management
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, Optional
+from typing import Annotated, Dict, Any, Optional
 import logging
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -70,8 +70,8 @@ class ToggleStatus(BaseModel):
     description="Get all testimonials for admin management",
 )
 async def get_testimonials(
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get all testimonials"""
     try:
@@ -105,8 +105,8 @@ async def get_testimonials(
 )
 async def create_testimonial(
     testimonial: TestimonialCreate,
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Create a new testimonial"""
     try:
@@ -147,8 +147,8 @@ TESTIMONIAL_NOT_FOUND = "Testimonial not found"
 async def update_testimonial(
     testimonial_id: str,
     testimonial: TestimonialUpdate,
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Update a testimonial"""
     try:
@@ -197,8 +197,8 @@ async def update_testimonial(
 async def toggle_testimonial(
     testimonial_id: str,
     toggle: ToggleStatus,
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Toggle testimonial active status"""
     try:
@@ -240,8 +240,8 @@ async def toggle_testimonial(
 )
 async def delete_testimonial(
     testimonial_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Delete a testimonial"""
     try:
@@ -280,8 +280,8 @@ async def delete_testimonial(
     description="Get all announcements for admin management",
 )
 async def get_announcements(
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get all announcements"""
     try:
@@ -316,8 +316,8 @@ async def get_announcements(
 )
 async def create_announcement(
     announcement: AnnouncementCreate,
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Create a new announcement"""
     try:
@@ -356,8 +356,8 @@ async def create_announcement(
 async def update_announcement(
     announcement_id: str,
     announcement: AnnouncementUpdate,
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Update an announcement"""
     try:
@@ -403,8 +403,8 @@ async def update_announcement(
 )
 async def delete_announcement(
     announcement_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Delete an announcement"""
     try:
@@ -443,10 +443,10 @@ async def delete_announcement(
     description="Get broadcast notification history",
 )
 async def get_notification_history(
-    page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=100),
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get notification history"""
     try:
@@ -491,7 +491,7 @@ public_router = APIRouter(prefix="/content", tags=["Public Content"])
     summary="Get Active Testimonials",
     description="Get active testimonials for public display",
 )
-async def get_public_testimonials(db: AsyncIOMotorDatabase = Depends(get_db)):
+async def get_public_testimonials(db: Annotated[AsyncIOMotorDatabase, Depends(get_db)]):
     """Get active testimonials for public display"""
     try:
         testimonials = (
@@ -523,7 +523,7 @@ async def get_public_testimonials(db: AsyncIOMotorDatabase = Depends(get_db)):
     summary="Get Active Announcements",
     description="Get active announcements for public display",
 )
-async def get_public_announcements(db: AsyncIOMotorDatabase = Depends(get_db)):
+async def get_public_announcements(db: Annotated[AsyncIOMotorDatabase, Depends(get_db)]):
     """Get active announcements for public display"""
     try:
         announcements = (

@@ -5,7 +5,7 @@ SonarQube: S5122 - Input validation with Pydantic
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, Optional
+from typing import Annotated, Dict, Any, Optional
 import logging
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -54,8 +54,8 @@ router = APIRouter(prefix="/users", tags=["Users"])
 )
 async def grihasta_onboarding(
     onboarding_data: GrihastaOnboardingRequest,
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Complete Grihasta onboarding
@@ -82,6 +82,12 @@ async def grihasta_onboarding(
                 {"referral_code": onboarding_data.referral_code}
             )
             if referrer:
+                # M9 fix: Prevent self-referral
+                if str(referrer["_id"]) == user_id:
+                    raise InvalidInputError(
+                        message="Cannot use your own referral code",
+                        field="referral_code",
+                    )
                 # Grant credits to both referrer and new user
                 referral_credits = 50
                 await db.users.update_one(
@@ -166,7 +172,7 @@ async def grihasta_onboarding(
         logger.error(f"Grihasta onboarding error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Onboarding failed: {str(e)}",
+            detail="Onboarding failed",
         )
 
 
@@ -179,8 +185,8 @@ async def grihasta_onboarding(
 )
 async def acharya_onboarding(
     onboarding_data: AcharyaOnboardingRequest,
-    current_user: Dict[str, Any] = Depends(get_current_acharya),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_acharya)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Complete Acharya onboarding
@@ -308,8 +314,8 @@ async def acharya_onboarding(
     description="Get current user's complete profile",
 )
 async def get_profile(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get complete user profile based on role"""
     try:
@@ -403,8 +409,8 @@ async def get_profile(
 )
 async def update_profile(
     update_data: ProfileUpdateRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Update user profile"""
     try:
@@ -459,8 +465,8 @@ async def update_profile(
 )
 async def update_grihasta_profile(
     update_data: ProfileUpdateRequest,
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Update Grihasta profile with specific validation"""
     try:
@@ -512,8 +518,8 @@ async def update_grihasta_profile(
 async def block_user(
     blocked_user_id: str,
     reason: Optional[str] = None,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Block a user"""
     try:
@@ -597,8 +603,8 @@ async def block_user(
 )
 async def unblock_user(
     blocked_user_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Unblock a user"""
     try:
@@ -645,8 +651,8 @@ async def unblock_user(
     description="Get list of users you have blocked",
 )
 async def get_blocked_users(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get list of blocked users"""
     try:
@@ -699,8 +705,8 @@ async def get_blocked_users(
 )
 async def update_acharya_profile(
     update_data: ProfileUpdateRequest,
-    current_user: Dict[str, Any] = Depends(get_current_acharya),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_acharya)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Update Acharya profile with specific validation"""
     try:
@@ -883,11 +889,11 @@ async def _search_with_mongodb(
         if "user_id" in acharya and isinstance(acharya["user_id"], ObjectId):
             acharya["user_id"] = str(acharya["user_id"])
 
-    # Get total count
+    # Get total count — M59 fix: use $count stage instead of fetching all docs
     count_pipeline = pipeline[:6]  # Up to and including rating filter
-    total_count = len(
-        await db.acharya_profiles.aggregate(count_pipeline).to_list(length=None)
-    )
+    count_pipeline.append({"$count": "total"})
+    count_result = await db.acharya_profiles.aggregate(count_pipeline).to_list(length=1)
+    total_count = count_result[0]["total"] if count_result else 0
 
     return StandardResponse(
         success=True,
@@ -911,8 +917,8 @@ async def _search_with_mongodb(
     description="Search and filter Acharyas by location, specialization, language, etc.",
 )
 async def search_acharyas(
-    params: AcharyaSearchParams = Depends(),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    params: Annotated[AcharyaSearchParams, Depends()] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
     request: Request = None,
 ):
     """
@@ -981,7 +987,7 @@ async def search_acharyas(
     description="Get detailed information about a specific Acharya",
 )
 async def get_acharya_details(
-    acharya_id: str, db: AsyncIOMotorDatabase = Depends(get_db)
+    acharya_id: str, db: Annotated[AsyncIOMotorDatabase, Depends(get_db)]
 ):
     """Get Acharya public profile with reviews and poojas"""
     try:
@@ -1064,15 +1070,15 @@ async def get_acharya_details(
         logger.error(f"Get Acharya details error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch Acharya details: {str(e)}",
+            detail="Failed to fetch Acharya details",
         )
 
 
 # Alias /me to /profile for compatibility with tests and standard expectation
 @router.get("/me", include_in_schema=False)
 async def get_me(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Get current user profile (Alias for /profile)
@@ -1084,8 +1090,8 @@ async def get_me(
 @router.post("/grihasta/profile", include_in_schema=False)
 async def create_grihasta_profile_alias(
     onboarding_data: GrihastaOnboardingRequest,
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     return await grihasta_onboarding(onboarding_data, current_user, db)
 
@@ -1094,8 +1100,8 @@ async def create_grihasta_profile_alias(
 @router.post("/acharya/profile", include_in_schema=False)
 async def create_acharya_profile_alias(
     onboarding_data: AcharyaOnboardingRequest,
-    current_user: Dict[str, Any] = Depends(get_current_acharya),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_acharya)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     return await acharya_onboarding(onboarding_data, current_user, db)
 
@@ -1103,6 +1109,6 @@ async def create_acharya_profile_alias(
 # Alias /search to /acharyas
 @router.get("/search", include_in_schema=False)
 async def search_users_alias(
-    params: AcharyaSearchParams = Depends(), db: AsyncIOMotorDatabase = Depends(get_db)
+    params: Annotated[AcharyaSearchParams, Depends()], db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None
 ):
     return await search_acharyas(params=params, db=db)

@@ -1,25 +1,25 @@
-import { useState, useEffect } from 'react';
-import PropTypes from 'prop-types';
 import {
-  Container,
-  Typography,
-  Box,
-  Tabs,
-  Tab,
-  CircularProgress,
-  Paper,
-  Chip,
-  Button,
-  Grid,
-  Alert,
-  Snackbar
+    Alert,
+    Box,
+    Button,
+    Chip,
+    CircularProgress,
+    Container,
+    Grid,
+    Paper,
+    Snackbar,
+    Tab,
+    Tabs,
+    Typography
 } from '@mui/material';
 import { format } from 'date-fns';
-import Layout from '../../components/Layout';
-import api from '../../services/api';
-import { FaCalendarAlt, FaClock, FaUser, FaRupeeSign, FaVideo } from 'react-icons/fa';
+import PropTypes from 'prop-types';
+import { useEffect, useState } from 'react';
+import { FaCalendarAlt, FaClock, FaRupeeSign, FaUser, FaVideo } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
+import Layout from '../../components/Layout';
 import { useSocket } from '../../context/SocketContext';
+import api from '../../services/api';
 
 const BookingCard = ({ booking, onPayNow }) => {
   const navigate = useNavigate();
@@ -27,8 +27,10 @@ const BookingCard = ({ booking, onPayNow }) => {
     'requested': 'info',
     'pending_payment': 'warning',
     'confirmed': 'success',
+    'in_progress': 'primary',
     'completed': 'info',
     'cancelled': 'error',
+    'rejected': 'error',
     'failed': 'error'
   };
 
@@ -39,7 +41,7 @@ const BookingCard = ({ booking, onPayNow }) => {
       <Grid container spacing={2} alignItems="center">
         <Grid item xs={12} sm={3}>
           <Typography variant="subtitle2" color="text.secondary">
-            Booking ID: #{booking.booking_id ? booking.booking_id.slice(-6) : '...'}
+            Booking ID: #{(booking.id || booking._id || '').slice(-6)}
           </Typography>
           <Box display="flex" alignItems="center" mt={1}>
             <FaCalendarAlt color="#888" />
@@ -264,9 +266,9 @@ export default function MyBookings() {
   const getFilteredBookings = () => {
     console.log('MyBookings - Filtering. Tab:', tabIndex, 'Total bookings:', bookings.length);
     console.log('MyBookings - All booking statuses:', bookings.map(b => b.status));
-    if (tabIndex === 0) return bookings.filter(b => ['requested', 'confirmed', 'pending_payment'].includes(b.status));
+    if (tabIndex === 0) return bookings.filter(b => ['requested', 'confirmed', 'pending_payment', 'in_progress'].includes(b.status));
     if (tabIndex === 1) return bookings.filter(b => b.status === 'completed');
-    if (tabIndex === 2) return bookings.filter(b => ['cancelled', 'failed'].includes(b.status));
+    if (tabIndex === 2) return bookings.filter(b => ['cancelled', 'failed', 'rejected'].includes(b.status));
     return bookings;
   };
 

@@ -12,6 +12,7 @@ class PricingMultiplier(float, Enum):
     WEEKEND = 1.5  # Dynamic Pricing: 1.5x on weekends
     URGENT_BOOKING = 1.5  # < 24 hours notice
     PEAK_HOURS = 1.2  # 5 PM - 10 PM
+    OFF_PEAK_DISCOUNT = 0.85  # 15% off weekday mornings (Strategy Report §6.7)
     FESTIVAL = 1.3  # Special occasions
     PLATFORM_FEE = 0.10  # 10%
     GST = 0.18  # 18% GST
@@ -30,6 +31,7 @@ class PricingService:
     """
 
     PEAK_HOURS = [(17, 22)]  # 5 PM - 10 PM
+    OFF_PEAK_HOURS = [(6, 10)]  # 6 AM - 10 AM weekday mornings (Strategy Report §6.7)
 
     FESTIVALS = {
         # Format: (month, day): "festival_name"
@@ -78,6 +80,15 @@ class PricingService:
             peak_surcharge = subtotal * (PricingMultiplier.PEAK_HOURS.value - 1)
             breakdown["surcharges"]["peak_hours"] = round(peak_surcharge, 2)
             subtotal += peak_surcharge
+
+        # Off-peak discount — weekday mornings 6-10 AM (Strategy Report §6.7)
+        is_weekday = booking_datetime.weekday() < 5
+        if is_weekday and any(
+            start <= hour < end for start, end in cls.OFF_PEAK_HOURS
+        ):
+            off_peak_discount = subtotal * (1 - PricingMultiplier.OFF_PEAK_DISCOUNT.value)
+            breakdown["surcharges"]["off_peak_discount"] = round(-off_peak_discount, 2)
+            subtotal -= off_peak_discount
 
         # Urgent booking (< 24 hours notice)
         hours_until = (booking_datetime - datetime.now()).total_seconds() / 3600

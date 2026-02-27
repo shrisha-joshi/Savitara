@@ -4,7 +4,7 @@ Handles blocking users and reporting violations
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, Optional
+from typing import Annotated, Dict, Any, Optional
 import logging
 from pydantic import BaseModel
 
@@ -78,8 +78,8 @@ class IssueWarningRequest(BaseModel):
 async def block_user(
     user_id: str,
     request: BlockUserRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         blocker_id = current_user["id"]
@@ -114,8 +114,8 @@ async def block_user(
 )
 async def unblock_user(
     user_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         blocker_id = current_user["id"]
@@ -145,10 +145,10 @@ async def unblock_user(
     description="Get list of users you have blocked",
 )
 async def get_blocked_users(
-    limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         user_id = current_user["id"]
@@ -179,8 +179,8 @@ async def get_blocked_users(
     description="Get list of users with mutual blocks",
 )
 async def get_mutual_blocks(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         user_id = current_user["id"]
@@ -209,8 +209,8 @@ async def get_mutual_blocks(
     description="Get count of users you have blocked",
 )
 async def get_block_count(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         user_id = current_user["id"]
@@ -240,8 +240,8 @@ async def get_block_count(
 )
 async def create_report(
     request: CreateReportRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         reporter_id = current_user["id"]
@@ -282,8 +282,8 @@ async def create_report(
 )
 async def get_report(
     report_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         user_id = current_user["id"]
@@ -313,11 +313,11 @@ async def get_report(
     description="Get reports created by current user",
 )
 async def get_user_reports(
-    include_reported: bool = Query(False, description="Include reports about you"),
-    limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    include_reported: Annotated[bool, Query(description="Include reports about you")] = False,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         user_id = current_user["id"]
@@ -353,10 +353,10 @@ async def get_user_reports(
     description="Get all pending reports for review (admin only)",
 )
 async def get_pending_reports(
-    limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         # Check admin role
@@ -391,10 +391,10 @@ async def get_pending_reports(
 )
 async def get_reports_for_user(
     user_id: str,
-    limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         if current_user.get("role") != "admin":
@@ -431,8 +431,8 @@ async def get_reports_for_user(
 async def update_report_status(
     report_id: str,
     request: UpdateReportStatusRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         if current_user.get("role") != "admin":
@@ -473,8 +473,8 @@ async def update_report_status(
 async def dismiss_report(
     report_id: str,
     request: DismissReportRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         if current_user.get("role") != "admin":
@@ -511,8 +511,8 @@ async def dismiss_report(
 async def take_action_on_report(
     report_id: str,
     request: TakeActionRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         if current_user.get("role") != "admin":
@@ -553,8 +553,8 @@ async def take_action_on_report(
 )
 async def issue_warning(
     request: IssueWarningRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         if current_user.get("role") != "admin":
@@ -594,8 +594,8 @@ async def issue_warning(
 )
 async def get_user_warnings(
     user_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         if current_user.get("role") != "admin":

@@ -116,5 +116,13 @@ class TestAttendanceConfirmation:
     
     def test_verify_attendance_invalid_otp(self, client):
         """Test verifying attendance with invalid OTP"""
-        # Would need authenticated request
-        pass
+        # Without auth, the endpoint should reject the request before checking the OTP
+        import asyncio
+        loop = asyncio.get_event_loop()
+        response = loop.run_until_complete(
+            client.post(
+                "/api/v1/bookings/507f1f77bcf86cd799439011/attendance/confirm",
+                json={"otp": "0000"},
+            )
+        )
+        assert response.status_code in [401, 400, 422]

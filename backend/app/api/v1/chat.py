@@ -5,7 +5,7 @@ SonarQube: S5122 - Input validation with Pydantic
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, Optional, Tuple
+from typing import Annotated, Dict, Any, Optional, Tuple
 import logging
 from datetime import datetime, timedelta, timezone
 from bson import ObjectId
@@ -606,8 +606,8 @@ def _build_message_response(
 )
 async def send_message(
     message_data: MessageSendRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Send message
@@ -706,8 +706,8 @@ class ConversationVerifyRequest(BaseModel):
 )
 async def verify_conversation(
     request: ConversationVerifyRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get or create conversation with specific user"""
     try:
@@ -786,11 +786,11 @@ async def verify_conversation(
     description="Get all conversations for current user",
 )
 async def get_conversations(
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    include_archived: bool = Query(False, description="Include archived conversations"),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    include_archived: Annotated[bool, Query(description="Include archived conversations")] = False,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get user's conversations with unread count and settings"""
     try:
@@ -875,10 +875,10 @@ async def get_conversations(
 )
 async def get_conversation_messages(
     conversation_id: str,
-    page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=200),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get messages from a specific conversation"""
     try:
@@ -979,10 +979,10 @@ async def get_conversation_messages(
     description="Get all active open chat messages (Grihasta only)",
 )
 async def get_open_chat_messages(
-    page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=200),
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Get open chat messages
@@ -1043,8 +1043,8 @@ async def get_open_chat_messages(
 )
 async def delete_message(
     message_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Delete a message (soft delete - mark as deleted)"""
     try:
@@ -1096,8 +1096,8 @@ async def delete_message(
     description="Get total unread message count for current user",
 )
 async def get_unread_count(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get total unread message count"""
     try:

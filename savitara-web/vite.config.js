@@ -1,6 +1,6 @@
-import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import path from 'path'
+import path from 'node:path'
+import { defineConfig } from 'vite'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -15,7 +15,6 @@ export default defineConfig({
     strictPort: false, // Allow fallback to another port if 3000 is busy
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
-      'Cross-Origin-Embedder-Policy': 'unsafe-none'
     },
     proxy: {
       '/api': {
@@ -26,8 +25,8 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
-    chunkSizeWarningLimit: 10000, // Suppress warning for large app bundle
+    sourcemap: false,  // SonarQube: S5765 — never expose source maps in production
+    chunkSizeWarningLimit: 1000, // M64 fix: flag bundles > 1MB to encourage code-splitting
     rollupOptions: {
       output: {
         manualChunks: {

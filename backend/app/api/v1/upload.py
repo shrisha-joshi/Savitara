@@ -1,10 +1,12 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from typing import List
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from typing import Annotated, List, Dict, Any
 import os
 import uuid
 from pathlib import Path
 import logging
 import aiofiles
+
+from app.core.security import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,14 @@ ALLOWED_MIME_TYPES = {
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
+# M13 fix: Magic byte signatures for file type validation (cannot be spoofed like content_type)
+_MAGIC_BYTES = {
+    b"\x25\x50\x44\x46": "application/pdf",        # %PDF
+    b"\xff\xd8\xff": "image/jpeg",                   # JPEG SOI
+    b"\x89\x50\x4e\x47": "image/png",                # PNG header
+    b"\xd0\xcf\x11\xe0": "application/msword",       # OLE2 (DOC)
+    b"\x50\x4b\x03\x04": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # ZIP/DOCX
+}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 CHUNK_SIZE = 1024 * 1024  # 1MB chunks
 
@@ -66,6 +76,21 @@ def _validate_file_type(file: UploadFile) -> str:
     return file_ext
 
 
+async def _validate_magic_bytes(file: UploadFile) -> None:
+    """M13 fix: Validate actual file content via magic bytes to prevent MIME spoofing."""
+    header = await file.read(8)
+    await file.seek(0)  # Reset file position
+    if not header:
+        raise HTTPException(status_code=400, detail="Empty file uploaded")
+    for magic in _MAGIC_BYTES:
+        if header.startswith(magic):
+            return  # Valid file type
+    raise HTTPException(
+        status_code=400,
+        detail="File content does not match any allowed file type. Possible MIME spoofing detected.",
+    )
+
+
 async def _save_file_with_size_check(
     file: UploadFile, file_path: Path, original_filename: str
 ) -> None:
@@ -88,6 +113,7 @@ async def _save_file_with_size_check(
 async def _process_single_file(file: UploadFile) -> str:
     """Process and save a single file. Returns the file URL."""
     file_ext = _validate_file_type(file)
+    await _validate_magic_bytes(file)  # M13: Validate actual file content
     unique_filename = f"{uuid.uuid4()}{file_ext}"
     file_path = UPLOAD_DIR / unique_filename
 
@@ -108,8 +134,17 @@ async def _process_single_file(file: UploadFile) -> str:
         raise HTTPException(status_code=500, detail=f"Failed to upload {file.filename}")
 
 
-@router.post("/documents")
-async def upload_documents(files: List[UploadFile] = File(...)):
+@router.post(
+    "/documents",
+    responses={
+        400: {"description": "Invalid file type, size, or no files provided"},
+        500: {"description": "File upload failed"},
+    },
+)
+async def upload_documents(
+    files: Annotated[List[UploadFile], File(...)],
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+):
     """
     Upload multiple documents for KYC verification.
 
@@ -128,8 +163,18 @@ async def upload_documents(files: List[UploadFile] = File(...)):
     }
 
 
-@router.delete("/documents/{filename}")
-async def delete_document(filename: str):
+@router.delete(
+    "/documents/{filename}",
+    responses={
+        400: {"description": "Invalid filename"},
+        404: {"description": "File not found"},
+        500: {"description": "Failed to delete file"},
+    },
+)
+async def delete_document(
+    filename: str,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+):
     """Delete an uploaded document"""
     # Sanitize filename
     safe_filename = validate_filename(filename)

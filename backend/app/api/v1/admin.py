@@ -5,8 +5,9 @@ SonarQube: S5122 - Proper authorization checks
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, Optional
+from typing import Annotated, Dict, Any, Optional
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 
@@ -42,8 +43,16 @@ from app.models.moderation import (
 MONGO_REGEX = "$regex"
 MONGO_OPTIONS = "$options"
 REGEX_CASE_INSENSITIVE = "i"
-MONGO_MATCH = "$match"
+# M2 fix: Removed shadowed MONGO_MATCH — already imported from app.core.constants
 ERROR_INVALID_USER_ID = "Invalid user ID format"
+
+# Fields to strip from user documents before returning to admin (M15)
+_SENSITIVE_USER_FIELDS = {"password_hash", "hashed_password", "password", "fcm_token", "refresh_token", "otp", "otp_secret"}
+
+
+def _strip_sensitive_fields(user: dict) -> dict:
+    """Remove sensitive fields before returning user data to admin endpoints."""
+    return {k: v for k, v in user.items() if k not in _SENSITIVE_USER_FIELDS}
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -57,8 +66,8 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
     description="Get comprehensive platform analytics for admin dashboard",
 )
 async def get_dashboard_analytics(
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get dashboard analytics with key metrics"""
     try:
@@ -188,10 +197,10 @@ async def get_dashboard_analytics(
     description="Get list of Acharyas awaiting verification",
 )
 async def get_pending_acharyas(
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get Acharyas pending verification"""
     try:
@@ -295,8 +304,8 @@ def _send_verification_push_notification(
 async def verify_acharya(  # noqa: C901
     acharya_id: str,
     verification: AcharyaVerificationRequest,
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Approve or reject Acharya verification"""
     try:
@@ -387,10 +396,10 @@ async def verify_acharya(  # noqa: C901
     description="Get reviews awaiting moderation",
 )
 async def get_pending_reviews(
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get reviews pending approval"""
     try:
@@ -464,10 +473,10 @@ async def get_pending_reviews(
 )
 async def moderate_review(
     review_id: str,
-    action: str = Query(..., pattern="^(approve|reject)$"),
-    notes: Optional[str] = Query(None, max_length=500),
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    action: Annotated[str, Query(..., pattern="^(approve|reject)$")],
+    notes: Annotated[Optional[str], Query(max_length=500)] = None,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Approve or reject review"""
     try:
@@ -604,11 +613,11 @@ def _serialize_acharya_doc(acharya: dict) -> dict:
     description="Get list of all Acharyas",
 )
 async def get_acharyas(
-    kyc_status: Optional[str] = Query(None),
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=1000),
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    kyc_status: Annotated[Optional[str], Query()] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 20,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get all Acharyas"""
     try:
@@ -668,8 +677,8 @@ async def get_acharyas(
 )
 async def get_user_by_id(
     user_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get user by ID"""
     try:
@@ -686,7 +695,7 @@ async def get_user_by_id(
         if "_id" in user:
             user["_id"] = str(user["_id"])
 
-        return StandardResponse(success=True, data=user)
+        return StandardResponse(success=True, data=_strip_sensitive_fields(user))
     except ResourceNotFoundError:
         raise
     except Exception as e:
@@ -705,28 +714,28 @@ async def get_user_by_id(
     description="Search users by email, role, or status",
 )
 async def search_users(
-    email: Optional[str] = Query(None),
-    role: Optional[str] = Query(None),
-    status_filter: Optional[str] = Query(None),
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=1000),
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    email: Annotated[Optional[str], Query()] = None,
+    role: Annotated[Optional[str], Query()] = None,
+    status_filter: Annotated[Optional[str], Query()] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 20,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Search users with filters"""
     try:
         # Build query
         query = {}
         if email:
-            query["email"] = {MONGO_REGEX: email, MONGO_OPTIONS: REGEX_CASE_INSENSITIVE}
+            query["email"] = {MONGO_REGEX: re.escape(email), MONGO_OPTIONS: REGEX_CASE_INSENSITIVE}
         if role and role.lower() != "all":
             query["role"] = {
-                MONGO_REGEX: f"^{role}$",
+                MONGO_REGEX: f"^{re.escape(role)}$",
                 MONGO_OPTIONS: REGEX_CASE_INSENSITIVE,
             }
         if status_filter and status_filter.lower() != "all":
             query["status"] = {
-                MONGO_REGEX: f"^{status_filter}$",
+                MONGO_REGEX: f"^{re.escape(status_filter)}$",
                 MONGO_OPTIONS: REGEX_CASE_INSENSITIVE,
             }
 
@@ -739,10 +748,11 @@ async def search_users(
             .to_list(length=limit)
         )
 
-        # Convert ObjectId to string for serialization
-        for user in users:
+        # Convert ObjectId to string for serialization + strip sensitive fields (M15)
+        for i, user in enumerate(users):
             if "_id" in user:
                 user["_id"] = str(user["_id"])
+            users[i] = _strip_sensitive_fields(user)
 
         # Get total count
         total_count = await db.users.count_documents(query)
@@ -777,9 +787,9 @@ async def search_users(
 )
 async def suspend_user(
     user_id: str,
-    reason: str = Query(..., max_length=500),
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    reason: Annotated[str, Query(..., max_length=500)],
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Suspend user account"""
     try:
@@ -852,8 +862,8 @@ async def suspend_user(
 )
 async def activate_user(
     user_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Reactivate user account"""
     try:
@@ -921,8 +931,8 @@ async def activate_user(
 )
 async def broadcast_notification(
     notification_data: NotificationBroadcastRequest,
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Broadcast notification to users"""
     try:
@@ -1018,10 +1028,10 @@ async def broadcast_notification(
     description="Get broadcast notification history",
 )
 async def get_notification_history(
-    page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=100),
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get notification history"""
     try:
@@ -1059,13 +1069,13 @@ async def get_notification_history(
     description="Get all bookings with filters",
 )
 async def get_all_bookings(
-    status_filter: Optional[str] = Query(None),
-    start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None),
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    status_filter: Annotated[Optional[str], Query()] = None,
+    start_date: Annotated[Optional[str], Query()] = None,
+    end_date: Annotated[Optional[str], Query()] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get all bookings for admin review"""
     try:
@@ -1141,14 +1151,14 @@ async def get_all_bookings(
     description="Get system audit logs for admin review",
 )
 async def get_audit_logs(
-    action: Optional[str] = Query(None, description="Filter by action type"),
-    user_id: Optional[str] = Query(None, description="Filter by user ID"),
-    start_date: Optional[str] = Query(None, description="Start date filter"),
-    end_date: Optional[str] = Query(None, description="End date filter"),
-    page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=100),
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    action: Annotated[Optional[str], Query(description="Filter by action type")] = None,
+    user_id: Annotated[Optional[str], Query(description="Filter by user ID")] = None,
+    start_date: Annotated[Optional[str], Query(description="Start date filter")] = None,
+    end_date: Annotated[Optional[str], Query(description="End date filter")] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get audit logs with filtering"""
     try:
@@ -1156,7 +1166,7 @@ async def get_audit_logs(
         query = {}
         if action:
             query["action"] = {
-                MONGO_REGEX: action,
+                MONGO_REGEX: re.escape(action),
                 MONGO_OPTIONS: REGEX_CASE_INSENSITIVE,
             }
         if user_id:
@@ -1257,8 +1267,8 @@ async def create_user_report(
     reason: str,
     description: Optional[str] = None,
     context: Optional[str] = None,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Create a user report"""
     try:
@@ -1342,12 +1352,12 @@ async def create_user_report(
     description="Get all user reports (Admin only)",
 )
 async def get_all_reports(
-    status_filter: Optional[str] = Query(None, description="Filter by status"),
-    priority: Optional[int] = Query(None, ge=1, le=5, description="Filter by priority"),
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    status_filter: Annotated[Optional[str], Query(description="Filter by status")] = None,
+    priority: Annotated[Optional[int], Query(ge=1, le=5, description="Filter by priority")] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get all user reports with details"""
     try:
@@ -1439,13 +1449,14 @@ async def get_all_reports(
 )
 async def review_report(
     report_id: str,
-    action: str = Query(..., description="resolved|dismissed|action_taken"),
-    action_taken: Optional[str] = Query(
-        None, description="warning_sent|user_suspended|user_banned|content_removed"
-    ),
+    action: Annotated[str, Query(..., description="resolved|dismissed|action_taken", pattern="^(resolved|dismissed|action_taken)$")],
+    action_taken: Annotated[Optional[str], Query(
+        description="warning_sent|user_suspended|user_banned|content_removed",
+        pattern="^(warning_sent|user_suspended|user_banned|content_removed)$",
+    )] = None,
     admin_notes: Optional[str] = None,
-    current_user: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Review a user report and take action"""
     try:

@@ -10,10 +10,31 @@ import redis.asyncio as redis
 from typing import Optional
 import logging
 import time
+import uuid
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Lua script for atomic sliding-window rate limiting.
+# KEYS[1] = the rate-limit key
+# ARGV[1] = window_start (oldest allowed timestamp)
+# ARGV[2] = now (current timestamp, used as score)
+# ARGV[3] = unique member id
+# ARGV[4] = window TTL in seconds
+# ARGV[5] = limit
+# Returns 1 (allowed) or 0 (rate-limited)
+_SLIDING_WINDOW_LUA = """
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, ARGV[1])
+local count = redis.call('ZCARD', KEYS[1])
+if count < tonumber(ARGV[5]) then
+    redis.call('ZADD', KEYS[1], ARGV[2], ARGV[3])
+    redis.call('EXPIRE', KEYS[1], tonumber(ARGV[4]))
+    return 1
+end
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[4]))
+return 0
+"""
 
 
 # Initialize rate limiter
@@ -31,6 +52,7 @@ class RateLimitMiddleware:
 
     def __init__(self):
         self.redis_client: Optional[redis.Redis] = None
+        self._lua_sha: Optional[str] = None
 
     async def connect_redis(self):
         """Connect to Redis for distributed rate limiting"""
@@ -39,14 +61,17 @@ class RateLimitMiddleware:
                 settings.REDIS_URL, encoding="utf-8", decode_responses=True
             )
             await self.redis_client.ping()
+            # Pre-load the Lua script so each call uses EVALSHA (faster)
+            self._lua_sha = await self.redis_client.script_load(_SLIDING_WINDOW_LUA)
             logger.info("Connected to Redis for rate limiting")
         except Exception as e:
             logger.warning(f"Redis connection failed, using in-memory: {e}")
             self.redis_client = None
+            self._lua_sha = None
 
     async def check_rate_limit(self, key: str, limit: int, window: int = 60) -> bool:
         """
-        Check if rate limit is exceeded
+        Atomic sliding-window rate limit check using a server-side Lua script.
 
         Args:
             key: Unique identifier (IP or user ID)
@@ -61,27 +86,35 @@ class RateLimitMiddleware:
             return True
 
         try:
-            # Use Redis sliding window
-            pipe = self.redis_client.pipeline()
             now = int(time.time())
             window_start = now - window
+            member_id = f"{now}:{uuid.uuid4().hex[:8]}"
 
-            # Remove old entries
-            pipe.zremrangebyscore(key, 0, window_start)
+            if self._lua_sha:
+                result = await self.redis_client.evalsha(
+                    self._lua_sha,
+                    1,
+                    key,
+                    str(window_start),
+                    str(now),
+                    member_id,
+                    str(window),
+                    str(limit),
+                )
+            else:
+                # Fallback: load script on the fly
+                result = await self.redis_client.eval(
+                    _SLIDING_WINDOW_LUA,
+                    1,
+                    key,
+                    str(window_start),
+                    str(now),
+                    member_id,
+                    str(window),
+                    str(limit),
+                )
 
-            # Count current requests
-            pipe.zcard(key)
-
-            # Add current request
-            pipe.zadd(key, {str(now): now})
-
-            # Set expiry
-            pipe.expire(key, window)
-
-            results = await pipe.execute()
-            request_count = results[1]
-
-            return request_count < limit
+            return result == 1
 
         except Exception as e:
             logger.error(f"Rate limit check failed: {e}")

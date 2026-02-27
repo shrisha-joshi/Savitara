@@ -4,7 +4,7 @@ Complete CRUD + Booking operations
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, Optional
+from typing import Annotated, Dict, Any, Optional
 import logging
 import re
 from datetime import datetime, timezone
@@ -47,9 +47,9 @@ class CancellationRequest(BaseModel):
 async def get_services(
     category: Optional[str] = None,
     search: Optional[str] = None,
-    limit: int = Query(50, le=100),
+    limit: Annotated[int, Query(le=100)] = 50,
     skip: int = 0,
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get all services with optional filtering"""
     try:
@@ -94,7 +94,7 @@ async def get_services(
     summary="Get Service Categories",
     description="Get list of all service categories with counts",
 )
-async def get_categories(db: AsyncIOMotorDatabase = Depends(get_db)):
+async def get_categories(db: Annotated[AsyncIOMotorDatabase, Depends(get_db)]):
     """Get all service categories"""
     try:
         pipeline = [
@@ -130,8 +130,8 @@ async def get_categories(db: AsyncIOMotorDatabase = Depends(get_db)):
 )
 async def get_my_service_bookings(
     status_filter: Optional[str] = None,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get user's service bookings"""
     try:
@@ -165,7 +165,7 @@ async def get_my_service_bookings(
     summary="Get Service Details",
     description="Get complete details of a specific service",
 )
-async def get_service(service_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
+async def get_service(service_id: str, db: Annotated[AsyncIOMotorDatabase, Depends(get_db)]):
     """Get service by ID"""
     try:
         if not ObjectId.is_valid(service_id):
@@ -199,8 +199,8 @@ async def get_service(service_id: str, db: AsyncIOMotorDatabase = Depends(get_db
 async def create_service_booking(
     service_id: str,
     booking_request: BookingCreate,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Create a service booking"""
     try:
@@ -297,8 +297,8 @@ async def create_service_booking(
 )
 async def get_service_booking(
     booking_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get booking details"""
     try:
@@ -346,8 +346,8 @@ async def get_service_booking(
 async def cancel_service_booking(
     booking_id: str,
     request: CancellationRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Cancel a service booking"""
     try:

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Image, Alert } from 'react-native';
-import { Text, Button, Divider, Chip } from 'react-native-paper';
-import { userAPI, reviewAPI, chatAPI } from '../../services/api';
+import PropTypes from 'prop-types';
+import { useEffect, useState } from 'react';
+import { Alert, Image, ScrollView, StyleSheet, View } from 'react-native';
+import { Button, Chip, Divider, Text } from 'react-native-paper';
+import { chatAPI, reviewAPI, userAPI } from '../../services/api';
 
 const AcharyaDetailsScreen = ({ route, navigation }) => {
   const { acharyaId } = route.params;
@@ -38,14 +39,13 @@ const AcharyaDetailsScreen = ({ route, navigation }) => {
     try {
       const userId = acharya.user_id || acharya._id || acharyaId;
       const response = await chatAPI.verifyConversation(userId);
-      if (response.data.success && response.data.conversation_id) {
+      // Backend wraps in StandardResponse: { success, data: { conversation_id, recipient } }
+      const convData = response.data?.data || response.data;
+      if (convData?.conversation_id) {
         navigation.navigate('Conversation', {
-          conversationId: response.data.conversation_id,
-          recipient: {
-            id: userId,
-            name: acharya.full_name,
-            avatar: acharya.profile_picture
-          }
+          conversationId: convData.conversation_id,
+          otherUserId: convData.recipient?.id || userId,
+          otherUserName: convData.recipient?.name || acharya.full_name || 'Acharya',
         });
       }
     } catch (error) {
@@ -97,8 +97,8 @@ const AcharyaDetailsScreen = ({ route, navigation }) => {
       <View style={styles.section}>
         <Text variant="titleMedium" style={styles.sectionTitle}>Specializations</Text>
         <View style={styles.chipContainer}>
-          {profile.specializations?.map((spec, index) => (
-            <Chip key={index} style={styles.chip}>{spec}</Chip>
+          {profile.specializations?.map((spec) => (
+            <Chip key={spec} style={styles.chip}>{spec}</Chip>
           ))}
         </View>
       </View>
@@ -106,8 +106,8 @@ const AcharyaDetailsScreen = ({ route, navigation }) => {
       <View style={styles.section}>
         <Text variant="titleMedium" style={styles.sectionTitle}>Languages</Text>
         <View style={styles.chipContainer}>
-          {profile.languages?.map((lang, index) => (
-            <Chip key={index} style={styles.chip}>{lang}</Chip>
+          {profile.languages?.map((lang) => (
+            <Chip key={lang} style={styles.chip}>{lang}</Chip>
           ))}
         </View>
       </View>
@@ -226,5 +226,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF6B35',
   },
 });
+
+AcharyaDetailsScreen.propTypes = {
+  route: PropTypes.shape({
+    params: PropTypes.shape({
+      acharyaId: PropTypes.string.isRequired,
+    }).isRequired,
+  }).isRequired,
+  navigation: PropTypes.shape({
+    navigate: PropTypes.func.isRequired,
+  }).isRequired,
+};
 
 export default AcharyaDetailsScreen;

@@ -3,7 +3,7 @@ Voice Messages API Router
 Endpoints for voice message upload, creation, and playback
 """
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request, BackgroundTasks
-from typing import Optional, List
+from typing import Annotated, Optional, List
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.security import get_current_user
@@ -83,7 +83,7 @@ class VoiceStorageUsageResponse(BaseModel):
 @router.post("/upload-url", response_model=StandardResponse[UploadURLResponse])
 async def request_upload_url(
     request: UploadURLRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: Annotated[User, Depends(get_current_user)] = None
 ):
     """
     Request presigned upload URL for voice message
@@ -129,7 +129,7 @@ async def request_upload_url(
 async def upload_voice_file_local(
     upload_token: str,
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user)
+    current_user: Annotated[User, Depends(get_current_user)] = None
 ):
     """
     Upload voice file to local storage (development only)
@@ -168,7 +168,7 @@ async def upload_voice_file_local(
 async def create_voice_message(
     request: CreateVoiceMessageRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user)
+    current_user: Annotated[User, Depends(get_current_user)] = None
 ):
     """
     Create voice message record after file upload
@@ -246,7 +246,7 @@ async def create_voice_message(
 @router.delete("/messages/{message_id}", response_model=StandardResponse[dict])
 async def delete_voice_message(
     message_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: Annotated[User, Depends(get_current_user)] = None
 ):
     """
     Delete voice message (soft delete)
@@ -276,7 +276,7 @@ async def delete_voice_message(
 
 @router.get("/storage-usage", response_model=StandardResponse[VoiceStorageUsageResponse])
 async def get_storage_usage(
-    current_user: User = Depends(get_current_user)
+    current_user: Annotated[User, Depends(get_current_user)] = None
 ):
     """
     Get current user's voice message storage usage
@@ -302,7 +302,7 @@ async def get_storage_usage(
 @router.get("/playback-url/{message_id}", response_model=StandardResponse[dict])
 async def get_playback_url(
     message_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: Annotated[User, Depends(get_current_user)] = None
 ):
     """
     Get playback URL for a voice message

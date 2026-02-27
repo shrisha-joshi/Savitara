@@ -3,7 +3,7 @@ Gamification API Endpoints
 Handles coins, points, vouchers, coupons, loyalty, referrals
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Optional, List
+from typing import Annotated, Optional, List
 from datetime import datetime, timezone
 from bson import ObjectId
 
@@ -99,7 +99,7 @@ class CreateCouponRequest(BaseModel):
 @router.post("/coins/award")
 async def award_coins_endpoint(
     request: AwardCoinsRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
     db=Depends(get_db),
 ):
     """Award coins to current user (internal use by other services)"""
@@ -122,7 +122,7 @@ async def award_coins_endpoint(
 @router.post("/coins/redeem")
 async def redeem_coins_endpoint(
     request: RedeemCoinsRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
     db=Depends(get_db),
 ):
     """Redeem coins for booking discount"""
@@ -142,7 +142,7 @@ async def redeem_coins_endpoint(
 
 @router.get("/coins/balance")
 async def get_coins_balance(
-    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+    current_user: Annotated[dict, Depends(get_current_user)], db=Depends(get_db)
 ):
     """Get user's coin balance and transactions"""
     service = GamificationService(db)
@@ -152,8 +152,8 @@ async def get_coins_balance(
 
 @router.get("/coins/transactions")
 async def get_coin_transactions(
-    limit: int = Query(50, le=100),
-    current_user: dict = Depends(get_current_user),
+    limit: Annotated[int, Query(le=100)] = 50,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
     db=Depends(get_db),
 ):
     """Get coin transaction history"""
@@ -173,7 +173,7 @@ async def get_coin_transactions(
 @router.post("/points/award")
 async def award_points_endpoint(
     request: AwardPointsRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
     db=Depends(get_db),
 ):
     """Award points to user"""
@@ -200,7 +200,7 @@ async def award_points_endpoint(
 
 @router.get("/loyalty/status")
 async def get_loyalty_status(
-    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+    current_user: Annotated[dict, Depends(get_current_user)], db=Depends(get_db)
 ):
     """Get user's loyalty tier and benefits"""
     service = GamificationService(db)
@@ -209,7 +209,7 @@ async def get_loyalty_status(
 
 
 @router.get("/loyalty/tiers")
-async def get_loyalty_tiers(current_user: dict = Depends(get_current_user)):
+async def get_loyalty_tiers(current_user: Annotated[dict, Depends(get_current_user)]):
     """Get all loyalty tiers and their benefits"""
     return {
         "grihasta_tiers": [
@@ -293,7 +293,7 @@ async def get_loyalty_tiers(current_user: dict = Depends(get_current_user)):
 
 @router.get("/vouchers/my")
 async def get_my_vouchers(
-    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+    current_user: Annotated[dict, Depends(get_current_user)], db=Depends(get_db)
 ):
     """Get all active vouchers for current user"""
     service = GamificationService(db)
@@ -304,8 +304,8 @@ async def get_my_vouchers(
 @router.post("/vouchers/{voucher_code}/claim")
 async def claim_voucher(
     voucher_code: str,
-    earned_via: str = Query("manual_claim"),
-    current_user: dict = Depends(get_current_user),
+    earned_via: Annotated[str, Query()] = "manual_claim",
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
     db=Depends(get_db),
 ):
     """Claim a voucher by code"""
@@ -328,7 +328,7 @@ async def claim_voucher(
 @router.post("/coupons/validate")
 async def validate_coupon(
     request: ValidateCouponRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
     db=Depends(get_db),
 ):
     """Validate a coupon code"""
@@ -348,7 +348,7 @@ async def validate_coupon(
 
 @router.get("/coupons/available")
 async def get_available_coupons(
-    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+    current_user: Annotated[dict, Depends(get_current_user)], db=Depends(get_db)
 ):
     """Get all available coupons for current user"""
     # Get active coupons
@@ -400,7 +400,7 @@ async def get_available_coupons(
 @router.post("/pricing/calculate")
 async def calculate_price(
     request: CalculatePriceRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
     db=Depends(get_db),
 ):
     """Calculate final price with all discounts (Amazon-style display)"""
@@ -421,7 +421,7 @@ async def calculate_price(
 
 @router.get("/referral/my-code")
 async def get_my_referral_code(
-    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+    current_user: Annotated[dict, Depends(get_current_user)], db=Depends(get_db)
 ):
     """Get or generate user's referral code"""
     service = GamificationService(db)
@@ -483,7 +483,7 @@ async def get_my_referral_code(
 @router.post("/referral/create")
 async def create_referral(
     request: CreateReferralRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
     db=Depends(get_db),
 ):
     """Create a referral (called when someone uses referral code)"""
@@ -502,7 +502,7 @@ async def create_referral(
 
 @router.get("/referral/leaderboard")
 async def get_referral_leaderboard(
-    month: Optional[str] = Query(None, description="Month in YYYY-MM format"),
+    month: Annotated[Optional[str], Query(description="Month in YYYY-MM format")] = None,
     db=Depends(get_db),
 ):
     """Get referral leaderboard for a month"""
@@ -525,7 +525,7 @@ async def get_referral_leaderboard(
 
 @router.get("/milestones/my")
 async def get_my_milestones(
-    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+    current_user: Annotated[dict, Depends(get_current_user)], db=Depends(get_db)
 ):
     """Get user's achieved milestones"""
     milestones = (
@@ -538,7 +538,7 @@ async def get_my_milestones(
 
 
 @router.get("/milestones/available")
-async def get_available_milestones(current_user: dict = Depends(get_current_user)):
+async def get_available_milestones(current_user: Annotated[dict, Depends(get_current_user)]):
     """Get all available milestones"""
     return {
         "grihasta": [
@@ -576,7 +576,7 @@ async def get_available_milestones(current_user: dict = Depends(get_current_user
 
 @router.get("/stats/overview")
 async def get_gamification_overview(
-    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+    current_user: Annotated[dict, Depends(get_current_user)], db=Depends(get_db)
 ):
     """Get complete gamification overview for user"""
     service = GamificationService(db)
@@ -621,7 +621,7 @@ async def get_gamification_overview(
 @router.post("/admin/vouchers/create")
 async def create_voucher_admin(
     voucher_data: CreateVoucherRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
     db=Depends(get_db),
 ):
     """Admin: Create a new voucher"""
@@ -642,7 +642,7 @@ async def create_voucher_admin(
 @router.post("/admin/coupons/create")
 async def create_coupon_admin(
     coupon_data: CreateCouponRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
     db=Depends(get_db),
 ):
     """Admin: Create a new coupon"""
@@ -664,7 +664,7 @@ async def create_coupon_admin(
 
 @router.get("/admin/analytics")
 async def get_gamification_analytics(
-    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+    current_user: Annotated[dict, Depends(get_current_user)], db=Depends(get_db)
 ):
     """Admin: Get gamification analytics"""
     if current_user["role"] != "admin":
@@ -715,7 +715,7 @@ async def get_gamification_analytics(
 
 @router.get("/streaks/my")
 async def get_my_streak(
-    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+    current_user: Annotated[dict, Depends(get_current_user)], db=Depends(get_db)
 ):
     """Get user's current login streak"""
     service = GamificationService(db)
@@ -750,7 +750,7 @@ async def get_my_streak(
 
 @router.post("/streaks/checkin")
 async def daily_checkin(
-    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+    current_user: Annotated[dict, Depends(get_current_user)], db=Depends(get_db)
 ):
     """Record daily check-in and update streak"""
     service = GamificationService(db)
@@ -761,7 +761,8 @@ async def daily_checkin(
 
 @router.get("/streaks/leaderboard")
 async def get_streak_leaderboard(
-    limit: int = Query(10, le=50), db=Depends(get_db)
+    limit: Annotated[int, Query(le=50)] = 10,
+    db=Depends(get_db),
 ):
     """Get top users by streak"""
     leaderboard = (
@@ -798,7 +799,7 @@ async def get_streak_leaderboard(
 
 @router.get("/achievements/my")
 async def get_my_achievements(
-    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+    current_user: Annotated[dict, Depends(get_current_user)], db=Depends(get_db)
 ):
     """Get user's achieved milestones/achievements"""
     user_id = str(current_user["id"])
@@ -843,7 +844,7 @@ async def get_my_achievements(
 
 
 @router.get("/achievements/available")
-async def get_available_achievements_v2(current_user: dict = Depends(get_current_user)):
+async def get_available_achievements_v2(current_user: Annotated[dict, Depends(get_current_user)]):
     """Get all available achievements (alternative to /milestones/available)"""
     return await get_available_milestones(current_user)
 
@@ -853,7 +854,7 @@ async def get_available_achievements_v2(current_user: dict = Depends(get_current
 
 @router.get("/rewards/daily")
 async def get_daily_rewards(
-    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+    current_user: Annotated[dict, Depends(get_current_user)], db=Depends(get_db)
 ):
     """Get daily reward calendar (last 7 days)"""
     from datetime import datetime, timezone, timedelta
@@ -904,7 +905,7 @@ async def get_daily_rewards(
 
 @router.post("/rewards/claim")
 async def claim_daily_reward(
-    current_user: dict = Depends(get_current_user), db=Depends(get_db)
+    current_user: Annotated[dict, Depends(get_current_user)], db=Depends(get_db)
 ):
     """Claim today's daily reward"""
     from datetime import datetime, timezone

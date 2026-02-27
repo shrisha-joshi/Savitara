@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import PropTypes from 'prop-types';
-import { View, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert } from 'react-native';
-import { List, Avatar, Badge, Text, Searchbar, FAB, IconButton, Menu, Divider, Portal, Dialog, Button } from 'react-native-paper';
 import * as Haptics from 'expo-haptics';
+import PropTypes from 'prop-types';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { Avatar, Badge, Divider, IconButton, List, Menu, Portal, Searchbar, Text } from 'react-native-paper';
 import { chatAPI } from '../../services/api';
 
 const ChatListScreen = ({ navigation }) => {
@@ -87,6 +87,7 @@ const ChatListScreen = ({ navigation }) => {
       await chatAPI.pinConversation(selectedConv.id || selectedConv._id);
       loadConversations();
     } catch (error) {
+      console.error('Failed to pin conversation:', error);
       Alert.alert('Error', 'Failed to pin conversation');
     }
   };
@@ -99,6 +100,7 @@ const ChatListScreen = ({ navigation }) => {
       await chatAPI.archiveConversation(selectedConv.id || selectedConv._id);
       loadConversations();
     } catch (error) {
+      console.error('Failed to archive conversation:', error);
       Alert.alert('Error', 'Failed to archive conversation');
     }
   };
@@ -111,6 +113,7 @@ const ChatListScreen = ({ navigation }) => {
       await chatAPI.muteConversation(selectedConv.id || selectedConv._id, { is_muted: !selectedConv.is_muted });
       loadConversations();
     } catch (error) {
+      console.error('Failed to mute conversation:', error);
       Alert.alert('Error', 'Failed to mute conversation');
     }
   };
@@ -132,7 +135,8 @@ const ChatListScreen = ({ navigation }) => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               await chatAPI.deleteConversation(selectedConv.id || selectedConv._id);
               loadConversations();
-            } catch (error) {
+            } catch (deleteError) {
+              console.error('Failed to delete conversation:', deleteError);
               Alert.alert('Error', 'Failed to delete conversation');
             }
           }
@@ -184,9 +188,10 @@ const ChatListScreen = ({ navigation }) => {
               />
             </View>
           )}
-          onPress={() => navigation.navigate('Chat', {
+          onPress={() => navigation.navigate('Conversation', {
             conversationId: convId,
             otherUserName: otherUser.name || 'Unknown User',
+            otherUserId: otherUser.id || otherUser._id,
           })}
           onLongPress={() => openMenu(item)}
         />
@@ -236,12 +241,13 @@ const ChatListScreen = ({ navigation }) => {
       />
       {loading ? (
         <Text style={styles.centerText}>Loading...</Text>
-      ) : filteredConversations.length === 0 ? (
-        <Text style={styles.centerText}>
-          {searchQuery ? 'No conversations found' : 'No conversations yet'}
-        </Text>
       ) : (
-        <FlatList
+        filteredConversations.length === 0 ? (
+          <Text style={styles.centerText}>
+            {searchQuery ? 'No conversations found' : 'No conversations yet'}
+          </Text>
+        ) : (
+          <FlatList
           data={filteredConversations}
           renderItem={renderConversation}
           keyExtractor={(item) => item.id || item._id}

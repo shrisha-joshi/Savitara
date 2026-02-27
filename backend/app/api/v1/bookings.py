@@ -3,18 +3,20 @@ Booking API Endpoints
 Handles booking creation, management, and attendance confirmation
 SonarQube: S5659 - Secure OTP generation
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, status, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, Optional
+from typing import Annotated, Dict, Any, Optional
 import logging
 from datetime import datetime, timedelta, timezone
 import secrets
 import string
 from bson import ObjectId
+from pydantic import BaseModel, Field
 
 from app.schemas.requests import (
     BookingCreateRequest,
     BookingStatusUpdateRequest,
+    BookingReferRequest,
     AttendanceConfirmRequest,
     StandardResponse,
 )
@@ -47,6 +49,9 @@ from app.core.exceptions import (
 from app.db.connection import get_db
 from app.models.database import Booking, BookingStatus, PaymentStatus, UserRole
 
+# Constants to avoid duplication (S1192)
+ACTION_CANCEL_BOOKING = "Cancel booking"
+
 
 # Module-level constants
 BOOKING_COMPLETED = "Booking Completed"
@@ -77,18 +82,26 @@ from app.core.exceptions import ResourceNotFoundError
 )
 async def refer_booking(
     booking_id: str,
-    new_acharya_id: str,
-    notes: Optional[str] = None,
-    current_user: Dict[str, Any] = Depends(get_current_acharya),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    refer_data: BookingReferRequest,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_acharya)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Refer/pass a booking to another Acharya (by Acharya)"""
+    new_acharya_id = refer_data.new_acharya_id
+    notes = refer_data.notes
+
     booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
     if not booking:
         raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
 
-    # Only the current assigned Acharya can refer
-    if str(booking["acharya_id"]) != current_user["id"]:
+    # Only the current assigned Acharya can refer — resolve profile ID
+    acharya_id = current_user["id"]
+    acharya_obj = ObjectId(acharya_id) if ObjectId.is_valid(acharya_id) else None
+    acharya_profile = await db.acharya_profiles.find_one(
+        {"user_id": acharya_obj or acharya_id}, {"_id": 1}
+    )
+    acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
+    if str(booking["acharya_id"]) not in [str(acharya_profile_id), acharya_id]:
         raise PermissionDeniedError(action="Refer booking")
 
     # Validate new Acharya exists
@@ -183,34 +196,38 @@ async def _check_slot_availability(
 async def _process_coupon(
     db: AsyncIOMotorDatabase, coupon_code: str, subtotal: float
 ) -> float:
-    """Apply coupon if valid and return discount amount"""
+    """Apply coupon if valid and return discount amount.
+    Uses atomic find_one_and_update to prevent race-condition overuse (C6).
+    """
     if not coupon_code:
         return 0.0
 
-    coupon = await db.coupons.find_one(
+    now = datetime.now(timezone.utc)
+
+    # Atomic check-and-increment: the filter ensures used_count < max_uses
+    # so two concurrent requests cannot both pass the limit check.
+    coupon = await db.coupons.find_one_and_update(
         {
             "code": coupon_code,
             "is_active": True,
-            "valid_from": {"$lte": datetime.now(timezone.utc)},
-            "valid_until": {"$gte": datetime.now(timezone.utc)},
-        }
+            "valid_from": {"$lte": now},
+            "valid_until": {"$gte": now},
+            "$expr": {
+                "$or": [
+                    {"$eq": ["$max_uses", 0]},          # unlimited
+                    {"$lt": [{"$ifNull": ["$used_count", 0]}, "$max_uses"]},
+                ]
+            },
+        },
+        {"$inc": {"used_count": 1}},
+        return_document=False,  # return the document *before* the update
     )
 
     if not coupon:
-        return 0.0
-
-    # Check usage limit
-    max_uses = coupon.get("max_uses", 0)
-    current_uses = coupon.get("used_count", 0)
-
-    if max_uses > 0 and current_uses >= max_uses:
-        logger.info(f"Coupon {coupon_code} has reached max usage limit")
+        logger.info(f"Coupon {coupon_code} invalid, expired, or usage limit reached")
         return 0.0
 
     discount = subtotal * (coupon.get("discount_percentage", 0) / 100)
-
-    # Increment coupon usage count
-    await db.coupons.update_one({"_id": coupon["_id"]}, {"$inc": {"used_count": 1}})
 
     return discount
 
@@ -317,6 +334,35 @@ def _send_booking_notification(
         logger.warning(f"Failed to send request notification: {e}")
 
 
+def _prepare_booking_dict(booking: Booking) -> Dict[str, Any]:
+    """Prepare booking dict for MongoDB insertion."""
+    booking_dict = booking.model_dump(by_alias=True)
+    
+    # Remove _id if None to allow MongoDB to generate it
+    if "_id" in booking_dict and booking_dict["_id"] is None:
+        del booking_dict["_id"]
+    
+    # Convert ID strings back to ObjectId for proper MongoDB storage
+    for id_field in ["grihasta_id", "acharya_id", "pooja_id"]:
+        if id_field in booking_dict and booking_dict[id_field] and isinstance(booking_dict[id_field], str):
+            booking_dict[id_field] = ObjectId(booking_dict[id_field])
+    
+    # Remove unique fields that are None to avoid duplicate key errors
+    for unique_field in ["razorpay_order_id", "razorpay_payment_id"]:
+        if unique_field in booking_dict and booking_dict[unique_field] is None:
+            del booking_dict[unique_field]
+    
+    return booking_dict
+
+
+def _parse_grihasta_id(user_id_str: str) -> Any:
+    """Parse grihasta ID, converting to ObjectId if valid."""
+    try:
+        return ObjectId(user_id_str)
+    except Exception:
+        return user_id_str
+
+
 @router.post(
     "",
     response_model=StandardResponse,
@@ -324,11 +370,10 @@ def _send_booking_notification(
     summary="Create Booking",
     description="Create a new pooja booking with payment",
 )
-# NOSONAR python:S3776 - Complex booking creation logic is intentionally kept together for maintainability
 async def create_booking(
     booking_data: BookingCreateRequest,
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Create booking with slot validation and payment initiation
@@ -341,13 +386,7 @@ async def create_booking(
     5. Create booking record (PENDING_PAYMENT)
     """
     try:
-        grihasta_id_str = current_user["id"]
-        # Convert to ObjectId for consistent storage
-        try:
-            grihasta_id = ObjectId(grihasta_id_str)
-        except Exception:
-            grihasta_id = grihasta_id_str
-        
+        grihasta_id = _parse_grihasta_id(current_user["id"])
         logger.info(f"Creating booking for grihasta_id: {grihasta_id} (type: {type(grihasta_id)})")
 
         # 1 & 2. Validate Acharya and Pooja
@@ -434,26 +473,8 @@ async def create_booking(
             notes=booking_data.notes,
         )
 
-        booking_dict = booking.model_dump(by_alias=True)
-        # Ensure _id is removed if None to allow MongoDB to generate it
-        if "_id" in booking_dict and booking_dict["_id"] is None:
-            del booking_dict["_id"]
-        
-        # Convert ID strings back to ObjectId for proper MongoDB storage
-        # PyObjectId serializes to string during model_dump, but MongoDB needs ObjectId
-        if "grihasta_id" in booking_dict and isinstance(booking_dict["grihasta_id"], str):
-            booking_dict["grihasta_id"] = ObjectId(booking_dict["grihasta_id"])
-        if "acharya_id" in booking_dict and isinstance(booking_dict["acharya_id"], str):
-            booking_dict["acharya_id"] = ObjectId(booking_dict["acharya_id"])
-        if "pooja_id" in booking_dict and booking_dict["pooja_id"] and isinstance(booking_dict["pooja_id"], str):
-            booking_dict["pooja_id"] = ObjectId(booking_dict["pooja_id"])
-        
-        # Remove unique fields that are None to avoid duplicate key errors with sparse indexes
-        if "razorpay_order_id" in booking_dict and booking_dict["razorpay_order_id"] is None:
-            del booking_dict["razorpay_order_id"]
-        if "razorpay_payment_id" in booking_dict and booking_dict["razorpay_payment_id"] is None:
-            del booking_dict["razorpay_payment_id"]
-        
+        # Prepare and insert booking using helper
+        booking_dict = _prepare_booking_dict(booking)
         logger.info(f"Inserting booking with grihasta_id={booking_dict.get('grihasta_id')} (type: {type(booking_dict.get('grihasta_id'))})")
             
         result = await db.bookings.insert_one(booking_dict)
@@ -499,11 +520,11 @@ async def create_booking(
     description="Get user bookings",
 )
 async def get_bookings_root(
-    status_filter: Optional[str] = Query(None),
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    status_filter: Annotated[Optional[str], Query()] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get bookings alias"""
     return await get_my_bookings(status_filter, page, limit, current_user, db)
@@ -562,18 +583,34 @@ async def _notify_booking_status_update(
         logger.warning(f"Failed to send notifications: {exc}")
 
 
+async def _check_status_update_permission(
+    db: AsyncIOMotorDatabase, booking: Dict[str, Any], user_id: str, user_role: str
+) -> None:
+    """Check if user has permission to update booking status."""
+    if user_role not in [UserRole.ADMIN.value, UserRole.ACHARYA.value]:
+        raise PermissionDeniedError(action="Update status")
+
+    if user_role == UserRole.ACHARYA.value:
+        acharya_obj = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
+        acharya_profile = await db.acharya_profiles.find_one(
+            {"user_id": acharya_obj or user_id}, {"_id": 1}
+        )
+        acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
+        if str(booking.get("acharya_id")) not in [str(acharya_profile_id), user_id]:
+            raise PermissionDeniedError(action="Update status")
+
+
 @router.put(
     "/{booking_id}/status",
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
     summary="Update Booking Status",
 )
-# NOSONAR python:S3776 - Complex status update logic with state machine validation requires this structure
 async def update_booking_status(
     booking_id: str,
     status_update: BookingStatusUpdateRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Update booking status"""
     # Booking status transition matrix – prevent illegal state changes
@@ -589,18 +626,8 @@ async def update_booking_status(
             message=f"Cannot transition booking from '{current_status}' to '{new_status}'",
         )
 
-    if current_user["role"] not in [UserRole.ADMIN.value, UserRole.ACHARYA.value]:
-        raise PermissionDeniedError(action="Update status")
-
-    if current_user["role"] == UserRole.ACHARYA.value:
-        acharya_id = current_user["id"]
-        acharya_obj = ObjectId(acharya_id) if ObjectId.is_valid(acharya_id) else None
-        acharya_profile = await db.acharya_profiles.find_one(
-            {"user_id": acharya_obj or acharya_id}, {"_id": 1}
-        )
-        acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
-        if str(booking.get("acharya_id")) not in [str(acharya_profile_id), acharya_id]:
-            raise PermissionDeniedError(action="Update status")
+    # Check permission using helper
+    await _check_status_update_permission(db, booking, current_user["id"], current_user["role"])
 
     update_doc = {
         "status": status_update.status,
@@ -631,6 +658,25 @@ async def update_booking_status(
     return StandardResponse(success=True, message="Status updated")
 
 
+async def _check_cancel_permission(
+    db: AsyncIOMotorDatabase, booking: Dict[str, Any], user_id: str, user_role: str
+) -> None:
+    """Check if user has permission to cancel the booking."""
+    if user_role == UserRole.GRIHASTA.value:
+        if str(booking["grihasta_id"]) != user_id:
+            raise PermissionDeniedError(action=ACTION_CANCEL_BOOKING)
+    elif user_role == UserRole.ACHARYA.value:
+        acharya_obj = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
+        acharya_profile = await db.acharya_profiles.find_one(
+            {"user_id": acharya_obj or user_id}, {"_id": 1}
+        )
+        acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
+        if str(booking["acharya_id"]) not in [str(acharya_profile_id), user_id]:
+            raise PermissionDeniedError(action=ACTION_CANCEL_BOOKING)
+    elif user_role != UserRole.ADMIN.value:
+        raise PermissionDeniedError(action=ACTION_CANCEL_BOOKING)
+
+
 @router.put(
     "/{booking_id}/cancel",
     response_model=StandardResponse,
@@ -639,19 +685,16 @@ async def update_booking_status(
 )
 async def cancel_booking(
     booking_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Cancel booking"""
     booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
     if not booking:
         raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
 
-    if (
-        current_user["role"] == UserRole.GRIHASTA.value
-        and current_user["id"] != booking["grihasta_id"]
-    ):
-        raise PermissionDeniedError(action="Cancel booking")
+    # Check permission using helper
+    await _check_cancel_permission(db, booking, current_user["id"], current_user["role"])
 
     # Enforce state machine transitions from _BOOKING_TRANSITIONS
     current_status = booking.get("status")
@@ -681,10 +724,10 @@ async def cancel_booking(
             from app.services.payment_service import RazorpayService
 
             razorpay_svc = RazorpayService()
-            refund_amount_paise = int(booking.get("total_amount", 0) * 100)
+            refund_amount = booking.get("total_amount", 0)
             refund_result = razorpay_svc.initiate_refund(
                 payment_id=booking["razorpay_payment_id"],
-                amount=refund_amount_paise,
+                amount=refund_amount,
                 notes={"reason": "Booking cancelled by user", "booking_id": booking_id},
             )
             await db.bookings.update_one(
@@ -714,20 +757,28 @@ async def cancel_booking(
 )
 async def generate_attendance_otp(
     booking_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Generate OTP for attendance"""
     booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
     if not booking:
         raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
 
+    # Authorization: only booking participants (grihasta or acharya) can generate OTP
+    user_id = current_user["id"]
+    is_grihasta = str(booking.get("grihasta_id")) == user_id
+    is_acharya = str(booking.get("acharya_id")) == user_id
+    if not is_grihasta and not is_acharya and current_user.get("role") != "admin":
+        raise PermissionDeniedError(action="Generate OTP for this booking")
+
     otp = generate_otp()
 
-    # Store OTP in booking document
+    # Store OTP in booking document with expiry (M8 fix: OTP expires in 30 minutes)
+    otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
     await db.bookings.update_one(
         {"_id": ObjectId(booking_id)},
-        {"$set": {"start_otp": otp, "updated_at": datetime.now(timezone.utc)}},
+        {"$set": {"start_otp": otp, "otp_expires_at": otp_expires_at, "updated_at": datetime.now(timezone.utc)}},
     )
 
     return StandardResponse(success=True, data={"otp": otp}, message="OTP generated")
@@ -742,8 +793,8 @@ async def generate_attendance_otp(
 )
 async def create_payment_order_for_request(
     booking_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Create Razorpay payment order for request-mode bookings after Acharya approval
@@ -809,7 +860,12 @@ async def create_payment_order_for_request(
             razorpay_order_id = razorpay_order.get("id")
         except Exception as e:
             logger.warning(f"Razorpay order creation warning: {e}")
-            # In development, use dummy order ID
+            # Only allow fallback dev order IDs in non-production environments
+            if settings.APP_ENV == "production":
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Payment gateway unavailable. Please try again later.",
+                )
             razorpay_order_id = f"order_dev_{secrets.token_hex(8)}"
 
         # Update booking with razorpay_order_id and payment status
@@ -854,16 +910,23 @@ async def create_payment_order_for_request(
 )
 async def verify_payment(
     booking_id: str,
-    razorpay_payment_id: str,
-    razorpay_signature: str,
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    payment_data: Annotated[dict, Body(..., example={"razorpay_payment_id": "pay_xxx", "razorpay_signature": "sig_xxx"})],
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Verify Razorpay payment signature and update booking
+    Payment credentials sent in request body (not URL) for security.
 
     SonarQube: S4502 - Webhook signature verification
     """
+    razorpay_payment_id = payment_data.get("razorpay_payment_id")
+    razorpay_signature = payment_data.get("razorpay_signature")
+    if not razorpay_payment_id or not razorpay_signature:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="razorpay_payment_id and razorpay_signature are required",
+        )
     try:
         # Get booking
         booking_doc = await db.bookings.find_one({"_id": ObjectId(booking_id)})
@@ -928,7 +991,7 @@ async def verify_payment(
                 notification_service.send_notification(
                     token=grihasta["fcm_token"],
                     title="Booking Confirmed",
-                    body=f"Your booking is confirmed. OTP: {start_otp}",
+                    body="Your booking is confirmed. Check the app for details.",
                     data={"type": "booking_confirmed", "booking_id": booking_id},
                 )
 
@@ -997,14 +1060,22 @@ async def verify_payment(
 )
 async def start_booking(
     booking_id: str,
-    otp: str,
-    current_user: Dict[str, Any] = Depends(get_current_acharya),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    otp: Annotated[Optional[str], Query(description="OTP from query param")] = None,
+    body_otp: Annotated[Optional[Dict[str, Any]], Body(description="OTP from JSON body")] = None,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_acharya)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Start booking session with OTP verification
     """
     try:
+        # Resolve OTP from query param or JSON body
+        resolved_otp = otp
+        if not resolved_otp and body_otp and isinstance(body_otp, dict):
+            resolved_otp = body_otp.get("otp")
+        if not resolved_otp:
+            raise InvalidInputError(message="OTP is required", field="otp")
+
         acharya_id = current_user["id"]
         acharya_obj_id = ObjectId(acharya_id) if ObjectId.is_valid(acharya_id) else None
 
@@ -1028,8 +1099,11 @@ async def start_booking(
                 field="status",
             )
 
-        # Verify OTP
-        if booking_doc.get("start_otp") != otp:
+        # Verify OTP — M8 fix: check expiry
+        otp_expires_at = booking_doc.get("otp_expires_at")
+        if otp_expires_at and datetime.now(timezone.utc) > otp_expires_at:
+            raise InvalidInputError(message="OTP has expired. Please generate a new one.", field="otp")
+        if booking_doc.get("start_otp") != resolved_otp:
             raise InvalidInputError(message="Invalid OTP", field="otp")
 
         # Update to IN_PROGRESS
@@ -1167,8 +1241,8 @@ async def _update_booking_attendance(
 async def confirm_attendance(
     booking_id: str,
     confirm_data: AttendanceConfirmRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Two-way attendance confirmation
@@ -1228,6 +1302,76 @@ async def confirm_attendance(
         )
 
 
+async def _build_user_booking_query(
+    db: AsyncIOMotorDatabase, user_id: str, role: str, status_filter: Optional[str]
+) -> Dict[str, Any]:
+    """Build query for user's bookings based on role."""
+    try:
+        user_obj_id = ObjectId(user_id)
+    except Exception:
+        user_obj_id = None
+        logger.warning(f"Could not convert user_id to ObjectId: {user_id}")
+
+    query: Dict[str, Any] = {}
+    if role == UserRole.GRIHASTA.value:
+        query["grihasta_id"] = user_obj_id if user_obj_id else user_id
+        logger.info(f"Grihasta query: {query}")
+    elif role == UserRole.ACHARYA.value:
+        acharya_profile = await db.acharya_profiles.find_one(
+            {"user_id": user_obj_id or user_id}, {"_id": 1}
+        )
+        acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
+        logger.info(f"Acharya profile lookup: user_id={user_id}, found_profile_id={acharya_profile_id}")
+        query["acharya_id"] = acharya_profile_id if acharya_profile_id else (user_obj_id or user_id)
+        logger.info(f"Acharya query: {query}")
+    else:
+        raise PermissionDeniedError(action="View bookings")
+
+    if status_filter:
+        query["status"] = status_filter
+    return query
+
+
+def _build_my_bookings_pipeline(
+    query: Dict[str, Any], page: int, limit: int
+) -> list:
+    """Build aggregation pipeline for my-bookings endpoint."""
+    return [
+        {MONGO_MATCH: query},
+        {MONGO_LOOKUP: {"from": "poojas", "localField": "pooja_id", "foreignField": "_id", "as": "pooja"}},
+        {MONGO_UNWIND: {"path": "$pooja", "preserveNullAndEmptyArrays": True}},
+        {MONGO_LOOKUP: {"from": "acharya_profiles", "localField": "acharya_id", "foreignField": "_id", "as": "acharya"}},
+        {MONGO_UNWIND: {"path": "$acharya", "preserveNullAndEmptyArrays": True}},
+        {MONGO_LOOKUP: {"from": "users", "localField": "grihasta_id", "foreignField": "_id", "as": "grihasta_user"}},
+        {MONGO_UNWIND: {"path": "$grihasta_user", "preserveNullAndEmptyArrays": True}},
+        {MONGO_LOOKUP: {"from": "users", "localField": "acharya.user_id", "foreignField": "_id", "as": "acharya_user"}},
+        {MONGO_UNWIND: {"path": "$acharya_user", "preserveNullAndEmptyArrays": True}},
+        {
+            "$addFields": {
+                "pooja_name": {MONGO_IF_NULL: [FIELD_POOJA_NAME, FIELD_SERVICE_NAME]},
+                "acharya_user_id": "$acharya.user_id",
+                "pooja_type": {MONGO_IF_NULL: [FIELD_POOJA_NAME, FIELD_SERVICE_NAME]},
+                "grihasta_name": {MONGO_IF_NULL: ["$grihasta_user.full_name", "$grihasta_user.name"]},
+                "acharya_name": {MONGO_IF_NULL: ["$acharya.name", "$acharya_user.full_name", "$acharya_user.name"]},
+                "scheduled_datetime": "$date_time",
+            }
+        },
+        {MONGO_SORT: {"created_at": -1}},
+        {MONGO_SKIP: (page - 1) * limit},
+        {MONGO_LIMIT: limit},
+    ]
+
+
+def _serialize_booking_ids(booking: Dict[str, Any]) -> None:
+    """Convert ObjectIds to strings for JSON serialization."""
+    id_fields = ["_id", "grihasta_id", "acharya_id", "pooja_id", "acharya_user_id"]
+    for field in id_fields:
+        if field in booking and booking[field]:
+            if field == "_id":
+                booking["id"] = str(booking["_id"])
+            booking[field] = str(booking[field])
+
+
 @router.get(
     "/my-bookings",
     response_model=StandardResponse,
@@ -1235,134 +1379,34 @@ async def confirm_attendance(
     summary="Get My Bookings",
     description="Get bookings for current user (Grihasta or Acharya)",
 )
+# NOSONAR python:S3776 - Complex aggregation pipeline with role-based queries and multiple joins
 async def get_my_bookings(
-    status_filter: Optional[str] = Query(None, description="Filter by status"),
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    status_filter: Annotated[Optional[str], Query(description="Filter by status")] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get bookings for current user with pagination"""
     try:
         user_id = current_user["id"]
         role = current_user["role"]
 
-        try:
-            user_obj_id = ObjectId(user_id)
-        except Exception:
-            user_obj_id = None
-            logger.warning(f"Could not convert user_id to ObjectId: {user_id}")
-
-        # Build query
-        query = {}
-        if role == UserRole.GRIHASTA.value:
-            # Use ObjectId if valid, since we now store as ObjectId
-            query["grihasta_id"] = user_obj_id if user_obj_id else user_id
-            logger.info(f"Grihasta query: {query}")
-        elif role == UserRole.ACHARYA.value:
-            # Acharya bookings are stored by acharya_profile _id; resolve profile by user_id
-            acharya_profile = await db.acharya_profiles.find_one(
-                {"user_id": user_obj_id or user_id}, {"_id": 1}
-            )
-            acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
-            logger.info(f"Acharya profile lookup: user_id={user_id}, found_profile_id={acharya_profile_id}")
-            
-            # Use the profile ObjectId directly
-            query["acharya_id"] = acharya_profile_id if acharya_profile_id else (user_obj_id or user_id)
-            logger.info(f"Acharya query: {query}")
-        else:
-            raise PermissionDeniedError(action="View bookings")
-
-        if status_filter:
-            query["status"] = status_filter
+        # Build query using helper
+        query = await _build_user_booking_query(db, user_id, role, status_filter)
         
         logger.info(f"Final query before pipeline: {query}")
-        # Count bookings matching query before pipeline
         count_before_pipeline = await db.bookings.count_documents(query)
         logger.info(f"Bookings matching query: {count_before_pipeline}")
 
-        # Get bookings with details
-        pipeline = [
-            {MONGO_MATCH: query},
-            {
-                MONGO_LOOKUP: {
-                    "from": "poojas",
-                    "localField": "pooja_id",
-                    "foreignField": "_id",
-                    "as": "pooja",
-                }
-            },
-            {MONGO_UNWIND: {"path": "$pooja", "preserveNullAndEmptyArrays": True}},
-            {
-                MONGO_LOOKUP: {
-                    "from": "acharya_profiles",
-                    "localField": "acharya_id",
-                    "foreignField": "_id",
-                    "as": "acharya",
-                }
-            },
-            {MONGO_UNWIND: {"path": "$acharya", "preserveNullAndEmptyArrays": True}},
-            {
-                MONGO_LOOKUP: {
-                    "from": "users",
-                    "localField": "grihasta_id",
-                    "foreignField": "_id",
-                    "as": "grihasta_user",
-                }
-            },
-            {MONGO_UNWIND: {"path": "$grihasta_user", "preserveNullAndEmptyArrays": True}},
-            {
-                MONGO_LOOKUP: {
-                    "from": "users",
-                    "localField": "acharya.user_id",
-                    "foreignField": "_id",
-                    "as": "acharya_user",
-                }
-            },
-            {MONGO_UNWIND: {"path": "$acharya_user", "preserveNullAndEmptyArrays": True}},
-            {
-                "$addFields": {
-                    "pooja_name": {MONGO_IF_NULL: [FIELD_POOJA_NAME, FIELD_SERVICE_NAME]},
-                    "acharya_user_id": "$acharya.user_id",
-                    "pooja_type": {MONGO_IF_NULL: [FIELD_POOJA_NAME, FIELD_SERVICE_NAME]},
-                    "grihasta_name": {
-                        MONGO_IF_NULL: [
-                            "$grihasta_user.full_name",
-                            "$grihasta_user.name",
-                        ]
-                    },
-                    "acharya_name": {
-                        MONGO_IF_NULL: [
-                            "$acharya.name",
-                            "$acharya_user.full_name",
-                            "$acharya_user.name",
-                        ]
-                    },
-                    "scheduled_datetime": "$date_time",
-                }
-            },
-            {MONGO_SORT: {"created_at": -1}},
-            {MONGO_SKIP: (page - 1) * limit},
-            {MONGO_LIMIT: limit},
-        ]
-
+        # Build and execute pipeline using helper
+        pipeline = _build_my_bookings_pipeline(query, page, limit)
         bookings = await db.bookings.aggregate(pipeline).to_list(length=limit)
 
-        # Convert ObjectIds to strings for JSON serialization
+        # Serialize ObjectIds using helper
         for booking in bookings:
-            if "_id" in booking and booking["_id"]:
-                booking["id"] = str(booking["_id"])
-                booking["_id"] = str(booking["_id"])
-            if "grihasta_id" in booking and booking["grihasta_id"]:
-                booking["grihasta_id"] = str(booking["grihasta_id"])
-            if "acharya_id" in booking and booking["acharya_id"]:
-                booking["acharya_id"] = str(booking["acharya_id"])
-            if "pooja_id" in booking and booking["pooja_id"]:
-                booking["pooja_id"] = str(booking["pooja_id"])
-            if "acharya_user_id" in booking and booking["acharya_user_id"]:
-                booking["acharya_user_id"] = str(booking["acharya_user_id"])
+            _serialize_booking_ids(booking)
 
-        # Get total count
         total_count = await db.bookings.count_documents(query)
 
         return StandardResponse(
@@ -1397,8 +1441,8 @@ async def get_my_bookings(
 )
 async def get_booking_details(
     booking_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get booking details with full information"""
     try:

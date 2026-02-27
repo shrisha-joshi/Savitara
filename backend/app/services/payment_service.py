@@ -54,8 +54,8 @@ class RazorpayService(IPaymentService):
             PaymentFailedError: If order creation fails
         """
         try:
-            # Convert to paise (smallest currency unit)
-            amount_paise = int(amount * 100)
+            # Convert to paise (smallest currency unit) — use round() to avoid float truncation
+            amount_paise = round(amount * 100)
 
             order_data = {
                 "amount": amount_paise,
@@ -132,8 +132,9 @@ class RazorpayService(IPaymentService):
             return is_valid
 
         except Exception as e:
+            # M17 fix: Raise on transient errors instead of silently returning False
             logger.error(f"Signature verification error: {e}", exc_info=True)
-            return False
+            raise ValueError("Payment signature verification failed due to internal error") from e
 
     def verify_webhook_signature(
         self, webhook_body: str, webhook_signature: str
@@ -254,7 +255,7 @@ class RazorpayService(IPaymentService):
             refund_data = {}
 
             if amount is not None:
-                refund_data["amount"] = int(amount * 100)  # Convert to paise
+                refund_data["amount"] = round(amount * 100)  # Convert to paise safely
 
             if notes:
                 refund_data["notes"] = notes

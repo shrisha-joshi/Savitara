@@ -273,8 +273,8 @@ class BookingResponse(BaseModel):
     status: str
     payment_status: str
     total_amount: float
-    razorpay_order_id: Optional[str]
-    start_otp: Optional[str]
+    razorpay_order_id: Optional[str] = None
+    start_otp: Optional[str] = None
     created_at: datetime
 
 
@@ -284,8 +284,13 @@ class BookingStatusUpdateRequest(BaseModel):
     status: str
     amount: Optional[float] = None
     notes: Optional[str] = None
-    # action: str = Field(..., pattern="^(confirm|reject|cancel|start|complete)$") # Old field seemingly incorrect or unused for status update
     otp: Optional[str] = None  # Required for 'start' action
+
+
+class BookingReferRequest(BaseModel):
+    """Refer/pass booking to another Acharya"""
+
+    new_acharya_id: str
     notes: Optional[str] = None
 
 
@@ -317,7 +322,7 @@ class MessageResponse(BaseModel):
     is_open_chat: bool
     read: bool
     created_at: datetime
-    expires_at: Optional[datetime]
+    expires_at: Optional[datetime] = None
 
 
 class ConversationResponse(BaseModel):
@@ -359,7 +364,7 @@ class ReviewResponse(BaseModel):
     id: str
     booking_id: str
     rating: int
-    comment: Optional[str]
+    comment: Optional[str] = None
     review_type: str
     is_public: bool
     created_at: datetime

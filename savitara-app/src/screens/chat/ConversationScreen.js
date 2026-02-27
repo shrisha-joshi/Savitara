@@ -1,14 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import PropTypes from 'prop-types';
-import { View, StyleSheet, Text } from 'react-native';
-import { GiftedChat, Bubble } from 'react-native-gifted-chat';
-import * as ScreenCapture from 'expo-screen-capture';
 import * as Haptics from 'expo-haptics';
-import { chatAPI } from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
+import * as ScreenCapture from 'expo-screen-capture';
+import PropTypes from 'prop-types';
+import { useCallback, useEffect, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { Bubble, GiftedChat } from 'react-native-gifted-chat';
 import EmojiPicker from '../../components/EmojiPicker';
 import MessageReactions from '../../components/MessageReactions';
+import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
+import { chatAPI } from '../../services/api';
 
 function BubbleRenderer({ currentMessage, reactions, currentUserId, onAddReaction, onRemoveReaction, ...props }) {
   return (
@@ -45,9 +45,10 @@ BubbleRenderer.propTypes = {
 };
 
 const ConversationScreen = ({ route }) => {
-  const { conversationId, otherUserId, otherUserName } = route.params;
+  const { conversationId, otherUserName } = route.params;
+  const [receiverId, setReceiverId] = useState(route.params.otherUserId || null);
   const { user } = useAuth();
-  const { socket } = useSocket();
+  const { chatMessages } = useSocket();
   const [messages, setMessages] = useState([]);
   const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
   const [selectedMessageId, setSelectedMessageId] = useState(null);
@@ -68,60 +69,79 @@ const ConversationScreen = ({ route }) => {
   useEffect(() => {
     loadMessages();
     markAsRead();
+  }, []);
+
+  // Listen for real-time messages from SocketContext
+  useEffect(() => {
+    if (chatMessages.length === 0) return;
     
-    // WebSocket listeners for real-time reactions
-    if (socket) {
-      socket.on('reaction_added', handleReactionUpdate);
-      socket.on('reaction_removed', handleReactionUpdate);
-      
-      return () => {
-        socket.off('reaction_added', handleReactionUpdate);
-        socket.off('reaction_removed', handleReactionUpdate);
-      };
+    const lastMsg = chatMessages[chatMessages.length - 1];
+    
+    // Handle reaction events
+    if (lastMsg.type === 'reaction_added' || lastMsg.type === 'reaction_removed') {
+      if (lastMsg.message_id) {
+        handleReactionUpdate(lastMsg);
+      }
+      return;
     }
-  }, [socket]);
+    
+    // Handle new messages for this conversation
+    if (lastMsg.conversation_id === conversationId && lastMsg.content) {
+      const formattedMsg = {
+        _id: lastMsg._id || lastMsg.id,
+        text: lastMsg.content,
+        createdAt: new Date(lastMsg.created_at || lastMsg.timestamp || Date.now()),
+        user: {
+          _id: lastMsg.sender_id,
+          name: lastMsg.sender_id === (user._id || user.id) ? user.full_name : otherUserName,
+        },
+      };
+      
+      // Deduplicate — don't add if already exists
+      setMessages(prev => {
+        const exists = prev.some(m => m._id === formattedMsg._id);
+        if (exists) return prev;
+        return GiftedChat.append(prev, [formattedMsg]);
+      });
+    }
+  }, [chatMessages]);
 
   const loadMessages = async () => {
     try {
       const response = await chatAPI.getMessages(conversationId, { limit: 50 });
       // Use new backend response structure
-      const messagesData = response.data.data?.messages || response.data.messages || [];
+      const msgData = response.data.data || response.data;
+      const messagesData = msgData?.messages || [];
+      const currentUserId = user._id || user.id;
+      
+      // If otherUserId wasn't passed, try to extract from recipient or messages
+      if (!receiverId) {
+        const recipientFromBackend = msgData?.recipient;
+        if (recipientFromBackend) {
+          setReceiverId(recipientFromBackend.id || recipientFromBackend._id);
+        } else {
+          // Fallback: find a message from someone else
+          const otherMsg = messagesData.find(m => m.sender_id !== currentUserId);
+          if (otherMsg) {
+            setReceiverId(otherMsg.sender_id);
+          }
+        }
+      }
+      
       const formattedMessages = messagesData.map((msg) => ({
         _id: msg._id || msg.id,
         text: msg.content,
         createdAt: new Date(msg.created_at || msg.timestamp),
         user: {
           _id: msg.sender_id,
-          name: msg.sender_id === user._id ? user.full_name : otherUserName,
+          name: msg.sender_id === currentUserId ? user.full_name || user.name : otherUserName,
         },
       })).reverse();
       setMessages(formattedMessages);
       
-      // Load reactions for all messages
-      await loadReactionsForMessages(messagesData.map(m => m._id || m.id));
+      // Skip individual reaction loading (reactions come via messages or WS)
     } catch (error) {
       console.error('Failed to load messages:', error);
-    }
-  };
-
-  const loadReactionsForMessages = async (messageIds) => {
-    try {
-      const reactionsMap = {};
-      
-      // Load reactions for each message (batch if possible in future)
-      for (const messageId of messageIds) {
-        try {
-          const response = await chatAPI.getReactions(messageId);
-          reactionsMap[messageId] = response.data.data || [];
-        } catch (error) {
-          console.error(`Failed to load reactions for message ${messageId}:`, error);
-          reactionsMap[messageId] = [];
-        }
-      }
-      
-      setMessageReactions(reactionsMap);
-    } catch (error) {
-      console.error('Failed to load reactions:', error);
     }
   };
 
@@ -146,7 +166,7 @@ const ConversationScreen = ({ route }) => {
     const message = newMessages[0];
     try {
       // Use correct backend endpoint: POST /chat/messages with receiver_id
-      await chatAPI.sendMessage({ receiver_id: otherUserId, content: message.text });
+      await chatAPI.sendMessage({ receiver_id: receiverId, content: message.text });
       setMessages((previousMessages) =>
         GiftedChat.append(previousMessages, newMessages)
       );
@@ -154,7 +174,7 @@ const ConversationScreen = ({ route }) => {
       console.error('Failed to send message:', error);
       alert('Failed to send message');
     }
-  }, [conversationId]);
+  }, [conversationId, receiverId]);
 
   const handleLongPress = (context, message) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -165,40 +185,28 @@ const ConversationScreen = ({ route }) => {
   const handleAddReaction = async (messageId, emoji) => {
     try {
       await chatAPI.addReaction(messageId, emoji);
-      // Optimistic update
-      const response = await chatAPI.getReactions(messageId);
-      setMessageReactions((prev) => ({
-        ...prev,
-        [messageId]: response.data.data || [],
-      }));
     } catch (error) {
       console.error('Failed to add reaction:', error);
-      alert('Failed to add reaction');
     }
   };
 
   const handleRemoveReaction = async (messageId, emoji) => {
     try {
       await chatAPI.removeReaction(messageId, emoji);
-      // Optimistic update
-      const response = await chatAPI.getReactions(messageId);
-      setMessageReactions((prev) => ({
-        ...prev,
-        [messageId]: response.data.data || [],
-      }));
     } catch (error) {
       console.error('Failed to remove reaction:', error);
-      alert('Failed to remove reaction');
     }
   };
 
+  const currentUserId = user._id || user.id;
+  
   const renderBubble = (props) => {
     const reactions = messageReactions[props.currentMessage._id] || [];
     return (
       <BubbleRenderer
         {...props}
         reactions={reactions}
-        currentUserId={user._id}
+        currentUserId={currentUserId}
         onAddReaction={handleAddReaction}
         onRemoveReaction={handleRemoveReaction}
       />
@@ -210,10 +218,10 @@ const ConversationScreen = ({ route }) => {
       {/* Watermark Overlay */}
       <View style={styles.watermarkContainer} pointerEvents="none">
         {new Array(10).fill(0).map((_, i) => (
-          <View key={`${user._id}-row-${i}`} style={styles.watermarkRow}>
+          <View key={`${currentUserId}-row-${i}`} style={styles.watermarkRow}>
             {new Array(3).fill(0).map((_, j) => (
-              <Text key={`${user._id}-cell-${i}-${j}`} style={styles.watermarkText}>
-                {user._id}
+              <Text key={`${currentUserId}-cell-${i}-${j}`} style={styles.watermarkText}>
+                {currentUserId}
               </Text>
             ))}
           </View>
@@ -222,10 +230,10 @@ const ConversationScreen = ({ route }) => {
 
       <GiftedChat
         messages={messages}
-        onSend={(messages) => onSend(messages)}
+        onSend={(msgs) => onSend(msgs)}
         user={{
-          _id: user._id,
-          name: user.full_name,
+          _id: currentUserId,
+          name: user.full_name || user.name,
         }}
         renderUsernameOnMessage
         showUserAvatar
@@ -270,6 +278,16 @@ const styles = StyleSheet.create({
 
 ConversationScreen.propTypes = {
   route: PropTypes.object.isRequired,
+};
+
+ConversationScreen.propTypes = {
+  route: PropTypes.shape({
+    params: PropTypes.shape({
+      conversationId: PropTypes.string.isRequired,
+      otherUserName: PropTypes.string,
+      otherUserId: PropTypes.string,
+    }).isRequired,
+  }).isRequired,
 };
 
 export default ConversationScreen;

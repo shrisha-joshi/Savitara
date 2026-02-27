@@ -2,9 +2,9 @@
 Wallet API Endpoints
 In-app wallet for credits, transactions, and payments
 """
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, Optional
+from typing import Annotated, Dict, Any, Optional
 import logging
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,7 @@ from app.core.security import get_current_user, get_current_acharya
 from app.core.exceptions import InsufficientCreditsError, InvalidInputError
 from app.db.connection import get_db
 from app.services.wallet_service import WalletService, TransactionType
+from bson import ObjectId
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/wallet", tags=["Wallet"])
@@ -52,8 +53,8 @@ class WithdrawalRequest(BaseModel):
     description="Get current wallet balance including main and bonus balance",
 )
 async def get_wallet_balance(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get wallet balance"""
     try:
@@ -67,7 +68,10 @@ async def get_wallet_balance(
         }
     except Exception as e:
         logger.error(f"Error fetching wallet balance: {e}", exc_info=True)
-        return {"success": False, "message": str(e), "data": None}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve wallet balance",
+        )
 
 
 @router.get(
@@ -78,8 +82,8 @@ async def get_wallet_balance(
     description="Get complete wallet summary with statistics",
 )
 async def get_wallet_summary(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get wallet summary"""
     try:
@@ -93,7 +97,10 @@ async def get_wallet_summary(
         }
     except Exception as e:
         logger.error(f"Error fetching wallet summary: {e}", exc_info=True)
-        return {"success": False, "message": str(e), "data": None}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve wallet summary",
+        )
 
 
 @router.post(
@@ -105,8 +112,8 @@ async def get_wallet_summary(
 )
 async def add_money_to_wallet(
     request: AddMoneyRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Add money to wallet"""
     try:
@@ -120,10 +127,15 @@ async def add_money_to_wallet(
 
         return {"success": True, "message": "Money added successfully", "data": result}
     except InvalidInputError as e:
-        return {"success": False, "message": e.message, "data": None}
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=e.message
+        )
     except Exception as e:
         logger.error(f"Error adding money to wallet: {e}", exc_info=True)
-        return {"success": False, "message": str(e), "data": None}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to add money to wallet",
+        )
 
 
 @router.post(
@@ -135,8 +147,8 @@ async def add_money_to_wallet(
 )
 async def pay_from_wallet(
     request: PayFromWalletRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Pay from wallet"""
     try:
@@ -151,14 +163,16 @@ async def pay_from_wallet(
 
         return {"success": True, "message": "Payment successful", "data": result}
     except InsufficientCreditsError as e:
-        return {
-            "success": False,
-            "message": f"Insufficient balance. Required: ₹{e.required}, Available: ₹{e.available}",
-            "data": {"required": e.required, "available": e.available},
-        }
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Insufficient balance. Required: ₹{e.required}, Available: ₹{e.available}",
+        )
     except Exception as e:
         logger.error(f"Error processing wallet payment: {e}", exc_info=True)
-        return {"success": False, "message": str(e), "data": None}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Wallet payment failed",
+        )
 
 
 @router.post(
@@ -170,8 +184,8 @@ async def pay_from_wallet(
 )
 async def request_withdrawal(
     request: WithdrawalRequest,
-    current_user: Dict[str, Any] = Depends(get_current_acharya),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_acharya)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Request withdrawal"""
     try:
@@ -193,14 +207,16 @@ async def request_withdrawal(
             "data": result,
         }
     except InsufficientCreditsError as e:
-        return {
-            "success": False,
-            "message": f"Insufficient balance. Required: ₹{e.required}, Available: ₹{e.available}",
-            "data": {"required": e.required, "available": e.available},
-        }
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Insufficient balance. Required: ₹{e.required}, Available: ₹{e.available}",
+        )
     except Exception as e:
         logger.error(f"Error processing withdrawal request: {e}", exc_info=True)
-        return {"success": False, "message": str(e), "data": None}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Withdrawal request failed",
+        )
 
 
 @router.get(
@@ -211,14 +227,14 @@ async def request_withdrawal(
     description="Get wallet transaction history with optional filters",
 )
 async def get_transaction_history(
-    transaction_type: Optional[str] = Query(
-        None,
+    transaction_type: Annotated[Optional[str], Query(
         description="Filter by type: credit, debit, refund, bonus, referral, cashback, withdrawal, earning",
-    ),
-    limit: int = Query(20, ge=1, le=100, description="Number of transactions"),
-    offset: int = Query(0, ge=0, description="Offset for pagination"),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+        pattern="^(credit|debit|refund|bonus|referral|cashback|withdrawal|earning)$",
+    )] = None,
+    limit: Annotated[int, Query(ge=1, le=100, description="Number of transactions")] = 20,
+    offset: Annotated[int, Query(ge=0, description="Offset for pagination")] = 0,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get transaction history"""
     try:
@@ -237,7 +253,10 @@ async def get_transaction_history(
         }
     except Exception as e:
         logger.error(f"Error fetching transaction history: {e}", exc_info=True)
-        return {"success": False, "message": str(e), "data": None}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve transaction history",
+        )
 
 
 @router.get(
@@ -248,10 +267,10 @@ async def get_transaction_history(
     description="Get earnings history for Acharya",
 )
 async def get_earnings_history(
-    limit: int = Query(20, ge=1, le=100, description="Number of transactions"),
-    offset: int = Query(0, ge=0, description="Offset for pagination"),
-    current_user: Dict[str, Any] = Depends(get_current_acharya),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    limit: Annotated[int, Query(ge=1, le=100, description="Number of transactions")] = 20,
+    offset: Annotated[int, Query(ge=0, description="Offset for pagination")] = 0,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_acharya)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get earnings history for Acharya"""
     try:
@@ -284,7 +303,10 @@ async def get_earnings_history(
         }
     except Exception as e:
         logger.error(f"Error fetching earnings history: {e}", exc_info=True)
-        return {"success": False, "message": str(e), "data": None}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve earnings history",
+        )
 
 
 @router.post(
@@ -295,9 +317,9 @@ async def get_earnings_history(
     description="Apply a referral code to get bonus credits",
 )
 async def apply_referral_code(
-    referral_code: str = Query(..., description="Referral code to apply"),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    referral_code: Annotated[str, Query(..., description="Referral code to apply")],
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Apply referral code"""
     try:
@@ -314,8 +336,9 @@ async def apply_referral_code(
                 "data": None,
             }
 
-        # Check if user already used a referral
-        user = await db.users.find_one({"_id": current_user["id"]})
+        # Check if user already used a referral — use ObjectId for _id match
+        user_oid = ObjectId(current_user["id"]) if ObjectId.is_valid(current_user["id"]) else current_user["id"]
+        user = await db.users.find_one({"_id": user_oid})
         if user.get("referred_by"):
             return {
                 "success": False,
@@ -340,9 +363,9 @@ async def apply_referral_code(
             bonus_amount=50.0,
         )
 
-        # Mark user as referred
+        # Mark user as referred — use ObjectId for _id match
         await db.users.update_one(
-            {"_id": current_user["id"]}, {"$set": {"referred_by": str(referrer["_id"])}}
+            {"_id": user_oid}, {"$set": {"referred_by": str(referrer["_id"])}}
         )
 
         return {
@@ -355,4 +378,7 @@ async def apply_referral_code(
         }
     except Exception as e:
         logger.error(f"Error applying referral code: {e}", exc_info=True)
-        return {"success": False, "message": str(e), "data": None}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to apply referral code",
+        )

@@ -66,6 +66,17 @@ class BaseAppSettings(BaseSettings):
             return v.lower() in ("true", "1", "t")
         return v
 
+    @field_validator("SECRET_KEY", mode="after")
+    @classmethod
+    def reject_default_secret_in_prod(cls, v: str, info: ValidationInfo) -> str:
+        """SonarQube: S6437 — production must set SECRET_KEY explicitly via env."""
+        if info.data.get("APP_ENV") == "production" and len(v) < 44:
+            raise ValueError(
+                "SECRET_KEY must be explicitly set in production. "
+                "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+        return v
+
     # ── Database – MongoDB ────────────────────────────────────────────────
     MONGODB_URL: Optional[str] = None
     MONGODB_DB_NAME: str = "savitara"
@@ -98,7 +109,7 @@ class BaseAppSettings(BaseSettings):
     # ── Razorpay ──────────────────────────────────────────────────────────
     RAZORPAY_KEY_ID: Optional[str] = None
     RAZORPAY_KEY_SECRET: Optional[str] = None
-    RAZORPAY_WEBHOOK_SECRET: str = ""
+    RAZORPAY_WEBHOOK_SECRET: Optional[str] = None  # Must be set via env for webhook verification
 
     # ── Firebase ──────────────────────────────────────────────────────────
     FIREBASE_PROJECT_ID: Optional[str] = None
@@ -164,7 +175,7 @@ class BaseAppSettings(BaseSettings):
     # ── Testing Helpers ───────────────────────────────────────────────────
     TEST_MODE: bool = False
     SKIP_OTP_VERIFICATION: bool = False
-    TEST_OTP_CODE: Optional[str] = "123456"
+    TEST_OTP_CODE: Optional[str] = None  # Must be explicitly set via env; never hardcode
 
     # ── Pydantic config ───────────────────────────────────────────────────
     model_config = SettingsConfigDict(

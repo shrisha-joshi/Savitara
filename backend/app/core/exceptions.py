@@ -213,13 +213,19 @@ class InvalidInputError(SavitaraException):
     """Invalid input provided"""
 
     def __init__(
-        self, message: str = "Invalid input provided", details: Optional[Dict] = None
+        self,
+        message: str = "Invalid input provided",
+        field: Optional[str] = None,
+        details: Optional[Dict] = None,
     ):
+        _details = details or {}
+        if field:
+            _details["field"] = field
         super().__init__(
             message=message,
             error_code="VAL_003",
             status_code=status.HTTP_400_BAD_REQUEST,
-            details=details,
+            details=_details,
         )
 
 

@@ -1,9 +1,9 @@
-import { createContext, useState, useContext, useEffect, useMemo } from 'react'
 import PropTypes from 'prop-types'
-import { useNavigate, useLocation } from 'react-router-dom'
-import api from '../services/api'
-import { signInWithGoogle as firebaseGoogleSignIn, firebaseSignOut, checkRedirectResult } from '../services/firebase'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
+import api from '../services/api'
+import { checkRedirectResult, signInWithGoogle as firebaseGoogleSignIn, firebaseSignOut } from '../services/firebase'
 
 const AuthContext = createContext({})
 
@@ -18,6 +18,7 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [token, setToken] = useState(() => localStorage.getItem('accessToken'))
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -57,6 +58,7 @@ export const AuthProvider = ({ children }) => {
         
         localStorage.setItem('accessToken', access_token)
         localStorage.setItem('refreshToken', refresh_token)
+        setToken(access_token)
         
         setUser(userData)
         
@@ -76,12 +78,10 @@ export const AuthProvider = ({ children }) => {
       
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
         errorMessage = 'Cannot connect to server. Please check if the backend is running.'
-      } else if (error.response?.data?.detail) {
-        errorMessage = error.response.data.detail
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message
-      } else if (error.message) {
-        errorMessage = error.message
+      } else if (error.response?.status === 401) {
+        errorMessage = 'Invalid credentials. Please try again.'
+      } else if (error.response?.status >= 500) {
+        errorMessage = 'Server error. Please try again later.'
       }
       
       toast.error(errorMessage)
@@ -106,6 +106,7 @@ export const AuthProvider = ({ children }) => {
       try {
         localStorage.removeItem('accessToken')
         localStorage.removeItem('refreshToken')
+        setToken(null)
       } catch (storageError) {
         // Storage operations may fail in private browsing mode
         console.warn('Failed to clear tokens from storage:', storageError)
@@ -116,7 +117,7 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const loginWithEmail = async (email, password) => {
+  const loginWithEmail = useCallback(async (email, password) => {
     try {
       const response = await api.post('/auth/login', { email, password })
       // Backend returns StandardResponse: { success, data: {...}, message }
@@ -124,6 +125,7 @@ export const AuthProvider = ({ children }) => {
 
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)
+      setToken(access_token)
       
       setUser(userData)
       
@@ -144,20 +146,18 @@ export const AuthProvider = ({ children }) => {
       
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
         errorMessage = 'Cannot connect to server. Please check if the backend is running.'
-      } else if (error.response?.data?.detail) {
-        errorMessage = error.response.data.detail
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message
-      } else if (error.message) {
-        errorMessage = error.message
+      } else if (error.response?.status === 401) {
+        errorMessage = 'Invalid email or password.'
+      } else if (error.response?.status >= 500) {
+        errorMessage = 'Server error. Please try again later.'
       }
       
       toast.error(errorMessage)
       throw error
     }
-  }
+  }, [navigate, location])
 
-  const registerWithEmail = async (data) => {
+  const registerWithEmail = useCallback(async (data) => {
     try {
       const response = await api.post('/auth/register', data)
       // Backend returns StandardResponse: { success, data: {...}, message }
@@ -165,6 +165,7 @@ export const AuthProvider = ({ children }) => {
 
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)
+      setToken(access_token)
       
       setUser(userData)
       // New users always go to onboarding
@@ -177,21 +178,19 @@ export const AuthProvider = ({ children }) => {
       
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
         errorMessage = 'Cannot connect to server. Please check if the backend is running.'
-      } else if (error.response?.data?.detail) {
-        errorMessage = error.response.data.detail
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message
-      } else if (error.message) {
-        errorMessage = error.message
+      } else if (error.response?.status === 409) {
+        errorMessage = 'An account with this email already exists.'
+      } else if (error.response?.status >= 500) {
+        errorMessage = 'Server error. Please try again later.'
       }
       
       toast.error(errorMessage)
       throw error
     }
-  }
+  }, [navigate])
 
   // Updated to use Firebase Google Sign-In with Popup
-  const loginWithGoogle = async (legacyCredential = null) => {
+  const loginWithGoogle = useCallback(async (legacyCredential = null) => {
     try {
       let idToken = null;
       if (legacyCredential) {
@@ -213,6 +212,7 @@ export const AuthProvider = ({ children }) => {
       const { access_token, refresh_token, user: userData } = data;
       localStorage.setItem('accessToken', access_token);
       localStorage.setItem('refreshToken', refresh_token);
+      setToken(access_token);
       setUser(userData);
       if (userData.onboarded || userData.onboarding_completed) {
         const from = location.state?.from?.pathname || '/';
@@ -227,19 +227,17 @@ export const AuthProvider = ({ children }) => {
       let errorMessage = 'Google login failed';
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
         errorMessage = 'Cannot connect to server. Please check if the backend is running.';
-      } else if (error.response?.data?.detail) {
-        errorMessage = error.response.data.detail;
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.message) {
-        errorMessage = error.message;
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        errorMessage = 'Sign-in cancelled.';
+      } else if (error.response?.status >= 500) {
+        errorMessage = 'Server error. Please try again later.';
       }
       toast.error(errorMessage);
       throw error;
     }
-  }
+  }, [navigate, location])
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await api.post('/auth/logout')
     } catch (error) {
@@ -255,16 +253,17 @@ export const AuthProvider = ({ children }) => {
     
     localStorage.removeItem('accessToken')
     localStorage.removeItem('refreshToken')
+    setToken(null)
     setUser(null)
     navigate('/login')
     toast.info('Logged out successfully')
-  }
+  }, [navigate])
 
-  const updateUser = (userData) => {
+  const updateUser = useCallback((userData) => {
     setUser(userData)
-  }
+  }, [])
 
-  const refreshUserData = async () => {
+  const refreshUserData = useCallback(async () => {
     try {
       const response = await api.get('/auth/me')
       // Handle StandardResponse format from backend
@@ -273,10 +272,11 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Failed to refresh user data:', error)
     }
-  }
+  }, [])
 
   const value = useMemo(() => ({
     user,
+    token,
     loading,
     loginWithGoogle,
     loginWithEmail,
@@ -284,7 +284,7 @@ export const AuthProvider = ({ children }) => {
     logout,
     updateUser,
     refreshUserData,
-  }), [user, loading])
+  }), [user, token, loading, loginWithGoogle, loginWithEmail, registerWithEmail, logout, updateUser, refreshUserData])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

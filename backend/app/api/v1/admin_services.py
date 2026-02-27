@@ -4,7 +4,7 @@ CRUD operations for services catalog
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, Optional, List
+from typing import Annotated, Dict, Any, Optional, List
 import logging
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -87,8 +87,8 @@ class BookingStatusUpdate(BaseModel):
 )
 async def create_service(
     service_in: ServiceCreate,
-    current_admin: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_admin: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Create new service"""
     try:
@@ -127,8 +127,8 @@ async def create_service(
 async def update_service(
     service_id: str,
     service_in: ServiceUpdate,
-    current_admin: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_admin: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Update service"""
     try:
@@ -166,8 +166,8 @@ async def update_service(
 )
 async def delete_service(
     service_id: str,
-    current_admin: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_admin: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Soft delete service"""
     try:
@@ -207,8 +207,8 @@ async def get_all_service_bookings(
     booking_type: str = None,
     limit: int = 100,
     skip: int = 0,
-    current_admin: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_admin: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get all service bookings"""
     try:
@@ -257,8 +257,8 @@ async def get_all_service_bookings(
 async def update_booking_status(
     booking_id: str,
     status_update: BookingStatusUpdate,
-    current_admin: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_admin: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Update booking status"""
     try:
@@ -309,8 +309,8 @@ async def update_booking_status(
 async def assign_acharya_to_booking(
     booking_id: str,
     acharya_id: str,
-    current_admin: Dict[str, Any] = Depends(get_current_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_admin: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Assign Acharya to booking"""
     try:

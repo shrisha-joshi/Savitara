@@ -1,42 +1,43 @@
-import { useState, useEffect } from 'react'
 import {
-  Container,
-  Typography,
-  Box,
-  Card,
-  CardContent,
-  Grid,
-  Chip,
-  Button,
-  Tabs,
-  Tab,
-  TextField,
-  InputAdornment,
-  CircularProgress,
-  Avatar,
-  Divider,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Alert,
-  Snackbar
-} from '@mui/material'
-import {
-  Search,
-  CalendarMonth,
-  AccessTime,
-  LocationOn,
-  VideoCall,
-  Person,
-  CheckCircle,
-  Cancel,
-  PlayArrow,
-  Schedule
+    AccessTime,
+    CalendarMonth,
+    Cancel,
+    CheckCircle,
+    LocationOn,
+    Person,
+    PlayArrow,
+    Schedule,
+    Search,
+    VideoCall
 } from '@mui/icons-material'
+import {
+    Alert,
+    Avatar,
+    Box,
+    Button,
+    Card,
+    CardContent,
+    Chip,
+    CircularProgress,
+    Container,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    Divider,
+    Grid,
+    InputAdornment,
+    Snackbar,
+    Tab,
+    Tabs,
+    TextField,
+    Typography
+} from '@mui/material'
+import { useEffect, useState } from 'react'
+import { toast } from 'react-toastify'
 import Layout from '../../components/Layout'
-import api from '../../services/api'
 import { useSocket } from '../../context/SocketContext'
+import api from '../../services/api'
 // Helper to fetch all Acharyas for referral
 async function fetchAcharyas() {
   try {
@@ -46,7 +47,6 @@ async function fetchAcharyas() {
     return []
   }
 }
-import { toast } from 'react-toastify'
 
 export default function AcharyaBookings() {
   const socketContext = useSocket();
@@ -185,7 +185,7 @@ export default function AcharyaBookings() {
           endpoint = `/bookings/${selectedBooking._id}/status`
           successMessage = 'Booking request declined'
           data = {
-            status: 'cancelled',
+            status: 'rejected',
             notes: 'Request declined by Acharya'
           }
           await api.put(endpoint, data)
@@ -193,7 +193,7 @@ export default function AcharyaBookings() {
         case 'start': {
           endpoint = `/bookings/${selectedBooking._id}/start`
           successMessage = 'Booking started successfully'
-          const otp = window.prompt('Enter start OTP shared by Grihasta')
+          const otp = globalThis.prompt('Enter start OTP shared by Grihasta')
           if (!otp) {
             toast.info('Start cancelled: OTP required')
             return
@@ -372,14 +372,14 @@ export default function AcharyaBookings() {
         </Card>
 
         {/* Bookings List */}
-        {loading ? (
+        {loading && (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
             <CircularProgress size={60} />
           </Box>
-        ) : (
-          filteredBookings.length === 0 ? (
-          <Card>
-            <CardContent>
+        )}
+        {!loading && filteredBookings.length === 0 && (
+            <Card>
+              <CardContent>
               <Box sx={{ textAlign: 'center', py: 8 }}>
                 <CalendarMonth sx={{ fontSize: 80, color: 'text.disabled', mb: 2 }} />
                 <Typography variant="h6" color="text.secondary">
@@ -391,7 +391,8 @@ export default function AcharyaBookings() {
               </Box>
             </CardContent>
           </Card>
-          ) : (
+        )}
+        {!loading && filteredBookings.length > 0 && (
           <Grid container spacing={3}>
             {filteredBookings.map((booking) => (
               <Grid item xs={12} md={6} lg={4} key={booking._id || booking.id}>
@@ -624,7 +625,7 @@ export default function AcharyaBookings() {
               </Grid>
             ))}
           </Grid>
-        ))}
+        )}
 
         {/* Action Confirmation Dialog */}
         <Dialog

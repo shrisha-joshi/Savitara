@@ -1,10 +1,11 @@
-import React, { createContext, useState, useEffect, useContext, useMemo } from 'react';
-import PropTypes from 'prop-types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Google from 'expo-auth-session/providers/google';
+import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
-import { authAPI, userAPI } from '../services/api';
+import PropTypes from 'prop-types';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { GOOGLE_CLIENT_ID } from '../config/api.config';
+import { authAPI, userAPI } from '../services/api';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -38,10 +39,11 @@ export const AuthProvider = ({ children }) => {
 
   const loadUser = async () => {
     try {
-      const [accessToken, userData] = await AsyncStorage.multiGet(['accessToken', 'user']);
+      const accessToken = await SecureStore.getItemAsync('accessToken');
+      const userData = await AsyncStorage.getItem('user');
       
-      if (accessToken[1] && userData[1]) {
-        setUser(JSON.parse(userData[1]));
+      if (accessToken && userData) {
+        setUser(JSON.parse(userData));
       }
     } catch (err) {
       console.error('Failed to load user:', err);
@@ -144,7 +146,9 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       console.error('Logout API failed:', err);
     } finally {
-      await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
+      await SecureStore.deleteItemAsync('accessToken');
+      await SecureStore.deleteItemAsync('refreshToken');
+      await AsyncStorage.removeItem('user');
       setUser(null);
     }
   };

@@ -1,0 +1,87 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: savitara
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+# Allow backend pods to receive traffic from ingress controller and other backend pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-ingress
+  namespace: savitara
+spec:
+  podSelector:
+    matchLabels:
+      app: savitara-backend
+  policyTypes:
+  - Ingress
+  ingress:
+  # From ingress controller (external traffic)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8000
+  # From other backend pods (internal inter-pod communication)
+  - from:
+    - podSelector:
+        matchLabels:
+          app: savitara-backend
+    ports:
+    - protocol: TCP
+      port: 8000
+    - protocol: TCP
+      port: 6379
+---
+# Allow backend pods to make outbound connections (MongoDB, external APIs, DNS)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-egress
+  namespace: savitara
+spec:
+  podSelector:
+    matchLabels:
+      app: savitara-backend
+  policyTypes:
+  - Egress
+  egress:
+  # DNS resolution
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # MongoDB (if external or in another namespace)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 27017
+  # Redis sidecar (localhost within the pod)
+  - to:
+    - podSelector:
+        matchLabels:
+          app: savitara-backend
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Elasticsearch
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 9200
+  # External HTTPS (Google OAuth, Razorpay, Firebase, Sentry)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443

@@ -4,7 +4,7 @@ Handles masked voice calls and video call tokens
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any
+from typing import Annotated, Dict, Any
 import logging
 from bson import ObjectId
 
@@ -27,8 +27,8 @@ router = APIRouter(prefix="/calls", tags=["Calls"])
 )
 async def initiate_voice_call(
     booking_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         user_id = current_user["id"]

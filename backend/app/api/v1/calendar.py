@@ -4,7 +4,7 @@ Manages Acharya schedules, Grihasta calendars, and availability
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any
+from typing import Annotated, Dict, Any
 import logging
 from datetime import datetime, timedelta, timezone
 from bson import ObjectId
@@ -40,13 +40,17 @@ INVALID_ACHARYA_ID_MSG = "Invalid acharya_id"
     status_code=status.HTTP_200_OK,
     summary="Get Acharya Schedule",
     description="Get Acharya's schedule for a specific month",
+    responses={
+        400: {"description": "Invalid acharya_id"},
+        500: {"description": "Failed to fetch schedule"},
+    },
 )
 async def get_acharya_schedule(
     acharya_id: str,
-    year: int = Query(..., ge=2020, le=2050),
-    month: int = Query(..., ge=1, le=12),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    year: Annotated[int, Query(..., ge=2020, le=2050)],
+    month: Annotated[int, Query(..., ge=1, le=12)],
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
 ):
     """Get Acharya's schedule for a month"""
     try:
@@ -95,12 +99,17 @@ async def get_acharya_schedule(
     status_code=status.HTTP_201_CREATED,
     summary="Update Acharya Schedule",
     description="Create or update Acharya's schedule for a day",
+    responses={
+        400: {"description": "Invalid acharya_id"},
+        403: {"description": "Not authorized to update this schedule"},
+        500: {"description": "Failed to update schedule"},
+    },
 )
 async def update_acharya_schedule(
     acharya_id: str,
     schedule_data: AcharyaScheduleUpdate,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_acharya),
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_acharya)] = None,
 ):
     """Update Acharya's schedule"""
     try:
@@ -172,12 +181,17 @@ async def update_acharya_schedule(
     status_code=status.HTTP_200_OK,
     summary="Block Multiple Dates",
     description="Block multiple dates at once for an Acharya",
+    responses={
+        400: {"description": "Invalid acharya_id"},
+        403: {"description": "Not authorized"},
+        500: {"description": "Failed to block dates"},
+    },
 )
 async def block_dates(
     acharya_id: str,
     block_request: BlockDatesRequest,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_acharya),
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_acharya)] = None,
 ):
     """Block multiple dates"""
     try:
@@ -238,12 +252,16 @@ async def block_dates(
     status_code=status.HTTP_200_OK,
     summary="Check Acharya Availability",
     description="Check if Acharya is available on a specific date",
+    responses={
+        400: {"description": "Invalid acharya_id"},
+        500: {"description": "Failed to check availability"},
+    },
 )
 async def check_acharya_availability(
     acharya_id: str,
-    date: datetime = Query(..., description="Date to check availability"),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    date: Annotated[datetime, Query(..., description="Date to check availability")],
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
 ):
     """Check Acharya's availability for a date"""
     try:
@@ -327,12 +345,13 @@ async def check_acharya_availability(
     status_code=status.HTTP_200_OK,
     summary="Get Grihasta Calendar Events",
     description="Get all calendar events for logged-in Grihasta",
+    responses={500: {"description": "Failed to fetch events"}},
 )
 async def get_grihasta_events(
-    year: int = Query(..., ge=2020, le=2050),
-    month: int = Query(..., ge=1, le=12),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
+    year: Annotated[int, Query(..., ge=2020, le=2050)],
+    month: Annotated[int, Query(..., ge=1, le=12)],
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
 ):
     """Get Grihasta's calendar events"""
     try:
@@ -376,11 +395,12 @@ async def get_grihasta_events(
     status_code=status.HTTP_201_CREATED,
     summary="Create Calendar Event",
     description="Create a new calendar event for Grihasta",
+    responses={500: {"description": "Failed to create event"}},
 )
 async def create_grihasta_event(
     event_data: CalendarEventCreate,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
 ):
     """Create new calendar event"""
     try:
@@ -430,12 +450,17 @@ async def create_grihasta_event(
     status_code=status.HTTP_200_OK,
     summary="Update Calendar Event",
     description="Update an existing calendar event",
+    responses={
+        400: {"description": "Invalid event_id"},
+        404: {"description": "Event not found or not authorized"},
+        500: {"description": "Failed to update event"},
+    },
 )
 async def update_grihasta_event(
     event_id: str,
     event_data: CalendarEventUpdate,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
 ):
     """Update calendar event"""
     try:
@@ -490,11 +515,16 @@ async def update_grihasta_event(
     status_code=status.HTTP_200_OK,
     summary="Delete Calendar Event",
     description="Delete a calendar event",
+    responses={
+        400: {"description": "Invalid event_id"},
+        404: {"description": "Event not found or not authorized"},
+        500: {"description": "Failed to delete event"},
+    },
 )
 async def delete_grihasta_event(
     event_id: str,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
 ):
     """Delete calendar event"""
     try:
@@ -532,11 +562,12 @@ async def delete_grihasta_event(
     status_code=status.HTTP_200_OK,
     summary="Get Upcoming Events",
     description="Get upcoming events for Grihasta",
+    responses={500: {"description": "Failed to fetch upcoming events"}},
 )
 async def get_upcoming_events(
-    days: int = Query(30, ge=1, le=365, description="Number of days to look ahead"),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
+    days: Annotated[int, Query(ge=1, le=365, description="Number of days to look ahead")] = 30,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
 ):
     """Get upcoming events"""
     try:

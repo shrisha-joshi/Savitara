@@ -1,19 +1,22 @@
 import { initializeApp } from 'firebase/app'
-import { getMessaging, getToken, onMessage } from 'firebase/messaging'
-import { 
-  getAuth, 
-  GoogleAuthProvider, 
-  signInWithPopup,
-  signOut,
-  onAuthStateChanged 
+import {
+    getAuth,
+    GoogleAuthProvider,
+    onAuthStateChanged,
+    signInWithPopup,
+    signOut
 } from 'firebase/auth'
+import { getMessaging, getToken, onMessage } from 'firebase/messaging'
 
-// Validate required Firebase environment variables
+// Validate required Firebase environment variables — M28 fix: graceful degradation instead of crashing
+let firebaseAvailable = true
 if (!import.meta.env.VITE_FIREBASE_API_KEY) {
-  throw new Error('Missing VITE_FIREBASE_API_KEY environment variable')
+  console.warn('Missing VITE_FIREBASE_API_KEY – Firebase features will be disabled')
+  firebaseAvailable = false
 }
 if (!import.meta.env.VITE_FIREBASE_PROJECT_ID) {
-  throw new Error('Missing VITE_FIREBASE_PROJECT_ID environment variable')
+  console.warn('Missing VITE_FIREBASE_PROJECT_ID – Firebase features will be disabled')
+  firebaseAvailable = false
 }
 
 const firebaseConfig = {
@@ -25,16 +28,12 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 }
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig)
+// Initialize Firebase (only if config is available)
+const app = firebaseAvailable ? initializeApp(firebaseConfig) : null
 
 // Initialize Firebase Auth
-export const auth = getAuth(app)
-export const googleProvider = new GoogleAuthProvider()
-
-// Add scopes for additional user info
-googleProvider.addScope('email')
-googleProvider.addScope('profile')
+export const auth = app ? getAuth(app) : null
+export const googleProvider = app ? (() => { const p = new GoogleAuthProvider(); p.addScope('email'); p.addScope('profile'); return p })() : null
 
 // Check for redirect result - No-op for Popup flow
 export const checkRedirectResult = async () => {

@@ -3,9 +3,9 @@
  * Note: Push notifications are not available in Expo Go (SDK 53+).
  * For push notifications, use a development build or production build.
  */
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './api';
 
 const PUSH_TOKEN_KEY = 'push_notification_token';
@@ -43,12 +43,10 @@ async function loadNotificationModules() {
 }
 
 class NotificationService {
-  constructor() {
-    this.notificationListener = null;
-    this.responseListener = null;
-    this.isExpoGo = isExpoGo;
-    this.initialized = false;
-  }
+  notificationListener = null;
+  responseListener = null;
+  isExpoGo = isExpoGo;
+  initialized = false;
 
   async initialize(navigation) {
     // Skip in Expo Go on mobile devices
@@ -134,7 +132,7 @@ class NotificationService {
 
       // Get Expo push token with projectId
       const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-      console.log('Push notification token:', token);
+      if (__DEV__) console.log('Push notification token:', token);
       
       return token;
     } catch (error) {
@@ -150,18 +148,18 @@ class NotificationService {
     // Notification received while app is open
     this.notificationListener = Notifications.addNotificationReceivedListener(
       notification => {
-        console.log('Notification received:', notification);
+        if (__DEV__) console.log('Notification received:', notification);
         
         // You can show in-app notification or update UI
         const { title, body, data } = notification.request.content;
-        console.log('Notification content:', { title, body, data });
+        if (__DEV__) console.log('Notification content:', { title, body, data });
       }
     );
 
     // Notification tapped/clicked
     this.responseListener = Notifications.addNotificationResponseReceivedListener(
       response => {
-        console.log('Notification tapped:', response);
+        if (__DEV__) console.log('Notification tapped:', response);
         
         const data = response.notification.request.content.data;
         
@@ -183,7 +181,7 @@ class NotificationService {
         break;
       
       case 'new_message':
-        navigation.navigate('Chat', { conversationId });
+        navigation.navigate('Conversation', { conversationId });
         break;
       
       case 'booking_request':

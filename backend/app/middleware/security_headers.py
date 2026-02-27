@@ -39,16 +39,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Control referrer information
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
-        # Content Security Policy (CSP)
-        # This is a basic policy. In production, this should be tightened.
-        # We allow scripts from self, unsafe-inline (needed for some frontend frameworks), and common CDNs.
+        # Content Security Policy (CSP) — SonarQube: S5122
+        # Removed 'unsafe-eval' (XSS risk). 'unsafe-inline' kept for style compatibility;
+        # migrate to nonce-based CSP when frontend supports it.
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "img-src 'self' data: https:; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com; "
+            "script-src 'self' https://apis.google.com https://checkout.razorpay.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' data: https://fonts.gstatic.com; "
-            "connect-src 'self' http://localhost:8000 ws://localhost:8000 https://*.googleapis.com;"
+            "connect-src 'self' http://localhost:8000 ws://localhost:8000 https://*.googleapis.com https://api.razorpay.com; "
+            "frame-src 'self' https://api.razorpay.com;"
         )
 
         return response

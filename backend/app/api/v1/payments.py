@@ -2,9 +2,9 @@
 Payments API Endpoints
 Handles payment initiation, verification, and history
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, Optional
+from typing import Annotated, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -44,11 +44,15 @@ class RefundRequest(BaseModel):
 # --- Endpoints ---
 
 
-@router.post("/initiate", response_model=StandardResponse)
+@router.post(
+    "/initiate",
+    response_model=StandardResponse,
+    responses={500: {"description": "Payment initiation failed"}},
+)
 async def initiate_payment(
     request: PaymentInitiateRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Initiate a Razorpay payment"""
     try:
@@ -86,16 +90,26 @@ async def initiate_payment(
             },
         )
     except Exception as e:
+        logger.error(f"Payment initiation error: {e}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Payment initiation failed. Please try again.",
         )
 
 
-@router.post("/verify", response_model=StandardResponse)
+@router.post(
+    "/verify",
+    response_model=StandardResponse,
+    responses={
+        400: {"description": "Signature verification failed"},
+        404: {"description": "Payment record not found"},
+        500: {"description": "Payment verification failed"},
+    },
+)
 async def verify_payment(
     request: PaymentVerifyRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Verify Razorpay signature"""
     try:
@@ -112,9 +126,12 @@ async def verify_payment(
                 details={"reason": "Invalid Signature"},
             )
 
-        # Update Payment Record
+        # Update Payment Record — filter by user_id to prevent IDOR
         update_result = await db.payments.find_one_and_update(
-            {"razorpay_order_id": request.razorpay_order_id},
+            {
+                "razorpay_order_id": request.razorpay_order_id,
+                "user_id": current_user["id"],
+            },
             {
                 "$set": {
                     "razorpay_payment_id": request.razorpay_payment_id,
@@ -139,31 +156,44 @@ async def verify_payment(
 
     except PaymentFailedError:
         raise HTTPException(status_code=400, detail="Signature verification failed")
-    except ResourceNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Payment record not found")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Payment verification error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Payment verification failed")
 
 
 @router.get("/history", response_model=StandardResponse)
 async def get_payment_history(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    page: Annotated[int, Query(ge=1, description="Page number")] = 1,
+    limit: Annotated[int, Query(ge=1, le=100, description="Items per page")] = 20,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
-    cursor = db.payments.find({"user_id": current_user["id"]}).sort("created_at", -1)
-    payments = await cursor.to_list(length=100)
+    query = {"user_id": current_user["id"]}
+    total_count = await db.payments.count_documents(query)
+    cursor = db.payments.find(query).sort("created_at", -1).skip((page - 1) * limit).limit(limit)
+    payments = await cursor.to_list(length=limit)
     # Convert ObjectIds
     for p in payments:
         p["id"] = str(p.pop("_id"))
 
-    return StandardResponse(success=True, data=payments)
+    return StandardResponse(success=True, data={
+        "payments": payments,
+        "pagination": {
+            "page": page,
+            "limit": limit,
+            "total": total_count,
+            "pages": (total_count + limit - 1) // limit,
+        },
+    })
 
 
 @router.get("/{payment_id}", response_model=StandardResponse)
 async def get_payment_details(
     payment_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     try:
         payment = await db.payments.find_one(
@@ -185,14 +215,21 @@ async def get_payment_details(
 async def initiate_refund(
     payment_id: str,
     request: RefundRequest = RefundRequest(),  # optional body
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     payment = await db.payments.find_one(
         {"_id": ObjectId(payment_id), "user_id": current_user["id"]}
     )
     if not payment:
         raise ResourceNotFoundError(message=PAYMENT_NOT_FOUND_MSG)
+
+    # Prevent refund on non-captured or already-refunded payments
+    if payment.get("status") != "captured":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot refund payment with status '{payment.get('status')}'. Only captured payments can be refunded.",
+        )
 
     # Validate refund amount
     refund_amount: Optional[float] = getattr(request, "amount", None)
@@ -220,7 +257,7 @@ async def initiate_refund(
         logger.error(f"Razorpay refund failed for {payment_id}: {exc}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Refund initiation failed: {exc}",
+            detail="Refund initiation failed. Please contact support.",
         )
 
     await db.payments.update_one(
@@ -241,8 +278,8 @@ async def initiate_refund(
 @router.get("/refunds/{refund_id}", response_model=StandardResponse)
 async def get_refund_status(
     refund_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Look up a refund by its Razorpay refund ID stored in the payments collection."""
     payment = await db.payments.find_one(

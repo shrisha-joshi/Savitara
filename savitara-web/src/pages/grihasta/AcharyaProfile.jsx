@@ -1,38 +1,36 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import PropTypes from 'prop-types'
+import ChatIcon from '@mui/icons-material/Chat';
 import {
-  Container,
-  Typography,
-  Grid,
-  Box,
+  Alert,
   Avatar,
-  Chip,
+  Box,
   Button,
+  Chip,
+  CircularProgress,
+  Container,
+  Divider,
+  Grid,
+  Paper,
+  Rating,
   Tab,
   Tabs,
-  Paper,
-  Divider,
-  CircularProgress,
-  Alert,
-  Rating,
-  Stack
-} from '@mui/material'
-import MessageIcon from '@mui/icons-material/Message';
-import ChatIcon from '@mui/icons-material/Chat';
-import { 
-  FaStar, 
-  FaMapMarkerAlt, 
-  FaLanguage, 
-  FaGraduationCap, 
-  FaUserClock,
+  Typography
+} from '@mui/material';
+import PropTypes from 'prop-types';
+import { useEffect, useState } from 'react';
+import {
   FaCheckCircle,
-  FaComment
-} from 'react-icons/fa'
-import Layout from '../../components/Layout'
-import api from '../../services/api'
-import ServiceCard from '../../components/cards/ServiceCard'
-import TrustBadge, { TrustBadgeGroup } from '../../components/TrustBadge'
+  FaComment,
+  FaGraduationCap,
+  FaLanguage,
+  FaMapMarkerAlt,
+  FaStar,
+  FaUserClock
+} from 'react-icons/fa';
+import { useNavigate, useParams } from 'react-router-dom';
+import ServiceCard from '../../components/cards/ServiceCard';
+import Layout from '../../components/Layout';
+import TrustBadge, { TrustBadgeGroup } from '../../components/TrustBadge';
+import api from '../../services/api';
 // We might not have ReviewCard, so we will inline a simple one if needed or create one.
 
 function CustomTabPanel(props) {
@@ -114,8 +112,10 @@ export default function AcharyaProfile() {
       const response = await api.post('/chat/verify-conversation', {
         recipient_id: userId
       })
-      if (response.data.success && response.data.conversation_id) {
-        navigate(`/chat/${response.data.conversation_id}`)
+      // Backend wraps in StandardResponse: { success, data: { conversation_id, recipient } }
+      const convData = response.data?.data || response.data
+      if (convData?.conversation_id) {
+        navigate(`/chat/${convData.conversation_id}`)
       }
     } catch (err) {
       console.error('Failed to start chat:', err)

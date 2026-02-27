@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
-from typing import Dict, Any, Optional
+from typing import Annotated, Dict, Any, Optional
+import asyncio
 import logging
 
 from app.schemas.requests import (
@@ -21,10 +22,13 @@ from bson import ObjectId
 from app.core.config import get_settings
 from app.core.security import SecurityManager, get_current_user
 from app.core.exceptions import AuthenticationError, InvalidInputError
+from app.core.constants import PHONE_REGEX
 from app.db.connection import get_db
 from app.db.redis import get_redis, blacklist_token
 from app.models.database import User, UserRole, UserStatus
+from app.services.otp_service import OTPService
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pydantic import BaseModel, Field, field_validator
 from redis.asyncio import Redis
 from datetime import datetime, timezone
 
@@ -33,6 +37,10 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 security_manager = SecurityManager()
 security = HTTPBearer()
 settings = get_settings()
+
+# Error message constants
+ADMIN_ROLE_ERROR = "Admin role cannot be self-assigned"
+ACCOUNT_SUSPENDED_ERROR = "Account suspended"
 
 
 def verify_google_token(token: str) -> Dict[str, Any]:
@@ -73,7 +81,7 @@ def verify_google_token(token: str) -> Dict[str, Any]:
     description="Authenticate user with Google OAuth and return JWT tokens",
 )
 async def google_login(
-    auth_request: GoogleAuthRequest, db: AsyncIOMotorDatabase = Depends(get_db)
+    auth_request: GoogleAuthRequest, db: Annotated[AsyncIOMotorDatabase, Depends(get_db)]
 ):
     """
     Google OAuth authentication endpoint
@@ -87,13 +95,13 @@ async def google_login(
     SonarQube: S6437 - No hardcoded credentials, uses Google OAuth
     """
     try:
-        # Verify Google token
-        google_info = verify_google_token(auth_request.id_token)
+        # Verify Google token (run in thread pool to avoid blocking event loop)
+        google_info = await asyncio.to_thread(verify_google_token, auth_request.id_token)
 
         # Prevent admin role self-assignment via OAuth
         if auth_request.role == UserRole.ADMIN:
             raise InvalidInputError(
-                message="Admin role cannot be self-assigned", field="role"
+                message=ADMIN_ROLE_ERROR, field="role"
             )
 
         if not google_info["email_verified"]:
@@ -141,7 +149,7 @@ async def google_login(
         # Check user status
         if user.status == UserStatus.SUSPENDED:
             raise AuthenticationError(
-                message="Account suspended", details={"contact": "support@savitara.com"}
+                message=ACCOUNT_SUSPENDED_ERROR, details={"contact": "support@savitara.com"}
             )
 
         if user.status == UserStatus.DELETED:
@@ -201,7 +209,7 @@ async def google_login(
     description="Register a new user with email and password",
 )
 async def register(
-    request: RegisterRequest, db: AsyncIOMotorDatabase = Depends(get_db)
+    request: RegisterRequest, db: Annotated[AsyncIOMotorDatabase, Depends(get_db)]
 ):
     """
     Register new user with email/password
@@ -213,6 +221,13 @@ async def register(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email already registered",
+            )
+
+        # Prevent admin role self-assignment via registration
+        if request.role == UserRole.ADMIN:
+            raise InvalidInputError(
+                message=ADMIN_ROLE_ERROR,
+                field="role",
             )
 
         # Create new user - status is PENDING until onboarding is complete
@@ -275,7 +290,7 @@ async def register(
     summary="Email Login",
     description="Authenticate user with email and password",
 )
-async def login(request: LoginRequest, db: AsyncIOMotorDatabase = Depends(get_db)):
+async def login(request: LoginRequest, db: Annotated[AsyncIOMotorDatabase, Depends(get_db)]):
     """
     Login with email/password
     """
@@ -302,7 +317,7 @@ async def login(request: LoginRequest, db: AsyncIOMotorDatabase = Depends(get_db
         # Check status
         if user.status == UserStatus.SUSPENDED:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended"
+                status_code=status.HTTP_403_FORBIDDEN, detail=ACCOUNT_SUSPENDED_ERROR
             )
 
         # Update last login
@@ -366,7 +381,7 @@ async def login(request: LoginRequest, db: AsyncIOMotorDatabase = Depends(get_db
     description="Get new access token using refresh token",
 )
 async def refresh_token(
-    refresh_request: RefreshTokenRequest, db: AsyncIOMotorDatabase = Depends(get_db)
+    refresh_request: RefreshTokenRequest, db: Annotated[AsyncIOMotorDatabase, Depends(get_db)]
 ):
     """
     Refresh access token
@@ -430,8 +445,8 @@ async def refresh_token(
     description="Invalidate user session (client should delete tokens)",
 )
 async def logout(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    redis: Optional[Redis] = Depends(get_redis),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    redis: Annotated[Optional[Redis], Depends(get_redis)] = None,
 ):
     """
     Logout endpoint — blacklists the token JTI in Redis so it cannot be reused.
@@ -469,8 +484,8 @@ async def logout(
     description="Get authenticated user information",
 )
 async def get_current_user_info(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Get current authenticated user information
@@ -525,8 +540,8 @@ async def get_current_user_info(
     ),
 )
 async def issue_ws_ticket(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    redis: Optional[Redis] = Depends(get_redis),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    redis: Annotated[Optional[Redis], Depends(get_redis)] = None,
 ):
     """
     Generates a 64-byte random ticket stored in Redis (TTL=60 s).
@@ -573,3 +588,164 @@ async def auth_health_check():
         "service": "authentication",
         "google_oauth": "configured" if settings.GOOGLE_CLIENT_ID else "not_configured",
     }
+
+
+# ============= Phone OTP Authentication (Strategy Report §12.5 #3) =============
+
+
+class PhoneSendOTPRequest(BaseModel):
+    """Request to send OTP to phone"""
+    phone: str = Field(..., pattern=PHONE_REGEX, description="Phone number with country code")
+
+
+class PhoneVerifyOTPRequest(BaseModel):
+    """Request to verify phone OTP and login/register"""
+    phone: str = Field(..., pattern=PHONE_REGEX)
+    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    role: UserRole = Field(UserRole.GRIHASTA, description="Role for new users")
+
+    @field_validator("role")
+    @classmethod
+    def restrict_admin_role(cls, v: UserRole) -> UserRole:
+        if v == UserRole.ADMIN:
+            raise ValueError(ADMIN_ROLE_ERROR)
+        return v
+
+
+@router.post(
+    "/phone/send-otp",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Send Phone OTP",
+    description="Send a 6-digit OTP to the provided phone number for authentication",
+)
+async def phone_send_otp(
+    request: PhoneSendOTPRequest,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """
+    Send OTP to phone number for authentication.
+    Strategy Report §12.5 #3: Phone-number OTP login — unblocks Acharya onboarding at scale.
+    """
+    result = await OTPService.send_otp(db, request.phone)
+
+    if not result["sent"]:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=result["message"],
+        )
+
+    return StandardResponse(
+        success=True,
+        data={"expires_in": result["expires_in"]},
+        message=result["message"],
+    )
+
+
+@router.post(
+    "/phone/verify-otp",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Verify Phone OTP & Login",
+    description="Verify OTP and authenticate. Creates account if phone is new.",
+)
+async def phone_verify_otp(
+    request: PhoneVerifyOTPRequest,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """
+    Verify phone OTP. If user exists, logs in; if not, creates new account.
+    Strategy Report §12.5 #3.
+    """
+    # Verify OTP first
+    verification = await OTPService.verify_otp(db, request.phone, request.otp)
+
+    if not verification["verified"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=verification["error"],
+        )
+
+    phone = verification["phone"]
+
+    # Find user by phone number (check profiles and users)
+    user_doc = await db.users.find_one({"phone": phone})
+
+    if not user_doc:
+        # Also search in grihasta/acharya profiles by phone
+        profile = await db.grihasta_profiles.find_one({"phone": phone})
+        if not profile:
+            profile = await db.acharya_profiles.find_one({"phone": phone})
+        if profile:
+            user_doc = await db.users.find_one({"_id": ObjectId(profile["user_id"])})
+
+    if user_doc:
+        # Existing user — login
+        user = User(**user_doc)
+
+        if user.status == UserStatus.SUSPENDED:
+            raise AuthenticationError(
+                message=ACCOUNT_SUSPENDED_ERROR,
+                details={"contact": "support@savitara.com"},
+            )
+        if user.status == UserStatus.DELETED:
+            raise AuthenticationError(message="Account deleted")
+
+        # Update last login
+        await db.users.update_one(
+            {"_id": user_doc["_id"]},
+            {"$set": {"last_login": datetime.now(timezone.utc), "phone": phone}},
+        )
+
+        is_new_user = False
+        user_id = str(user.id)
+
+        # Check onboarding status
+        profile_collection = (
+            "grihasta_profiles" if user.role == UserRole.GRIHASTA else "acharya_profiles"
+        )
+        profile = await db[profile_collection].find_one({"user_id": user_id})
+        has_onboarded = profile is not None
+    else:
+        # New user — create account with phone
+        new_user = User(
+            email=f"{phone.replace('+', '')}@phone.savitara.com",  # Placeholder email
+            phone=phone,
+            role=request.role,
+            status=UserStatus.PENDING,
+            credits=100,  # Welcome bonus
+        )
+        result = await db.users.insert_one(
+            {**new_user.model_dump(by_alias=True, exclude_none=True), "phone": phone}
+        )
+        user_id = str(result.inserted_id)
+        is_new_user = True
+        has_onboarded = False
+
+        logger.info(f"New phone user created: {phone} with role {request.role}")
+
+    # Generate JWT tokens
+    role_value = request.role.value if is_new_user else user.role.value
+    access_token = security_manager.create_access_token(
+        user_id=user_id, role=role_value,
+    )
+    refresh_token = security_manager.create_refresh_token(user_id=user_id)
+
+    return StandardResponse(
+        success=True,
+        data={
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            "user": {
+                "id": user_id,
+                "phone": phone,
+                "role": role_value,
+                "is_new_user": is_new_user,
+                "onboarded": has_onboarded,
+                "onboarding_completed": has_onboarded,
+            },
+        },
+        message="Phone authentication successful",
+    )

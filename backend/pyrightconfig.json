@@ -10,10 +10,16 @@
     ".venv",
     "env",
     "**/site-packages/**",
-    "**/Lib/**"
+    "**/Lib/**",
+    "**/typeshed-fallback/**",
+    "**/builtins.pyi"
   ],
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none",
   "reportInvalidTypeForm": "none",
   "reportUndefinedVariable": "warning",
   "pythonVersion": "3.13",
-  "typeCheckingMode": "basic"
+  "typeCheckingMode": "basic",
+  "venvPath": ".",
+  "venv": "venv"
 }

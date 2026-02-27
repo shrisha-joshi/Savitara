@@ -1,9 +1,3 @@
-import React, { useEffect, useCallback } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { PaperProvider } from 'react-native-paper';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { useFonts } from 'expo-font';
 import {
   Inter_300Light,
   Inter_400Regular,
@@ -17,30 +11,28 @@ import {
   Poppins_600SemiBold,
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
+import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
-import { AuthProvider, useAuth } from './src/context/AuthContext';
-import { SocketProvider } from './src/context/SocketContext';
-import AppNavigator from './src/navigation/AppNavigator';
-import './src/i18n';
+import { StatusBar } from 'expo-status-bar';
+import { useCallback, useEffect } from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { PaperProvider } from 'react-native-paper';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import ErrorBoundary from './src/components/ErrorBoundary';
+import { AuthProvider } from './src/context/AuthContext';
+import { SocketProvider } from './src/context/SocketContext';
+import './src/i18n';
+import AppNavigator from './src/navigation/AppNavigator';
 import NotificationService from './src/services/notifications';
-import WebSocketService from './src/services/websocket';
 
 // Keep splash screen visible while loading fonts
 SplashScreen.preventAutoHideAsync();
 
 const AppContent = () => {
-  const { user } = useAuth();
-
   useEffect(() => {
     // Initialize services
     NotificationService.initialize();
-
-    const userId = user?.id || user?._id;
-    if (userId) {
-      WebSocketService.connect(userId);
-    }
-  }, [user]);
+  }, []);
 
   return (
     <ErrorBoundary>

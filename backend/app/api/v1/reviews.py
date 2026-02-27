@@ -6,7 +6,7 @@ SonarQube: S5122 - Input validation with Pydantic
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Dict, Any, Optional
+from typing import Annotated, Dict, Any, Optional
 import logging
 from datetime import datetime, timezone
 
@@ -45,8 +45,8 @@ router = APIRouter(prefix="/reviews", tags=["Reviews"])
 )
 async def create_review(
     review_data: ReviewCreateRequest,
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Create review
@@ -164,10 +164,10 @@ async def create_review(
     description="Get all reviews submitted by current user",
 )
 async def get_my_reviews(
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get user's submitted reviews"""
     try:
@@ -234,10 +234,10 @@ async def get_my_reviews(
 )
 async def get_acharya_reviews(
     acharya_id: str,
-    review_type: Optional[str] = Query(None, pattern="^(acharya|pooja)$"),
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    review_type: Annotated[Optional[str], Query(pattern="^(acharya|pooja)$")] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get public reviews for Acharya"""
     try:
@@ -330,9 +330,9 @@ async def get_acharya_reviews(
 )
 async def get_pooja_reviews(
     pooja_id: str,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get public reviews for specific Pooja"""
     try:
@@ -401,10 +401,10 @@ async def get_pooja_reviews(
 )
 async def update_review(
     review_id: str,
-    rating: Optional[int] = Query(None, ge=1, le=5),
-    comment: Optional[str] = Query(None, max_length=1000),
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    rating: Annotated[Optional[int], Query(ge=1, le=5)] = None,
+    comment: Annotated[Optional[str], Query(max_length=1000)] = None,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Update review (only if not yet approved)"""
     try:
@@ -466,8 +466,8 @@ async def update_review(
 )
 async def delete_review(
     review_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_grihasta),
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Delete review (only if not yet approved)"""
     try:
@@ -516,7 +516,7 @@ async def delete_review(
     summary="Get Platform Review Stats",
     description="Get overall platform review statistics",
 )
-async def get_platform_stats(db: AsyncIOMotorDatabase = Depends(get_db)):
+async def get_platform_stats(db: Annotated[AsyncIOMotorDatabase, Depends(get_db)]):
     """Get platform-wide review statistics"""
     try:
         # Platform reviews stats

@@ -26,7 +26,7 @@ router = APIRouter(prefix="/conversations", tags=["conversation_settings"])
 )
 async def get_conversation_settings(
     conversation_id: str,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_user)] = None,
     db=Depends(get_database),
 ):
     """Get user's settings for a specific conversation"""
@@ -48,7 +48,7 @@ async def get_conversation_settings(
 async def update_conversation_settings(
     conversation_id: str,
     request: UpdateSettingsRequest,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_user)] = None,
     db=Depends(get_database),
 ):
     """Update multiple settings at once"""
@@ -76,7 +76,7 @@ async def update_conversation_settings(
 )
 async def pin_conversation(
     conversation_id: str,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_user)] = None,
     db=Depends(get_database),
 ):
     """Pin conversation to top of list"""
@@ -97,7 +97,7 @@ async def pin_conversation(
 )
 async def unpin_conversation(
     conversation_id: str,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_user)] = None,
     db=Depends(get_database),
 ):
     """Unpin conversation"""
@@ -119,7 +119,7 @@ async def unpin_conversation(
 )
 async def archive_conversation(
     conversation_id: str,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_user)] = None,
     db=Depends(get_database),
 ):
     """Archive conversation"""
@@ -140,7 +140,7 @@ async def archive_conversation(
 )
 async def unarchive_conversation(
     conversation_id: str,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_user)] = None,
     db=Depends(get_database),
 ):
     """Unarchive conversation"""
@@ -165,7 +165,7 @@ async def unarchive_conversation(
 async def mute_conversation(
     conversation_id: str,
     request: MuteRequest,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_user)] = None,
     db=Depends(get_database),
 ):
     """Mute conversation for specified duration"""
@@ -193,7 +193,7 @@ async def mute_conversation(
 )
 async def unmute_conversation(
     conversation_id: str,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_user)] = None,
     db=Depends(get_database),
 ):
     """Unmute conversation"""
@@ -215,7 +215,7 @@ async def unmute_conversation(
 )
 async def mark_conversation_read(
     conversation_id: str,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_user)] = None,
     db=Depends(get_database),
 ):
     """Mark conversation as read"""

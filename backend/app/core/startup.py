@@ -7,6 +7,7 @@ import logging
 
 from app.core.config import settings
 from app.db.connection import DatabaseManager
+from app.db.redis import close_pool as close_redis_pool
 from app.middleware.rate_limit import rate_limiter
 from app.services.cache_service import cache
 from app.services.websocket_manager import manager
@@ -129,6 +130,7 @@ async def shutdown(app) -> None:  # noqa: ARG001 - app reserved for future use
     await DatabaseManager.close_database_connection()
     await rate_limiter.close()
     await cache.disconnect()
+    await close_redis_pool()
 
     try:
         await search_service.close()

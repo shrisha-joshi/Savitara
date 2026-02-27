@@ -231,6 +231,18 @@ class DatabaseManager(IConnectionManager, IIndexManager):
         await cls._create_index_safe(cls.db.panchanga, "date", unique=True)
         await cls._create_index_safe(cls.db.panchanga, [("date", 1), ("location", 1)])
 
+        # Panchanga cache indexes — used for location-aware caching
+        await cls._create_index_safe(
+            cls.db.panchanga_cache,
+            [("date", 1), ("latitude", 1), ("longitude", 1), ("sampradaya", 1)],
+            unique=True,
+        )
+        await cls._create_index_safe(cls.db.panchanga_cache, "region")
+        # TTL: expires_at is set per-document (default 7 days after creation)
+        await cls._create_index_safe(
+            cls.db.panchanga_cache, "expires_at", expireAfterSeconds=0
+        )
+
         # Reviews indexes
         await cls._create_index_safe(cls.db.reviews, "booking_id", unique=True)
         await cls._create_index_safe(cls.db.reviews, "acharya_id")
@@ -248,15 +260,23 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             cls.db.analytics_events, [("event_name", 1), ("timestamp", -1)]
         )
         await cls._create_index_safe(cls.db.analytics_events, "date")
+        # TTL: auto-purge analytics events older than 90 days
+        # Archive monthly aggregates to analytics_monthly before this window expires.
+        await cls._create_index_safe(
+            cls.db.analytics_events, "timestamp", expireAfterSeconds=7776000
+        )
 
         # Loyalty program indexes
         await cls._create_index_safe(cls.db.user_loyalty, "user_id", unique=True)
         await cls._create_index_safe(cls.db.user_loyalty, [("tier", 1), ("points", -1)])
 
         # Referrals indexes
+        # referee_id is unique sparse: a user can only ever be referred once.
+        # sparse=True allows null referee_id documents (pending referrals before signup).
         await cls._create_index_safe(cls.db.referrals, "referrer_id")
-        await cls._create_index_safe(cls.db.referrals, "referred_user_id", unique=True)
+        await cls._create_index_safe(cls.db.referrals, "referee_id", unique=True, sparse=True)
         await cls._create_index_safe(cls.db.referrals, "referral_code")
+        await cls._create_index_safe(cls.db.referrals, [("status", 1), ("created_at", -1)])
 
         # Notifications indexes
         await cls._create_index_safe(
@@ -287,6 +307,21 @@ class DatabaseManager(IConnectionManager, IIndexManager):
         )
         await cls._create_index_safe(
             cls.db.wallet_transactions, [("user_id", 1), ("created_at", -1)]
+        )
+
+        # Wallets collection — unique balance doc per user
+        await cls._create_index_safe(cls.db.wallets, "user_id", unique=True)
+        await cls._create_index_safe(cls.db.wallets, "is_active")
+
+        # User Devices collection — normalized FCM token registry
+        await cls._create_index_safe(cls.db.user_devices, "fcm_token", unique=True)
+        await cls._create_index_safe(cls.db.user_devices, "user_id")
+        await cls._create_index_safe(
+            cls.db.user_devices, [("user_id", 1), ("is_active", 1)]
+        )
+        # TTL: remove devices not seen in 90 days
+        await cls._create_index_safe(
+            cls.db.user_devices, "last_seen", expireAfterSeconds=7776000
         )
 
         # Gamification: Coins & Points indexes
@@ -357,6 +392,32 @@ class DatabaseManager(IConnectionManager, IIndexManager):
         )
         await cls._create_index_safe(
             cls.db.audit_logs, [("user_id", 1), ("timestamp", -1)]
+        )
+
+        # Conversation Unread Counts collection
+        # O(1) unread badge reads; incremented via $inc on message insert
+        await cls._create_index_safe(
+            cls.db.unread_counts,
+            [("conversation_id", 1), ("user_id", 1)],
+            unique=True,
+        )
+        await cls._create_index_safe(
+            cls.db.unread_counts, [("user_id", 1), ("count", -1)]
+        )
+
+        # Message Reactions collection
+        # Reactions are stored externally to avoid document bloat on Message docs.
+        # One doc per (message_id, user_id) pair.
+        await cls._create_index_safe(
+            cls.db.message_reactions,
+            [("message_id", 1), ("user_id", 1)],
+            unique=True,
+        )
+        await cls._create_index_safe(
+            cls.db.message_reactions, [("message_id", 1), ("emoji", 1)]
+        )
+        await cls._create_index_safe(
+            cls.db.message_reactions, [("conversation_id", 1), ("created_at", -1)]
         )
 
         logger.info("Database indexes created successfully")

@@ -167,6 +167,9 @@ class AcharyaProfile(BaseModel):
     specializations: List[str] = []
     languages: List[str] = []
     location: Location
+    # DEPRECATED: Do NOT add new availability slots here.
+    # Availability is managed exclusively via `acharya_schedules` collection (AcharyaSchedule model).
+    # This field is kept for backward compatibility during migration only.
     availability: List[AvailabilitySlot] = []
     verification_documents: List[str] = []  # URLs to documents
     kyc_status: str = "pending"  # pending, verified, rejected
@@ -235,6 +238,8 @@ class Booking(BaseModel):
     discount: Optional[float] = 0
     total_amount: float = 0
     coupon_code: Optional[str] = None
+    applied_voucher_id: Optional[str] = None  # Voucher (from user_vouchers) applied to this booking
+    version: int = 1  # Optimistic lock — always include in update filter: {_id: X, version: N}
     razorpay_order_id: Optional[str] = None
     razorpay_payment_id: Optional[str] = None
     start_otp: Optional[str] = None  # OTP for starting the event
@@ -332,6 +337,10 @@ class Conversation(BaseModel):
     allow_forward_out: bool = True  # Allow forwarding messages out of this room
     locked: bool = False  # Room locked (only admins can post)
     pinned_message_id: Optional[PyObjectId] = None
+    # For DIRECT rooms: participants[] is authoritative (exactly 2 users).
+    # For GROUP/COMMUNITY rooms: use conversation_members collection exclusively.
+    # participants[] is NOT updated for groups after creation — do NOT query it for group membership.
+    member_count: int = 0  # Cached counter updated via $inc on join/leave (groups only)
 
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, use_enum_values=True)
 
@@ -354,15 +363,30 @@ class Review(BaseModel):
 
 
 class Referral(BaseModel):
-    """Referral model"""
+    """Unified referral model — single source of truth for all referral tracking.
+
+    Schema rule: one document per referral relationship (one referrer → one referee).
+    The old model stored a list of referred_users inside one document, causing write
+    amplification and making per-referee queries O(n). This model uses one doc per pair.
+
+    Indexed fields: referrer_id, referee_id (unique sparse), referral_code, status.
+    """
 
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    referrer_id: PyObjectId
-    code: str  # Unique referral code
-    referred_users: List[PyObjectId] = []
-    credits_earned: int = 0
-    status: str = "active"  # active, inactive
+    referrer_id: str  # User who shared the referral code
+    referrer_role: str  # "grihasta" or "acharya"
+    referee_id: Optional[str] = None  # User who used the code (populated after signup)
+    referee_role: Optional[str] = None
+    referral_code: str  # The code the referee used to sign up
+    status: str = "pending"  # pending | signed_up | completed_booking | rewarded
+    rewards_given: bool = False
+    referrer_reward: Dict[str, Any] = {}  # {"coins": 500, "voucher": "REFER500"}
+    referee_reward: Dict[str, Any] = {}
+    signed_up_at: Optional[datetime] = None
+    first_booking_at: Optional[datetime] = None
+    rewarded_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
@@ -518,6 +542,109 @@ class PanchangaEvent(BaseModel):
     moonset: str
     festivals: List[str] = []
     auspicious_timings: List[Dict[str, str]] = []
+    # DEPRECATED: Do not append booking IDs here — this array grows forever.
+    # Query bookings by date_time range in the bookings collection instead.
     bookings: List[PyObjectId] = []  # Bookings on this date
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+
+# ==================== Wallet Model ====================
+
+class UserWallet(BaseModel):
+    """Wallet balance document — one per user.
+
+    Balance is maintained via atomic $inc operations on `balance` and `bonus_balance`.
+    NEVER compute balance by summing wallet_transactions — use this document.
+    Collection: db.wallets (unique index on user_id)
+    """
+
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    user_id: str  # Unique — one wallet per user
+    balance: float = 0.0        # Real money (credited via Razorpay / earned by Acharya)
+    bonus_balance: float = 0.0  # Promotional balance (cannot be withdrawn)
+    currency: str = "INR"
+    is_active: bool = True
+    total_credited: float = 0.0   # Lifetime credits (for analytics)
+    total_debited: float = 0.0    # Lifetime debits
+    total_earned: float = 0.0     # Acharya earnings total
+    total_withdrawn: float = 0.0  # Acharya total withdrawals
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+
+# ==================== Device Model ====================
+
+class DeviceOS(str, Enum):
+    """Mobile OS"""
+    ANDROID = "android"
+    IOS = "ios"
+    WEB = "web"
+
+
+class UserDevice(BaseModel):
+    """Normalized device token record — replaces the raw device_tokens[] array on User.
+
+    Rationale: device_tokens[] on User grows unbounded with stale tokens, has no
+    metadata (device type, last active), and requires full user doc rewrite to add/remove.
+    This collection has one doc per device, with TTL cleanup on last_seen.
+    Collection: db.user_devices (indexes: user_id, fcm_token unique)
+    """
+
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    user_id: str
+    fcm_token: str          # Firebase Cloud Messaging token (unique)
+    device_os: DeviceOS
+    app_version: Optional[str] = None
+    device_model: Optional[str] = None
+    is_active: bool = True
+    last_seen: datetime = Field(default_factory=utcnow)  # TTL cleanup target
+    created_at: datetime = Field(default_factory=utcnow)
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, use_enum_values=True)
+
+
+# ==================== Unread Count Model ====================
+
+class ConversationUnreadCount(BaseModel):
+    """Per-user unread message counter for a conversation.
+
+    Rationale: Computing unread count via COUNT(messages WHERE created_at > last_read_at)
+    is expensive at scale. This collection caches the count and is updated via $inc
+    on message insert and $set {count: 0} on read.
+    Collection: db.unread_counts (compound unique index: conversation_id + user_id)
+    """
+
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    conversation_id: str
+    user_id: str
+    count: int = 0              # Unread message count
+    last_message_id: Optional[str] = None  # ID of the last unread message
+    last_message_at: Optional[datetime] = None
+    updated_at: datetime = Field(default_factory=utcnow)
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+
+# ==================== Message Reaction Record ====================
+
+class MessageReactionRecord(BaseModel):
+    """Standalone message reaction record (external collection).
+
+    Rationale: Embedding reactions[] in Message documents causes write amplification
+    (each reaction rewrites the array), prevents efficient per-user reaction queries,
+    and creates document bloat for popular messages.
+    Collection: db.message_reactions (compound unique index: message_id + user_id)
+    """
+
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    message_id: str
+    conversation_id: str  # Denormalized for efficient conversation-level aggregation
+    user_id: str
+    emoji: str = Field(max_length=8)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)  # For reaction changes
 
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)

@@ -20,6 +20,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 import logging
 import sys
 import time
@@ -60,6 +61,8 @@ from app.api.v1 import (
     moderation,
     group_admin,
     strategy_features,
+    trust,  # Trust score and dispute resolution
+    investor_metrics,  # Investor dashboard metrics
 )
 
 from slowapi.errors import RateLimitExceeded  # type: ignore
@@ -357,6 +360,13 @@ app.include_router(group_admin.router, prefix=API_V1_PREFIX)  # Group chat moder
 app.include_router(
     strategy_features.router, prefix=API_V1_PREFIX
 )  # Strategy features (subscriptions, bundles, penalties, guarantee)
+app.include_router(trust.router, prefix=API_V1_PREFIX)  # Trust scores, disputes, checkpoints
+app.include_router(investor_metrics.router, prefix=API_V1_PREFIX)  # Investor metrics (CAC, LTV, GMV)
+
+# Serve uploaded files (voice/images/documents) as static files
+_uploads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
+os.makedirs(_uploads_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=_uploads_dir, html=False), name="uploads")
 
 
 async def _authenticate_ws_ticket(ticket: str, user_id: str) -> bool:

@@ -28,6 +28,8 @@ import {
   Grid,
   InputAdornment,
   CircularProgress,
+  TablePagination,
+  Stack,
 } from '@mui/material';
 import {
   Search,
@@ -39,7 +41,22 @@ import {
   Phone,
   LocationOn,
   Refresh,
+  FileDownload,
 } from '@mui/icons-material';
+
+/** Generate and trigger download of a CSV file */
+function downloadCSV(rows, filename) {
+  const csvContent = rows
+    .map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 import Layout from '../src/components/Layout';
 import withAuth from '../src/hoc/withAuth';
 import { adminAPI } from '../src/services/api';
@@ -54,6 +71,10 @@ function Users() {
   const [suspendDialog, setSuspendDialog] = useState(false);
   const [suspendReason, setSuspendReason] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
+  // ── Server-side pagination state ───────────────────────────────────────────────
+  const [usersPage, setUsersPage] = useState(0);      // 0-indexed (MUI style)
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [totalUsers, setTotalUsers] = useState(0);
   const [stats, setStats] = useState({
     total: 0,
     acharyas: 0,
@@ -66,54 +87,66 @@ function Users() {
   const loadUsers = useCallback(async () => {
     try {
       setLoading(true);
-      // Fetch all users
-      const response = await adminAPI.searchUsers({ limit: 1000 });
+      // Server-side pagination — no more limit:1000
+      const params = { page: usersPage + 1, limit: rowsPerPage };
+      if (roleFilter !== 'all') params.role = roleFilter;
+      const response = await adminAPI.searchUsers(params);
       const data = response.data?.data || response.data;
       const userList = data?.users || data || [];
+      const total = data?.total ?? data?.pagination?.total ?? userList.length;
       setUsers(userList);
+      setTotalUsers(total);
     } catch (error) {
       console.error('Failed to load users:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [usersPage, rowsPerPage, roleFilter]);
 
   const filterUsers = useCallback(() => {
     let filtered = [...users];
-
-    // Filter by role
-    if (roleFilter !== 'all') {
-      filtered = filtered.filter(u => u.role === roleFilter);
-    }
-
-    // Filter by search
+    // Role filter is applied server-side; client-side search filters the current page
     if (search) {
-      filtered = filtered.filter(u =>
-        u.email?.toLowerCase().includes(search.toLowerCase()) ||
-        u.name?.toLowerCase().includes(search.toLowerCase()) ||
-        u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+      const q = search.toLowerCase();
+      filtered = filtered.filter((u) =>
+        u.email?.toLowerCase().includes(q) ||
+        u.name?.toLowerCase().includes(q) ||
+        u.full_name?.toLowerCase().includes(q) ||
         u.phone?.includes(search) ||
-        u.phone_number?.includes(search)
+        u.phone_number?.includes(search)   // optional chaining — guards against missing field
       );
     }
-
     setFilteredUsers(filtered);
-  }, [users, roleFilter, search]);
+  }, [users, search]);
 
   const calculateStats = useCallback(() => {
     setStats({
-      total: users.length,
-      acharyas: users.filter(u => u.role === 'acharya').length,
-      grihastas: users.filter(u => u.role === 'grihasta').length,
-      admins: users.filter(u => u.role === 'admin').length,
-      pending: users.filter(u => u.status === 'pending').length,
-      active: users.filter(u => u.status === 'active').length,
+      total:     totalUsers,                                            // server total
+      acharyas:  users.filter((u) => u.role === 'acharya').length,
+      grihastas: users.filter((u) => u.role === 'grihasta').length,
+      admins:    users.filter((u) => u.role === 'admin').length,
+      pending:   users.filter((u) => u.status === 'pending').length,
+      active:    users.filter((u) => u.status === 'active').length,
     });
-  }, [users]);
+  }, [users, totalUsers]);
 
-  useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
+  const exportUsersCSV = () => {
+    const headers = ['Name', 'Email', 'Role', 'Phone', 'City', 'Status', 'Created At'];
+    const rows = filteredUsers.map((u) => [
+      u.name || u.full_name || '',
+      u.email || '',
+      u.role  || '',
+      u.phone || u.phone_number || '',
+      u.location?.city || u.city || '',
+      u.status || '',
+      u.created_at ? new Date(u.created_at).toLocaleString() : '',
+    ]);
+    downloadCSV([headers, ...rows], `users_${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+
+  useEffect(() => { loadUsers(); }, [loadUsers]);
+  // Reset to page 0 whenever role filter changes
+  useEffect(() => { setUsersPage(0); }, [roleFilter]);
 
   useEffect(() => {
     filterUsers();
@@ -173,14 +206,24 @@ function Users() {
               Manage all users, verify Acharyas, and monitor activity
             </Typography>
           </Box>
-          <Button
-            variant="outlined"
-            startIcon={<Refresh />}
-            onClick={loadUsers}
-            disabled={loading}
-          >
-            Refresh
-          </Button>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Button
+              variant="outlined"
+              startIcon={<FileDownload />}
+              onClick={exportUsersCSV}
+              disabled={filteredUsers.length === 0}
+            >
+              Export CSV
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<Refresh />}
+              onClick={loadUsers}
+              disabled={loading}
+            >
+              Refresh
+            </Button>
+          </Stack>
         </Box>
 
         {/* Stats Cards */}
@@ -242,7 +285,7 @@ function Users() {
             onChange={(e, newValue) => setRoleFilter(newValue)}
             sx={{ borderBottom: 1, borderColor: 'divider' }}
           >
-            <Tab label={`All (${users.length})`} value="all" />
+            <Tab label={`All (${totalUsers})`} value="all" />
             <Tab label={`Acharyas (${stats.acharyas})`} value="acharya" />
             <Tab label={`Grihastas (${stats.grihastas})`} value="grihasta" />
             <Tab label={`Admins (${stats.admins})`} value="admin" />
@@ -370,6 +413,18 @@ function Users() {
             </TableBody>
           </Table>
         </TableContainer>
+
+        {/* Server-side pagination */}
+        <TablePagination
+          component="div"
+          count={totalUsers}
+          page={usersPage}
+          onPageChange={(e, newPage) => setUsersPage(newPage)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setUsersPage(0); }}
+          rowsPerPageOptions={[10, 25, 50, 100]}
+          labelRowsPerPage="Users per page:"
+        />
 
         {/* View User Dialog */}
         <Dialog open={viewDialog} onClose={() => setViewDialog(false)} maxWidth="md" fullWidth>

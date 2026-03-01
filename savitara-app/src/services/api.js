@@ -51,6 +51,7 @@ export const bookingAPI = {
   createPaymentOrder: (id) => api.post(`/bookings/${id}/create-payment-order`),
   verifyPayment: (id, data) => api.post(`/bookings/${id}/payment/verify`, data),
   getPriceEstimate: (params) => api.get('/bookings/price-estimate', { params }),
+  checkAvailability: (params) => api.get('/bookings/check-availability', { params }),
   startBooking: (id, otp) => api.post(`/bookings/${id}/start`, { otp }),
   confirmAttendance: (id, data) => api.post(`/bookings/${id}/attendance/confirm`, data),
   referBooking: (bookingId, newAcharyaId, notes) => api.put(`/bookings/${bookingId}/refer`, { new_acharya_id: newAcharyaId, notes }),
@@ -66,8 +67,15 @@ export const chatAPI = {
   getMessages: (conversationId, params) => api.get(`/chat/conversations/${conversationId}/messages`, { params }),
   // Backend: POST /chat/messages with { receiver_id, content }
   sendMessage: (data) => api.post('/chat/messages', data),
-  // Backend: GET /chat/conversations then mark read on message fetch
+  // Multipart upload: POST /chat/messages/upload with FormData (voice/image/file)
+  sendMediaMessage: (formData) => api.post('/chat/messages/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000,
+  }),
+  // Marks conversation messages as read by fetching (backend bulk-marks on fetch)
   markAsRead: (conversationId) => api.get(`/chat/conversations/${conversationId}/messages?page=1&limit=1`),
+  // Trigger read marking without loading messages into state
+  markConversationRead: (conversationId) => api.get(`/chat/conversations/${conversationId}/messages?page=1&limit=1`),
   getOpenChat: (params) => api.get('/chat/open-chat', { params }),
   verifyConversation: (recipientId) => api.post('/chat/verify-conversation', { recipient_id: recipientId }),
   getUnreadCount: () => api.get('/chat/unread-count'),
@@ -78,11 +86,18 @@ export const chatAPI = {
   removeReaction: (messageId, emoji) => api.delete(`/messages/${messageId}/reactions/${emoji}`),
   getReactions: (messageId) => api.get(`/messages/${messageId}/reactions`),
   
+  // Single conversation settings (avoids N+1 fetch-all-and-filter)
+  getConversation: (conversationId) => api.get(`/chat/conversations/${conversationId}`),
+
   // Conversation settings
   pinConversation: (conversationId) => api.post(`/chat/conversations/${conversationId}/pin`),
   archiveConversation: (conversationId) => api.post(`/chat/conversations/${conversationId}/archive`),
   muteConversation: (conversationId, data) => api.patch(`/chat/conversations/${conversationId}/settings`, data),
   deleteConversation: (conversationId) => api.delete(`/chat/conversations/${conversationId}`),
+
+  // User safety
+  blockUser: (userId) => api.post('/chat/block', { blocked_user_id: userId }),
+  reportUser: (userId, reason) => api.post('/chat/report', { reported_user_id: userId, reason }),
   
   // Message forwarding
   forwardMessage: (messageId, data) => api.post(`/messages/${messageId}/forward`, data),

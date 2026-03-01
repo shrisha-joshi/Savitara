@@ -40,6 +40,7 @@ export default function CreateBooking() {
   const [activeStep, setActiveStep] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
@@ -96,7 +97,7 @@ export default function CreateBooking() {
     fetchDetails();
   }, [acharyaId, preSelectedPoojaId]);
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (activeStep === 0 && !serviceInput.trim()) {
       setError('Please enter or select a pooja service');
       return;
@@ -123,6 +124,30 @@ export default function CreateBooking() {
       if (selectedDateTime > maxDate) {
         setError('Booking date cannot be more than 90 days in advance');
         return;
+      }
+
+      // Check Acharya availability for instant bookings
+      if (effectiveMode === 'instant' && acharyaId) {
+        try {
+          setCheckingAvailability(true);
+          setError(null);
+          const durationHours = getPoojaDetails()?.duration_hours || 2;
+          const dateTimeIso = selectedDateTime.toISOString();
+          const response = await api.get('/bookings/check-availability', {
+            params: { acharya_id: acharyaId, date_time: dateTimeIso, duration: durationHours }
+          });
+          if (response.data.success && !response.data.data?.available) {
+            const next = response.data.data?.next_available_slot;
+            const hint = next ? ` Next available: ${new Date(next).toLocaleString()}.` : '';
+            setError(`This time slot is not available for the selected Acharya.${hint}`);
+            return;
+          }
+        } catch (availErr) {
+          // Don't block if availability check itself errors (graceful degradation)
+          console.warn('Availability check failed, proceeding:', availErr);
+        } finally {
+          setCheckingAvailability(false);
+        }
       }
     }
     setError(null);
@@ -491,8 +516,10 @@ export default function CreateBooking() {
                       })()}
                     </Button>
                   ) : (
-                    <Button variant="contained" onClick={handleNext}>
-                      Next
+                    <Button variant="contained" onClick={handleNext} disabled={checkingAvailability}>
+                      {checkingAvailability ? (
+                        <><CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />Checking…</>
+                      ) : 'Next'}
                     </Button>
                   )}
                 </Box>

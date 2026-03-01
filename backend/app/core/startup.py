@@ -117,6 +117,14 @@ async def startup(app) -> None:
         app.state.audit_service = None
         logger.warning("Audit service not initialized - database unavailable")
 
+    # Booking expiry background worker — auto-cancels stale requested/pending_payment bookings
+    if DatabaseManager.db is not None:
+        from app.workers.booking_expiry_worker import start_expiry_worker  # noqa: PLC0415
+        app.state.booking_expiry_task = start_expiry_worker(DatabaseManager.db)
+        logger.info("Booking expiry worker started")
+    else:
+        logger.warning("Booking expiry worker not started - database unavailable")
+
     logger.info("Application startup complete")
 
 

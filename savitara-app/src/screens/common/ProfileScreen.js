@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert, Platform, Linking } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, Linking } from 'react-native';
 import { 
-  List, Avatar, Button, Divider, TextInput, Portal, Dialog, 
-  Text, Card, IconButton, Chip, ActivityIndicator 
+  List, Avatar, Button, Divider, TextInput,
+  Text, Card, Chip, ActivityIndicator 
 } from 'react-native-paper';
 import * as Location from 'expo-location';
 import { useAuth } from '../../context/AuthContext';
@@ -98,7 +98,7 @@ const ProfileScreen = () => {
           'Location permission is required to use this feature. Please enable it in your device settings.',
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() }
+            { text: 'Open Settings', onPress: () => { Linking.openSettings().catch(() => {}); } }
           ]
         );
         return;
@@ -189,10 +189,10 @@ const ProfileScreen = () => {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Avatar.Image 
-          size={80} 
-          source={{ uri: user?.profile_picture || 'https://via.placeholder.com/150' }}
-        />
+        {user?.profile_picture
+          ? <Avatar.Image size={80} source={{ uri: user.profile_picture }} />
+          : <Avatar.Text size={80} label={(user?.full_name || 'U')[0].toUpperCase()} />}
+
         <View style={styles.headerInfo}>
           <Text variant="headlineSmall">{user?.full_name || 'User'}</Text>
           <Text variant="bodyMedium" style={styles.email}>{user?.email}</Text>
@@ -206,97 +206,7 @@ const ProfileScreen = () => {
         </View>
       </View>
 
-      {!isEditing ? (
-        <>
-          <Card style={styles.card}>
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.sectionTitle}>Basic Information</Text>
-              <Divider style={styles.divider} />
-              
-              <List.Item
-                title="Full Name"
-                description={editData.name || 'Not set'}
-                left={props => <List.Icon {...props} icon="account" />}
-              />
-              <List.Item
-                title="Phone"
-                description={editData.phone || 'Not set'}
-                left={props => <List.Icon {...props} icon="phone" />}
-              />
-              <List.Item
-                title="Location"
-                description={`${editData.location.city}, ${editData.location.state}, ${editData.location.country}`}
-                left={props => <List.Icon {...props} icon="map-marker" />}
-              />
-              <List.Item
-                title="Parampara"
-                description={editData.parampara || 'Not set'}
-                left={props => <List.Icon {...props} icon="flower" />}
-              />
-            </Card.Content>
-          </Card>
-
-          {user?.role === 'acharya' && (
-            <Card style={styles.card}>
-              <Card.Content>
-                <Text variant="titleMedium" style={styles.sectionTitle}>Acharya Details</Text>
-                <Divider style={styles.divider} />
-                
-                <List.Item
-                  title="Gotra"
-                  description={editData.gotra || 'Not set'}
-                  left={props => <List.Icon {...props} icon="family-tree" />}
-                />
-                <List.Item
-                  title="Languages"
-                  description={editData.languages.join(', ') || 'Not set'}
-                  left={props => <List.Icon {...props} icon="translate" />}
-                />
-                <List.Item
-                  title="Specializations"
-                  description={editData.specializations.join(', ') || 'Not set'}
-                  left={props => <List.Icon {...props} icon="star" />}
-                />
-                <List.Item
-                  title="Experience"
-                  description={`${editData.experience_years} years` || 'Not set'}
-                  left={props => <List.Icon {...props} icon="calendar" />}
-                />
-                <List.Item
-                  title="Study Place"
-                  description={editData.study_place || 'Not set'}
-                  left={props => <List.Icon {...props} icon="school" />}
-                />
-                <List.Item
-                  title="Bio"
-                  description={editData.bio || 'Not set'}
-                  left={props => <List.Icon {...props} icon="text" />}
-                  numberOfLines={3}
-                />
-              </Card.Content>
-            </Card>
-          )}
-
-          <Button 
-            mode="contained" 
-            onPress={() => setIsEditing(true)}
-            style={styles.editButton}
-            icon="pencil"
-          >
-            Edit Profile
-          </Button>
-
-          <Button 
-            mode="outlined" 
-            onPress={logout}
-            style={styles.logoutButton}
-            textColor="#FF6B35"
-            icon="logout"
-          >
-            Logout
-          </Button>
-        </>
-      ) : (
+      {isEditing ? (
         <View style={styles.editForm}>
           <Text variant="headlineSmall" style={styles.editTitle}>Edit Profile</Text>
           
@@ -430,6 +340,96 @@ const ProfileScreen = () => {
             </Button>
           </View>
         </View>
+      ) : (
+        <>
+          <Card style={styles.card}>
+            <Card.Content>
+              <Text variant="titleMedium" style={styles.sectionTitle}>Basic Information</Text>
+              <Divider style={styles.divider} />
+              
+              <List.Item
+                title="Full Name"
+                description={editData.name || 'Not set'}
+                left={props => <List.Icon {...props} icon="account" />} // NOSONAR
+              />
+              <List.Item
+                title="Phone"
+                description={editData.phone || 'Not set'}
+                left={props => <List.Icon {...props} icon="phone" />} // NOSONAR
+              />
+              <List.Item
+                title="Location"
+                description={`${editData.location.city}, ${editData.location.state}, ${editData.location.country}`}
+                left={props => <List.Icon {...props} icon="map-marker" />} // NOSONAR
+              />
+              <List.Item
+                title="Parampara"
+                description={editData.parampara || 'Not set'}
+                left={props => <List.Icon {...props} icon="flower" />} // NOSONAR
+              />
+            </Card.Content>
+          </Card>
+
+          {user?.role === 'acharya' && (
+            <Card style={styles.card}>
+              <Card.Content>
+                <Text variant="titleMedium" style={styles.sectionTitle}>Acharya Details</Text>
+                <Divider style={styles.divider} />
+                
+                <List.Item
+                  title="Gotra"
+                  description={editData.gotra || 'Not set'}
+                  left={props => <List.Icon {...props} icon="family-tree" />} // NOSONAR
+                />
+                <List.Item
+                  title="Languages"
+                  description={editData.languages.join(', ') || 'Not set'}
+                  left={props => <List.Icon {...props} icon="translate" />} // NOSONAR
+                />
+                <List.Item
+                  title="Specializations"
+                  description={editData.specializations.join(', ') || 'Not set'}
+                  left={props => <List.Icon {...props} icon="star" />} // NOSONAR
+                />
+                <List.Item
+                  title="Experience"
+                  description={editData.experience_years ? `${editData.experience_years} years` : 'Not set'}
+                  left={props => <List.Icon {...props} icon="calendar" />} // NOSONAR
+                />
+                <List.Item
+                  title="Study Place"
+                  description={editData.study_place || 'Not set'}
+                  left={props => <List.Icon {...props} icon="school" />} // NOSONAR
+                />
+                <List.Item
+                  title="Bio"
+                  description={editData.bio || 'Not set'}
+                  left={props => <List.Icon {...props} icon="text" />} // NOSONAR
+                  numberOfLines={3}
+                />
+              </Card.Content>
+            </Card>
+          )}
+
+          <Button 
+            mode="contained" 
+            onPress={() => setIsEditing(true)}
+            style={styles.editButton}
+            icon="pencil"
+          >
+            Edit Profile
+          </Button>
+
+          <Button 
+            mode="outlined" 
+            onPress={logout}
+            style={styles.logoutButton}
+            textColor="#FF6B35"
+            icon="logout"
+          >
+            Logout
+          </Button>
+        </>
       )}
     </ScrollView>
   );

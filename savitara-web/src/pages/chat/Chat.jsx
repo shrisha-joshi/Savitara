@@ -34,6 +34,8 @@ import DoneAllIcon from '@mui/icons-material/DoneAll';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import ReportIcon from '@mui/icons-material/Report';
 import BlockIcon from '@mui/icons-material/Block';
+import WifiOffIcon from '@mui/icons-material/WifiOff';
+import ReplayIcon from '@mui/icons-material/Replay';
 import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
@@ -48,7 +50,7 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
   const { conversationId: urlConversationId, recipientId } = useParams(); // Should handle both URL params based on route
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { messages: socketMessages, sendTypingIndicator } = useSocket();
+  const { messages: socketMessages, sendTypingIndicator, isConnected, isConnecting } = useSocket();
   
   // Use prop conversationId if provided (for layout mode), otherwise use URL param
   const conversationId = propConversationId || urlConversationId;
@@ -75,6 +77,8 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const retryQueueRef = useRef([]); // { tempId, payload } entries of failed sends
+  const tempIdCounter = useRef(0);
 
   useEffect(() => {
     const fetchChatData = async () => {
@@ -418,57 +422,95 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
     setUserMenuAnchor(null);
   };
 
-  const handleSend = async () =>{
+  // ── Retry a single queued message entry ──────────────────────────────────
+  const retrySend = useCallback(async ({ tempId, payload }) => {
+    setMessages(prev => prev.map(m => m._tempId === tempId ? { ...m, status: 'sending' } : m));
+    try {
+      const res = await api.post('/chat/messages', payload);
+      const sentMsg = res.data?.data || res.data;
+      setMessages(prev => {
+        const alreadyExists = prev.some(m =>
+          (m.id || m._id) === (sentMsg.id || sentMsg._id || sentMsg.message_id)
+        );
+        return alreadyExists
+          ? prev.filter(m => m._tempId !== tempId)
+          : prev.map(m => m._tempId === tempId ? { ...sentMsg, status: 'sent' } : m);
+      });
+    } catch {
+      retryQueueRef.current.push({ tempId, payload });
+      setMessages(prev => prev.map(m => m._tempId === tempId ? { ...m, status: 'failed' } : m));
+    }
+  }, []);
+
+  // Manual retry for a failed message (tap on the error icon)
+  const handleRetryFailed = useCallback((tempId) => {
+    const entry = retryQueueRef.current.find(e => e.tempId === tempId);
+    if (!entry) return;
+    retryQueueRef.current = retryQueueRef.current.filter(e => e.tempId !== tempId);
+    retrySend(entry);
+  }, [retrySend]);
+
+  // Auto-retry all queued messages when WebSocket reconnects
+  useEffect(() => {
+    if (!isConnected || retryQueueRef.current.length === 0) return;
+    const queued = [...retryQueueRef.current];
+    retryQueueRef.current = [];
+    queued.forEach(entry => retrySend(entry));
+  }, [isConnected, retrySend]);
+
+  const handleSend = async () => {
     if (!newMessage.trim()) return;
 
-    // Need either a recipient or a conversation to send
     const receiverId = recipient?.id || recipient?._id || recipientId;
     if (!receiverId && !activeConversationId) {
       setError('Cannot send message: recipient not found');
       return;
     }
 
+    const tempId = `temp_${Date.now()}_${++tempIdCounter.current}`;
+    const payload = { receiver_id: receiverId, content: newMessage };
+    const capturedText = newMessage;
+
+    // ── Optimistic render: add message immediately with 'sending' status ──
+    setMessages(prev => [...prev, {
+      _tempId: tempId,
+      sender_id: user?.id,
+      content: capturedText,
+      status: 'sending',
+      created_at: new Date().toISOString(),
+    }]);
+    setNewMessage('');
+    setSending(true);
+    setError(null);
+
+    if (sendTypingIndicator) {
+      sendTypingIndicator(receiverId, false);
+      if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
+    }
+
     try {
-      setSending(true);
-      setError(null);
-      const payload = {
-        receiver_id: receiverId,
-        content: newMessage
-      };
-      
       const res = await api.post('/chat/messages', payload);
       // Backend wraps in StandardResponse: { success, data: { message_id, sender_id, content, ... } }
       const sentMsg = res.data?.data || res.data;
-      
-      // Add with 'sent' status initially
-      const messageWithStatus = { ...sentMsg, status: 'sent' };
-      
-      // Optimistically add to UI (dedupe against WebSocket)
+      // Replace optimistic placeholder with real server response
       setMessages(prev => {
-        const exists = prev.some(m => (m.id || m._id) === (sentMsg.id || sentMsg._id || sentMsg.message_id));
-        if (exists) return prev;
-        return [...prev, messageWithStatus];
+        const alreadyExists = prev.some(m =>
+          (m.id || m._id) === (sentMsg.id || sentMsg._id || sentMsg.message_id)
+        );
+        return alreadyExists
+          ? prev.filter(m => m._tempId !== tempId)
+          : prev.map(m => m._tempId === tempId ? { ...sentMsg, status: 'sent' } : m);
       });
-      setNewMessage('');
-      
-      // Stop typing indicator after sending
-      if (sendTypingIndicator) {
-        sendTypingIndicator(receiverId, false);
-        if (typingDebounceRef.current) {
-          clearTimeout(typingDebounceRef.current);
-        }
-      }
-      
     } catch (err) {
-      console.error("Failed to send message", err);
-      
-      // Special handling for rate limiting
+      console.error('Failed to send message', err);
       if (err.response?.status === 429) {
         const retryAfter = err.response?.headers?.['retry-after'] || '60';
         setError(`Too many messages. Please wait ${retryAfter} seconds before sending again.`);
+        setMessages(prev => prev.filter(m => m._tempId !== tempId));
       } else {
-        const errorMsg = err.response?.data?.error?.message || err.response?.data?.message || 'Failed to send message';
-        setError(errorMsg);
+        // Mark as failed and queue for retry on reconnect
+        setMessages(prev => prev.map(m => m._tempId === tempId ? { ...m, status: 'failed' } : m));
+        retryQueueRef.current.push({ tempId, payload });
       }
     } finally {
       setSending(false);
@@ -478,7 +520,7 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
   // Add reaction to a message
   const handleReact = async (messageId, emoji) => {
     try {
-      await api.post(`/messages/${messageId}/reactions`, { emoji });
+      await api.post(`/chat/messages/${messageId}/reactions`, { emoji });
       // WebSocket will update the UI via reaction_added event
     } catch (err) {
       console.error('Failed to add reaction:', err);
@@ -490,7 +532,7 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
   // Remove reaction from a message
   const handleUnreact = async (messageId, emoji) => {
     try {
-      await api.delete(`/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`);
+      await api.delete(`/chat/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`);
       // WebSocket will update the UI via reaction_removed event
     } catch (err) {
       console.error('Failed to remove reaction:', err);
@@ -593,6 +635,24 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
             </>
           )}
         </Paper>
+      )}
+
+      {/* Connection quality indicator — matches WhatsApp Web pattern */}
+      {user && (!isConnected || isConnecting) && (
+        <Box sx={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1,
+          px: 2, py: 0.75,
+          bgcolor: isConnecting ? 'warning.dark' : 'grey.800',
+          color: 'white',
+          fontSize: '0.8rem',
+          userSelect: 'none',
+        }}>
+          {isConnecting ? (
+            <><CircularProgress size={13} color="inherit" sx={{ mr: 0.5 }} />Reconnecting to chat…</>
+          ) : (
+            <><WifiOffIcon sx={{ fontSize: 16, mr: 0.5 }} />No connection — messages will retry automatically</>
+          )}
+        </Box>
       )}
 
       {/* Messages Area */}
@@ -737,10 +797,23 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
                     {msgTime ? new Date(msgTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                   </Typography>
                   {isMe && (
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
                       {msg.status === 'read' && <DoneAllIcon sx={{ fontSize: 14, color: '#4fc3f7' }} />}
                       {msg.status === 'delivered' && <DoneAllIcon sx={{ fontSize: 14, opacity: 0.7 }} />}
                       {msg.status === 'sent' && <DoneIcon sx={{ fontSize: 14, opacity: 0.7 }} />}
+                      {msg.status === 'sending' && (
+                        <CircularProgress size={10} sx={{ color: 'rgba(255,255,255,0.65)' }} />
+                      )}
+                      {msg.status === 'failed' && (
+                        <IconButton
+                          size="small"
+                          onClick={() => handleRetryFailed(msg._tempId)}
+                          title="Send failed — tap to retry"
+                          sx={{ p: 0, color: '#ff5252', '&:hover': { color: '#ff1744' } }}
+                        >
+                          <ReplayIcon sx={{ fontSize: 14 }} />
+                        </IconButton>
+                      )}
                       {!msg.status && <DoneIcon sx={{ fontSize: 14, opacity: 0.4 }} />}
                     </Box>
                   )}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { View, StyleSheet, ScrollView, Image } from 'react-native';
-import { Text, Card, Button, Chip, Searchbar } from 'react-native-paper';
+import { Text, Card, Button, Chip, Searchbar, Avatar } from 'react-native-paper';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '../../context/AuthContext';
 import { userAPI } from '../../services/api';
@@ -92,10 +92,9 @@ const HomeScreen = ({ navigation }) => {
               onPress={() => navigation.navigate('AcharyaDetails', { acharyaId: acharya._id })}
             >
               <Card.Content style={styles.cardContent}>
-                <Image 
-                  source={{ uri: acharya.profile_picture || 'https://via.placeholder.com/80' }}
-                  style={styles.avatar}
-                />
+                {acharya.profile_picture
+                  ? <Image source={{ uri: acharya.profile_picture }} style={styles.avatar} />
+                  : <Avatar.Text size={40} label={(acharya.full_name || 'A')[0].toUpperCase()} style={styles.avatar} />}
                 <View style={styles.cardInfo}>
                   <Text variant="titleMedium">{acharya.full_name}</Text>
                   <Text variant="bodySmall">{acharya.acharya_profile?.specializations?.join(', ')}</Text>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { Alert, View, StyleSheet } from 'react-native';
 import { Text, TextInput, Button, RadioButton } from 'react-native-paper';
 import { bookingAPI } from '../../services/api';
 
@@ -16,11 +16,12 @@ const AttendanceConfirmScreen = ({ route, navigation }) => {
         attended: attended === 'yes',
         feedback,
       });
-      alert('Attendance confirmed!');
-      navigation.goBack();
+      Alert.alert('Success', 'Attendance confirmed!', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
     } catch (error) {
       console.error('Failed to confirm attendance:', error);
-      alert(error.response?.data?.message || 'Failed to confirm attendance');
+      Alert.alert('Error', error.response?.data?.message || 'Failed to confirm attendance');
     } finally {
       setLoading(false);
     }

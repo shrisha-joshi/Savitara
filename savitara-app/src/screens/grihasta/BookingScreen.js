@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, Platform, Pressable } from 'react-native';
 import { Text, TextInput, Button, RadioButton, ActivityIndicator, Surface, Divider } from 'react-native-paper';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Calendar } from 'react-native-calendars';
 import { bookingAPI } from '../../services/api';
 
@@ -26,6 +27,15 @@ const BookingScreen = ({ route, navigation }) => {
   const [priceEstimate, setPriceEstimate] = useState(null);
   const [priceLoading, setPriceLoading] = useState(false);
   const priceDebounceRef = useRef(null);
+
+  // DateTimePicker state
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [timePickerDate, setTimePickerDate] = useState(new Date());
+
+  // Availability check state
+  const [availabilityResult, setAvailabilityResult] = useState(null);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const availabilityDebounceRef = useRef(null);
 
   // Validate acharya data on mount — sets validationError, does NOT return early
   useEffect(() => {
@@ -69,6 +79,39 @@ const BookingScreen = ({ route, navigation }) => {
 
     return () => { if (priceDebounceRef.current) clearTimeout(priceDebounceRef.current); };
   }, [acharya?._id, formData.scheduled_date, formData.scheduled_time, formData.duration_hours, formData.booking_type]);
+
+  // Availability check — debounced whenever date / time / duration changes
+  useEffect(() => {
+    if (!acharya?._id || !formData.scheduled_date || !formData.scheduled_time) {
+      setAvailabilityResult(null);
+      return;
+    }
+    if (!/^\d{2}:\d{2}$/.test(formData.scheduled_time)) return;
+
+    if (availabilityDebounceRef.current) clearTimeout(availabilityDebounceRef.current);
+
+    availabilityDebounceRef.current = setTimeout(async () => {
+      try {
+        setAvailabilityLoading(true);
+        const dateTimeStr = `${formData.scheduled_date}T${formData.scheduled_time}:00`;
+        const res = await bookingAPI.checkAvailability({
+          acharya_id: acharya._id,
+          date_time: dateTimeStr,
+          duration: formData.duration_hours,
+        });
+        setAvailabilityResult(res.data?.data || null);
+      } catch (err) {
+        console.warn('Availability check error:', err?.response?.data?.detail || err.message);
+        setAvailabilityResult(null);
+      } finally {
+        setAvailabilityLoading(false);
+      }
+    }, 500);
+
+    return () => {
+      if (availabilityDebounceRef.current) clearTimeout(availabilityDebounceRef.current);
+    };
+  }, [acharya?._id, formData.scheduled_date, formData.scheduled_time, formData.duration_hours]);
 
   // Conditional render AFTER all hooks
   if (validationError) {
@@ -204,13 +247,71 @@ const BookingScreen = ({ route, navigation }) => {
         }}
       />
 
-      <TextInput
-        label="Time (HH:MM) *"
-        value={formData.scheduled_time}
-        onChangeText={(text) => setFormData({ ...formData, scheduled_time: text })}
-        style={styles.input}
-        placeholder="14:00"
-      />
+      <Text variant="bodySmall" style={styles.pickerLabel}>Time *</Text>
+      <Pressable
+        onPress={() => setShowTimePicker(true)}
+        style={[
+          styles.timePickerButton,
+          formData.scheduled_time ? styles.timePickerButtonFilled : null,
+        ]}
+      >
+        <Text
+          style={
+            formData.scheduled_time ? styles.timePickerValue : styles.timePickerPlaceholder
+          }
+        >
+          {formData.scheduled_time
+            ? `Selected: ${formData.scheduled_time}`
+            : 'Tap to select time'}
+        </Text>
+      </Pressable>
+
+      {showTimePicker && (
+        <DateTimePicker
+          value={timePickerDate}
+          mode="time"
+          is24Hour
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={(event, selectedDate) => {
+            if (Platform.OS !== 'ios') setShowTimePicker(false);
+            if (selectedDate) {
+              const h = String(selectedDate.getHours()).padStart(2, '0');
+              const m = String(selectedDate.getMinutes()).padStart(2, '0');
+              setTimePickerDate(selectedDate);
+              setFormData((prev) => ({ ...prev, scheduled_time: `${h}:${m}` }));
+            }
+          }}
+        />
+      )}
+
+      {/* Slot availability indicator */}
+      {(availabilityLoading || availabilityResult !== null) && (
+        <View style={styles.availabilityContainer}>
+          {availabilityLoading ? (
+            <ActivityIndicator size="small" color="#FF6B35" />
+          ) : availabilityResult?.available ? (
+            <View style={styles.availabilityRow}>
+              <Text style={styles.availabilityAvailable}>✓ Slot is available</Text>
+            </View>
+          ) : (
+            <View style={styles.availabilityRow}>
+              <Text style={styles.availabilityUnavailable}>✗ Slot not available</Text>
+              {availabilityResult?.next_available_slot ? (
+                <Text style={styles.availabilityNextSlot}>
+                  {'Next free slot: '}
+                  {new Date(availabilityResult.next_available_slot).toLocaleString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                  })}
+                </Text>
+              ) : null}
+            </View>
+          )}
+        </View>
+      )}
 
       <TextInput
         label="Duration (hours)"
@@ -322,7 +423,13 @@ const BookingScreen = ({ route, navigation }) => {
         mode="contained" 
         onPress={handleBooking}
         loading={loading}
-        disabled={loading || (!formData.pooja_type && !formData.service_name) || !formData.scheduled_date || !formData.scheduled_time}
+        disabled={
+          loading ||
+          (!formData.pooja_type && !formData.service_name) ||
+          !formData.scheduled_date ||
+          !formData.scheduled_time ||
+          (availabilityResult !== null && !availabilityResult.available)
+        }
         style={styles.button}
       >
         {formData.booking_mode === 'request' ? 'Send Request' : 'Proceed to Payment'}
@@ -419,6 +526,56 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 40,
     backgroundColor: '#FF6B35',
+  },
+  // Time picker styles
+  pickerLabel: {
+    marginBottom: 4,
+    color: '#555',
+    fontSize: 12,
+  },
+  timePickerButton: {
+    borderWidth: 1,
+    borderColor: '#888',
+    borderRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    marginBottom: 15,
+    backgroundColor: '#fff',
+  },
+  timePickerButtonFilled: {
+    borderColor: '#FF6B35',
+  },
+  timePickerValue: {
+    fontSize: 16,
+    color: '#000',
+  },
+  timePickerPlaceholder: {
+    fontSize: 16,
+    color: '#9e9e9e',
+  },
+  // Availability indicator styles
+  availabilityContainer: {
+    marginTop: -8,
+    marginBottom: 15,
+    paddingHorizontal: 4,
+  },
+  availabilityRow: {
+    flexDirection: 'column',
+  },
+  availabilityAvailable: {
+    color: '#4CAF50',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  availabilityUnavailable: {
+    color: '#EF5350',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  availabilityNextSlot: {
+    color: '#555',
+    fontSize: 13,
+    marginTop: 2,
   },
 });
 

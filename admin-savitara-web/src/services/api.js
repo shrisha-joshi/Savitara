@@ -27,10 +27,11 @@ export const adminAPI = {
   // Dashboard Analytics - matches /admin/dashboard/analytics
   getDashboard: () => api.get('/admin/dashboard/analytics'),
   
-  // Analytics - these use the main dashboard/analytics endpoint
+  // Analytics
   getUserGrowth: (params) => api.get('/admin/dashboard/analytics', { params }),
   getRevenue: (params) => api.get('/admin/dashboard/analytics', { params }),
-  getBookingStats: () => api.get('/admin/dashboard/analytics'),
+  // Dedicated stats endpoint — returns counts across ALL bookings, not just the current page
+  getBookingStats: () => api.get('/admin/bookings/stats'),
   
   // User Management - matches /admin/users/search
   searchUsers: (params) => api.get('/admin/users/search', { params }),

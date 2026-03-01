@@ -45,6 +45,7 @@ from app.core.exceptions import (
     PermissionDeniedError,
     SlotUnavailableError,
     PaymentFailedError,
+    ValidationError,
 )
 from app.db.connection import get_db
 from app.models.database import Booking, BookingStatus, PaymentStatus, UserRole
@@ -56,7 +57,14 @@ ACTION_CANCEL_BOOKING = "Cancel booking"
 # Module-level constants
 BOOKING_COMPLETED = "Booking Completed"
 
-# Valid booking status transitions – enforced in update_booking_status and cancel_booking
+# Central state machine — all transition validation is delegated here
+from app.services.booking_state_machine import (  # noqa: E402, PLC0415
+    validate_transition as _validate_transition,
+    emit_booking_update,
+)
+
+# Legacy transition table retained for reference only.
+# Enforcement is now handled by booking_state_machine.VALID_TRANSITIONS.
 _BOOKING_TRANSITIONS: Dict[str, list] = {
     BookingStatus.PENDING_PAYMENT.value: [BookingStatus.CONFIRMED.value, BookingStatus.CANCELLED.value, BookingStatus.FAILED.value],
     BookingStatus.REQUESTED.value:       [BookingStatus.CONFIRMED.value, BookingStatus.CANCELLED.value, BookingStatus.REJECTED.value],
@@ -476,6 +484,125 @@ async def get_price_estimate(
     )
 
 
+@router.get(
+    "/check-availability",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Check Acharya Availability",
+    description=(
+        "Returns whether the requested time slot is available for a given Acharya. "
+        "Checks for overlapping confirmed/pending/in-progress bookings. "
+        "Also returns the next available slot when unavailable."
+    ),
+)
+async def check_availability(
+    acharya_id: str = Query(..., description="Acharya profile ID"),
+    date_time: str = Query(..., description="ISO-8601 datetime e.g. 2026-03-15T14:00:00"),
+    duration: int = Query(2, ge=1, le=12, description="Booking duration in hours"),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """
+    Slot availability endpoint — called by BookingScreen on every date/time/duration
+    change so users see a live available / unavailable indicator before submitting.
+    """
+    # ── 1. Validate Acharya ────────────────────────────────────────────────
+    if not ObjectId.is_valid(acharya_id):
+        raise InvalidInputError(message="Invalid acharya_id format", field="acharya_id")
+
+    acharya = await db.acharya_profiles.find_one({"_id": ObjectId(acharya_id)})
+    if not acharya:
+        raise ResourceNotFoundError(resource_type="Acharya", resource_id=acharya_id)
+
+    # ── 2. Parse requested slot ────────────────────────────────────────────
+    try:
+        requested_start = datetime.fromisoformat(date_time.replace("Z", "+00:00"))
+        if requested_start.tzinfo is None:
+            requested_start = requested_start.replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise InvalidInputError(
+            message=f"Invalid date_time: {exc}. Use ISO-8601, e.g. 2026-03-15T14:00:00",
+            field="date_time",
+        ) from exc
+
+    if requested_start < datetime.now(timezone.utc):
+        raise InvalidInputError(
+            message="date_time must be in the future",
+            field="date_time",
+        )
+
+    requested_end = requested_start + timedelta(hours=duration)
+
+    # ── 3. Fetch active bookings for this acharya spanning a 2-day window ──
+    # We fetch a wider window then do Python-side overlap math because
+    # MongoDB can't easily compute end_time = start + duration_hours.
+    window_start = requested_start - timedelta(hours=12)
+    window_end = requested_end + timedelta(hours=12)
+
+    blocking_statuses = ["confirmed", "pending_payment", "in_progress"]
+
+    candidates_cursor = db.bookings.find(
+        {
+            "acharya_id": str(acharya["_id"]),
+            "status": {"$in": blocking_statuses},
+            "scheduled_datetime": {"$gte": window_start, "$lt": window_end},
+        },
+        {"_id": 1, "scheduled_datetime": 1, "duration_hours": 1},
+    )
+    candidates = await candidates_cursor.to_list(length=50)
+
+    # ── 4. Python-side overlap detection ─────────────────────────────────
+    conflicts = []
+    latest_conflict_end: Optional[datetime] = None
+
+    for booking in candidates:
+        b_start = booking.get("scheduled_datetime")
+        if b_start is None:
+            continue
+        if isinstance(b_start, str):
+            b_start = datetime.fromisoformat(b_start.replace("Z", "+00:00"))
+        if b_start.tzinfo is None:
+            b_start = b_start.replace(tzinfo=timezone.utc)
+
+        b_duration = booking.get("duration_hours", 2)
+        b_end = b_start + timedelta(hours=b_duration)
+
+        # Overlap: existing starts before our window ends AND ends after ours starts
+        if b_start < requested_end and b_end > requested_start:
+            conflicts.append(
+                {
+                    "booking_id": str(booking["_id"]),
+                    "start": b_start.isoformat(),
+                    "end": b_end.isoformat(),
+                }
+            )
+            if latest_conflict_end is None or b_end > latest_conflict_end:
+                latest_conflict_end = b_end
+
+    available = len(conflicts) == 0
+
+    # ── 5. Suggest next free slot (first gap after all conflicts end) ──────
+    next_available_slot: Optional[str] = None
+    if not available and latest_conflict_end is not None:
+        # Round up to next 30-minute boundary for a cleaner suggestion
+        minutes = latest_conflict_end.minute
+        if minutes > 0:
+            round_up = timedelta(minutes=(30 - minutes % 30) % 30)
+        else:
+            round_up = timedelta(0)
+        next_slot = latest_conflict_end + round_up
+        next_available_slot = next_slot.isoformat()
+
+    return StandardResponse(
+        success=True,
+        data={
+            "available": available,
+            "next_available_slot": next_available_slot,
+            "conflicts": conflicts,
+        },
+    )
+
+
 @router.post(
     "",
     response_model=StandardResponse,
@@ -733,11 +860,8 @@ async def update_booking_status(
 
     current_status = booking.get("status", "")
     new_status = status_update.status
-    if new_status != current_status and new_status not in _BOOKING_TRANSITIONS.get(current_status, []):
-        raise InvalidInputError(
-            field="status",
-            message=f"Cannot transition booking from '{current_status}' to '{new_status}'",
-        )
+    # Validate via central state machine (checks both legality and role permissions)
+    _validate_transition(current_status, new_status, current_user["role"])
 
     # Check permission using helper
     await _check_status_update_permission(db, booking, current_user["id"], current_user["role"])
@@ -765,7 +889,8 @@ async def update_booking_status(
 
     await db.bookings.update_one({"_id": ObjectId(booking_id)}, {"$set": update_doc})
 
-    # Send notifications after status update
+    # Send notifications after status update (includes FCM for payment_required)
+    # Note: _notify_booking_status_update also emits the booking_update WS event.
     await _notify_booking_status_update(db, booking, booking_id, status_update, update_doc)
 
     return StandardResponse(success=True, message="Status updated")
@@ -809,14 +934,9 @@ async def cancel_booking(
     # Check permission using helper
     await _check_cancel_permission(db, booking, current_user["id"], current_user["role"])
 
-    # Enforce state machine transitions from _BOOKING_TRANSITIONS
+    # Validate via central state machine
     current_status = booking.get("status")
-    allowed_transitions = _BOOKING_TRANSITIONS.get(current_status, [])
-    if BookingStatus.CANCELLED.value not in allowed_transitions:
-        raise InvalidInputError(
-            message=f"Cannot cancel booking in '{current_status}' status. Cancellation is only allowed from pending_payment, requested, or confirmed states.",
-            details={"current_status": current_status, "allowed_transitions": allowed_transitions}
-        )
+    _validate_transition(current_status, BookingStatus.CANCELLED.value, current_user["role"])
 
     await db.bookings.update_one(
         {"_id": ObjectId(booking_id)},
@@ -827,6 +947,9 @@ async def cancel_booking(
             }
         },
     )
+
+    # Emit booking_update WS event to both parties
+    await emit_booking_update(db, booking_id, booking, BookingStatus.CANCELLED.value)
 
     # Trigger Razorpay refund if payment was already collected
     if (
@@ -1050,6 +1173,29 @@ async def verify_payment(
         if str(booking_doc["grihasta_id"]) != current_user["id"]:
             raise PermissionDeniedError(action="Verify payment")
 
+        # ── Idempotency guard ─────────────────────────────────────────────────
+        # If payment was already verified, return success without re-processing.
+        if (
+            booking_doc.get("status") == BookingStatus.CONFIRMED.value
+            and booking_doc.get("payment_status") == PaymentStatus.COMPLETED.value
+        ):
+            return StandardResponse(
+                success=True,
+                data={
+                    "booking_id": booking_id,
+                    "status": BookingStatus.CONFIRMED.value,
+                    "start_otp": booking_doc.get("start_otp"),
+                },
+                message="Payment already verified. Booking is confirmed.",
+            )
+
+        # Validate state transition via central state machine
+        _validate_transition(
+            booking_doc.get("status", ""),
+            BookingStatus.CONFIRMED.value,
+            current_user["role"],
+        )
+
         # Verify Razorpay signature
         try:
             from app.services.payment_service import RazorpayService
@@ -1124,21 +1270,15 @@ async def verify_payment(
                         data={"type": "booking_confirmed", "booking_id": booking_id},
                     )
             
-            # Send WebSocket updates to both parties
-            grihasta_id = str(booking_doc["grihasta_id"])
-            acharya_id = str(booking_doc["acharya_id"])
-            
-            websocket_data = {
-                "type": "booking_update",
-                "booking_id": booking_id,
-                "status": BookingStatus.CONFIRMED.value,
-                "payment_status": PaymentStatus.COMPLETED.value,
-                "message": "Payment verified. Booking confirmed."
-            }
-            
-            await manager.send_personal_message(grihasta_id, websocket_data)
-            await manager.send_personal_message(acharya_id, websocket_data)
-            
+            # Emit unified booking_update WS event via state machine helper
+            await emit_booking_update(
+                db,
+                booking_id,
+                booking_doc,
+                BookingStatus.CONFIRMED.value,
+                extra={"payment_status": PaymentStatus.COMPLETED.value},
+            )
+
         except Exception as e:
             logger.warning(f"Failed to send confirmation notifications: {e}")
 
@@ -1205,12 +1345,12 @@ async def start_booking(
         if str(booking_doc.get("acharya_id")) not in [str(acharya_profile_id), acharya_id]:
             raise PermissionDeniedError(action="Start booking")
 
-        # Check booking status
-        if booking_doc["status"] != BookingStatus.CONFIRMED.value:
-            raise InvalidInputError(
-                message=f"Cannot start booking with status: {booking_doc['status']}",
-                field="status",
-            )
+        # Validate state transition via central state machine
+        _validate_transition(
+            booking_doc["status"],
+            BookingStatus.IN_PROGRESS.value,
+            current_user["role"],
+        )
 
         # Verify OTP — M8 fix: check expiry
         otp_expires_at = booking_doc.get("otp_expires_at")
@@ -1230,6 +1370,9 @@ async def start_booking(
                 }
             },
         )
+
+        # Emit booking_update WS event to both parties
+        await emit_booking_update(db, booking_id, booking_doc, BookingStatus.IN_PROGRESS.value)
 
         logger.info(f"Booking {booking_id} started by Acharya {acharya_id}")
 
@@ -1271,6 +1414,9 @@ async def _complete_booking_with_notifications(db, booking_id: str, booking_doc:
             }
         },
     )
+
+    # Emit booking_update WS event immediately after DB write
+    await emit_booking_update(db, booking_id, booking_doc, BookingStatus.COMPLETED.value)
 
     try:
         from app.services.notification_service import NotificationService
@@ -1475,14 +1621,39 @@ def _build_my_bookings_pipeline(
     ]
 
 
+def _serialize_document(doc: Any) -> Any:
+    """
+    Recursively walk *doc* and convert every ObjectId to a string.
+    Lists and nested dicts are walked in-place.  Returns the mutated object.
+
+    This supersedes the flat _serialize_booking_ids() for the detail endpoint
+    where joined sub-documents (pooja, acharya, grihasta_user, acharya_user)
+    each contain their own ObjectId fields.
+    """
+    if isinstance(doc, dict):
+        for key in list(doc.keys()):
+            val = doc[key]
+            if isinstance(val, ObjectId):
+                doc[key] = str(val)
+                if key == "_id":
+                    doc["id"] = doc[key]
+            elif isinstance(val, (dict, list)):
+                doc[key] = _serialize_document(val)
+        return doc
+    if isinstance(doc, list):
+        return [_serialize_document(item) for item in doc]
+    if isinstance(doc, ObjectId):
+        return str(doc)
+    return doc
+
+
 def _serialize_booking_ids(booking: Dict[str, Any]) -> None:
-    """Convert ObjectIds to strings for JSON serialization."""
-    id_fields = ["_id", "grihasta_id", "acharya_id", "pooja_id", "acharya_user_id"]
-    for field in id_fields:
-        if field in booking and booking[field]:
-            if field == "_id":
-                booking["id"] = str(booking["_id"])
-            booking[field] = str(booking[field])
+    """Convert ObjectIds to strings for JSON serialization.
+
+    Delegates to _serialize_document so nested joined sub-documents
+    (pooja, acharya, grihasta_user, acharya_user) are also serialised.
+    """
+    _serialize_document(booking)
 
 
 @router.get(
@@ -1642,6 +1813,9 @@ async def get_booking_details(
         ):
             raise PermissionDeniedError(action=ERROR_VIEW_BOOKING)
 
+        # Recursively convert all ObjectIds (including nested joined sub-documents)
+        _serialize_document(booking)
+
         return StandardResponse(success=True, data=booking)
 
     except (ResourceNotFoundError, PermissionDeniedError):
@@ -1651,4 +1825,76 @@ async def get_booking_details(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch booking details",
+        )
+
+
+@router.post(
+    "/{booking_id}/mark-arrival",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Mark Acharya Arrival (Location-Verified)",
+    description="Verify Acharya's location and mark arrival for event-driven attendance confirmation",
+)
+async def mark_acharya_arrival(
+    booking_id: str,
+    location_data: Dict[str, float] = Body(..., example={"lat": 12.9716, "lng": 77.5946}),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_acharya)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """
+    Mark Acharya arrival with location verification.
+    
+    Implements Prompt 1: Event-Driven Attendance Verification
+    - Validates Acharya is within 150m of booking location using Haversine formula
+    - Updates booking status to IN_PROGRESS
+    - Broadcasts real-time notification to Grihasta via WebSocket
+    
+    Args:
+        booking_id: The booking to mark arrival for
+        location_data: Current coordinates {"lat": float, "lng": float}
+        current_user: Authenticated Acharya user
+        db: Database connection
+    
+    Returns:
+        Updated booking with attendance confirmation
+    
+    Raises:
+        ValidationError (BKG_004): If location is outside 150m radius
+        NotFoundError (BKG_002): If booking not found
+        ValidationError (BKG_003): If Acharya not authorized for this booking
+    """
+    try:
+        from app.services.booking_service import verify_location_and_mark_arrival
+        from app.services.websocket_manager import manager
+        
+        acharya_id = current_user["id"]
+        
+        # Verify location and mark arrival
+        updated_booking = await verify_location_and_mark_arrival(
+            db=db,
+            booking_id=booking_id,
+            acharya_id=acharya_id,
+            current_coords=location_data,
+            websocket_manager=manager,
+        )
+        
+        # Serialize ObjectIds for response
+        _serialize_document(updated_booking)
+        
+        return StandardResponse(
+            success=True,
+            data=updated_booking,
+            message="Arrival confirmed successfully. The Grihasta has been notified.",
+        )
+    
+    except (ValidationError, NotFoundError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        logger.error(f"Mark arrival error for booking {booking_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to mark arrival. Please try again.",
         )

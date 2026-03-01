@@ -3,12 +3,17 @@ import { useEffect, useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Chip, Divider, Text } from 'react-native-paper';
 import { chatAPI, reviewAPI, userAPI } from '../../services/api';
+import EmptyState from '../../components/EmptyState';
+import ErrorBoundary from '../../components/ErrorBoundary';
+import ErrorScreen from '../../components/ErrorScreen';
+import LoadingScreen from '../../components/LoadingScreen';
 
 const AcharyaDetailsScreen = ({ route, navigation }) => {
   const { acharyaId } = route.params;
   const [acharya, setAcharya] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadAcharya();
@@ -19,8 +24,9 @@ const AcharyaDetailsScreen = ({ route, navigation }) => {
     try {
       const response = await userAPI.getAcharya(acharyaId);
       setAcharya(response.data);
-    } catch (error) {
-      console.error('Failed to load acharya:', error);
+    } catch (err) {
+      console.error('Failed to load acharya:', err);
+      setError(err.response?.data?.message || 'Failed to load Acharya details. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -54,21 +60,23 @@ const AcharyaDetailsScreen = ({ route, navigation }) => {
     }
   };
 
-  if (loading || !acharya) {
-    return (
-      <View style={styles.container}>
-        <Text>Loading...</Text>
-      </View>
-    );
-  }
+  if (loading) return <LoadingScreen text="Loading Acharya details…" />;
+  if (error) return (
+    <ErrorScreen
+      message={error}
+      onRetry={() => { setError(null); setLoading(true); loadAcharya(); }}
+    />
+  );
+  if (!acharya) return <ErrorScreen message="Acharya not found." />;
 
   const profile = acharya.acharya_profile;
 
   return (
+    <ErrorBoundary>
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         <Image 
-          source={{ uri: acharya.profile_picture || 'https://via.placeholder.com/120' }}
+          source={acharya.profile_picture ? { uri: acharya.profile_picture } : null}
           style={styles.avatar}
         />
         <View style={styles.nameRow}>
@@ -126,7 +134,13 @@ const AcharyaDetailsScreen = ({ route, navigation }) => {
           Recent Reviews
         </Text>
         {reviews.length === 0 ? (
-          <Text>No reviews yet</Text>
+          <EmptyState
+            icon="star-outline"
+            title="No reviews yet"
+            message="This Acharya hasn't received any reviews yet."
+            iconSize={40}
+            iconColor="#ccc"
+          />
         ) : (
           reviews.map((review) => (
             <View key={review._id} style={styles.review}>
@@ -159,6 +173,7 @@ const AcharyaDetailsScreen = ({ route, navigation }) => {
         </Button>
       </View>
     </ScrollView>
+    </ErrorBoundary>
   );
 };
 

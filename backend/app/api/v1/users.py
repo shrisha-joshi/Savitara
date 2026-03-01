@@ -192,6 +192,12 @@ async def acharya_onboarding(
     Complete Acharya onboarding
 
     Status remains PENDING until admin verification
+    
+    Prompt 3: Implements referral credit logic with atomic transactions
+    - Validates referral code if provided
+    - Awards 500 Priority Credits to new Acharya
+    - Updates referrer's record
+    - Sets verification_status to 'priority_pending'
     """
     try:
         user_id = current_user["id"]
@@ -203,6 +209,65 @@ async def acharya_onboarding(
             raise InvalidInputError(
                 message="Onboarding already completed", field="user_id"
             )
+
+        # Prompt 3: Process referral code if provided (with atomic transaction)
+        verification_status = "pending"  # Default status
+        priority_credits = 0
+        onboarding_message = "Onboarding submitted for verification"
+        
+        if onboarding_data.referral_code:
+            async with await db.client.start_session() as session:
+                async with session.start_transaction():
+                    # Find referral by code
+                    referral = await db.referrals.find_one(
+                        {
+                            "referral_code": onboarding_data.referral_code,
+                            "referee_id": None,  # Must be unused
+                        },
+                        session=session,
+                    )
+                    
+                    if referral:
+                        # Valid referral code found
+                        priority_credits = 500
+                        verification_status = "priority_pending"
+                        onboarding_message = "Referral applied! Your verification is now prioritized."
+                        
+                        # Update referral record with referee info
+                        await db.referrals.update_one(
+                            {"_id": referral["_id"]},
+                            {
+                                "$set": {
+                                    "referee_id": user_id,
+                                    "referee_role": "acharya",
+                                    "status": "signed_up",
+                                    "signed_up_at": datetime.now(timezone.utc),
+                                    "updated_at": datetime.now(timezone.utc),
+                                }
+                            },
+                            session=session,
+                        )
+                        
+                        # Update referrer's user credits (if they haven't already received signup bonus)
+                        referrer_id = referral["referrer_id"]
+                        await db.users.update_one(
+                            {"_id": ObjectId(referrer_id)},
+                            {
+                                "$inc": {"credits": 100},  # Referrer gets 100 credits for successful signup
+                                "$set": {"updated_at": datetime.now(timezone.utc)},
+                            },
+                            session=session,
+                        )
+                        
+                        logger.info(
+                            f"Referral code {onboarding_data.referral_code} applied for Acharya {user_id}. "
+                            f"Referrer: {referrer_id}, Credits awarded: 500 (priority)"
+                        )
+                    else:
+                        logger.warning(
+                            f"Invalid or already used referral code: {onboarding_data.referral_code}"
+                        )
+                        # Don't fail onboarding, just ignore invalid code
 
         # Create Acharya profile
         profile = AcharyaProfile(
@@ -228,25 +293,33 @@ async def acharya_onboarding(
         result = await db.acharya_profiles.insert_one(profile_dict)
         profile_id = result.inserted_id
 
-        # Update user updated_at and terms acceptance
-        await db.users.update_one(
-            {"_id": user_oid},
-            {
-                "$set": {
-                    "updated_at": datetime.now(timezone.utc),
-                    "preferred_language": onboarding_data.preferred_language,
-                    "terms_accepted_at": datetime.now(timezone.utc)
-                    if onboarding_data.terms_accepted
-                    else None,
-                    "privacy_accepted_at": datetime.now(timezone.utc)
-                    if onboarding_data.privacy_accepted
-                    else None,
-                    "acharya_agreement_accepted_at": datetime.now(timezone.utc)
-                    if onboarding_data.acharya_agreement_accepted
-                    else None,
-                }
-            },
-        )
+        # Update user with priority credits if referral was valid
+        user_update_fields = {
+            "updated_at": datetime.now(timezone.utc),
+            "preferred_language": onboarding_data.preferred_language,
+            "terms_accepted_at": datetime.now(timezone.utc)
+            if onboarding_data.terms_accepted
+            else None,
+            "privacy_accepted_at": datetime.now(timezone.utc)
+            if onboarding_data.privacy_accepted
+            else None,
+            "acharya_agreement_accepted_at": datetime.now(timezone.utc)
+            if onboarding_data.acharya_agreement_accepted
+            else None,
+        }
+        
+        user_update_operations = {"$set": user_update_fields}
+        if priority_credits > 0:
+            user_update_operations["$inc"] = {"credits": priority_credits}
+        
+        await db.users.update_one({"_id": user_oid}, user_update_operations)
+        
+        # Update profile with verification status
+        if verification_status == "priority_pending":
+            await db.acharya_profiles.update_one(
+                {"_id": profile_id},
+                {"$set": {"kyc_status": verification_status}},
+            )
 
         # Send notification to admin for verification
         try:
@@ -260,17 +333,22 @@ async def acharya_onboarding(
                 u.get("fcm_token") for u in admin_users if u.get("fcm_token")
             ]
             if admin_tokens:
+                priority_tag = " [PRIORITY]" if verification_status == "priority_pending" else ""
                 notification_service.send_multicast(
                     tokens=admin_tokens,
-                    title="New Acharya Verification Request",
+                    title=f"New Acharya Verification Request{priority_tag}",
                     body="User submitted profile for verification",
-                    data={"type": "acharya_verification", "acharya_id": str(user_id)},
+                    data={
+                        "type": "acharya_verification",
+                        "acharya_id": str(user_id),
+                        "priority": str(verification_status == "priority_pending"),
+                    },
                 )
         except Exception as e:
             logger.warning(f"Failed to send admin notification: {e}")
 
         logger.info(
-            f"Acharya onboarding completed for user {user_id}, pending verification"
+            f"Acharya onboarding completed for user {user_id}, status: {verification_status}"
         )
 
         # Get updated user data
@@ -282,6 +360,8 @@ async def acharya_onboarding(
                 "profile_id": str(profile_id),
                 "status": UserStatus.PENDING.value,
                 "message": "Your profile is under review. You'll be notified once verified.",
+                "priority_credits": priority_credits,
+                "verification_status": verification_status,
                 "user": {
                     "id": str(updated_user["_id"]),
                     "email": updated_user["email"],
@@ -293,7 +373,7 @@ async def acharya_onboarding(
                     "onboarding_completed": True,
                 },
             },
-            message="Onboarding submitted for verification",
+            message=onboarding_message,
         )
 
     except InvalidInputError:

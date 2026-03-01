@@ -13,6 +13,7 @@ import BookingScreen from '../screens/grihasta/BookingScreen';
 import PaymentScreen from '../screens/grihasta/PaymentScreen';
 import MyBookingsScreen from '../screens/grihasta/MyBookingsScreen';
 import BookingDetailsScreen from '../screens/grihasta/BookingDetailsScreen';
+import ReviewScreen from '../screens/grihasta/ReviewScreen';
 import ChatListScreen from '../screens/chat/ChatListScreen';
 import ConversationScreen from '../screens/chat/ConversationScreen';
 import ProfileScreen from '../screens/common/ProfileScreen';
@@ -35,6 +36,7 @@ import EarningsScreen from '../screens/acharya/EarningsScreen';
 import StartBookingScreen from '../screens/acharya/StartBookingScreen';
 import AttendanceConfirmScreen from '../screens/acharya/AttendanceConfirmScreen';
 import ReviewsScreen from '../screens/acharya/ReviewsScreen';
+import TrustScoreScreen from '../screens/acharya/TrustScoreScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
 
 const Tab = createBottomTabNavigator();
@@ -148,6 +150,7 @@ const renderNavigationScreens = (user, isOnboarded, userRole) => {
         <Stack.Screen name="Booking" component={BookingScreen} />
         <Stack.Screen name="Payment" component={PaymentScreen} />
         <Stack.Screen name="BookingDetails" component={BookingDetailsScreen} />
+        <Stack.Screen name="WriteReview" component={ReviewScreen} options={{ title: 'Write a Review' }} />
         <Stack.Screen name="Conversation" component={ConversationScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
       </>
@@ -168,6 +171,7 @@ const renderNavigationScreens = (user, isOnboarded, userRole) => {
       <Stack.Screen name="StartBooking" component={StartBookingScreen} />
       <Stack.Screen name="AttendanceConfirm" component={AttendanceConfirmScreen} />
       <Stack.Screen name="Reviews" component={ReviewsScreen} />
+      <Stack.Screen name="TrustScore" component={TrustScoreScreen} options={{ title: 'Trust Score' }} />
       <Stack.Screen name="Conversation" component={ConversationScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
     </>

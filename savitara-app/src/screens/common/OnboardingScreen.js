@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { Alert, View, StyleSheet, ScrollView } from 'react-native';
 import { TextInput, Button, RadioButton, Text, Menu, TouchableRipple, Divider } from 'react-native-paper';
 import CascadingLocationSelect from '../../components/CascadingLocationSelect';
 import { useAuth } from '../../context/AuthContext';
@@ -72,7 +72,7 @@ const OnboardingScreen = () => {
       await refreshUser();
     } catch (error) {
       console.error('Onboarding failed:', error);
-      alert(error.response?.data?.detail || error.response?.data?.message || 'Onboarding failed');
+      Alert.alert('Error', error.response?.data?.detail || error.response?.data?.message || 'Onboarding failed');
     } finally {
       setLoading(false);
     }

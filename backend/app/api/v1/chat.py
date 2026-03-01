@@ -3,7 +3,7 @@ Chat API Endpoints
 Handles 1-to-1 messaging and open chat (24h expiry)
 SonarQube: S5122 - Input validation with Pydantic
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import Annotated, Dict, Any, Optional, Tuple
 import logging
@@ -24,10 +24,23 @@ from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from app.services.websocket_manager import manager
 from app.middleware.block_enforcement import BlockEnforcementMiddleware
 import re
+import os
+import uuid
+import shutil
+import aiofiles
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["Chat"])
+
+# MongoDB aggregation pipeline stage key constants (SonarQube: S1192 - no literal duplication)
+_MATCH = "$match"
+_GROUP = "$group"
+_SORT = "$sort"
+_FIRST = "$first"
+_SUM = "$sum"
+_TO_STRING = "$toString"
+_CONV_ID_FIELD = "$conversation_id"
 
 
 def sanitize_message_content(content: str) -> Tuple[str, bool]:
@@ -248,6 +261,181 @@ async def _count_unread_messages(db, conv_oid, conv_id: str, user_id: str, user_
             {"conversation_id": conv_id, "receiver_id": user_id, "read": False}
         )
     return unread_count
+
+
+# ---------------------------------------------------------------------------
+# Batch-fetch helpers — each keeps a low cognitive complexity score
+# ---------------------------------------------------------------------------
+
+
+async def _batch_fetch_users(db, conversations: list, user_id: str) -> Dict[str, Any]:
+    """Return {uid_str: user_doc} for every 'other' participant across all conversations."""
+    oids = []
+    for conv in conversations:
+        other_id = next(
+            (p for p in conv.get("participants", []) if str(p) != user_id), None
+        )
+        if other_id and ObjectId.is_valid(str(other_id)):
+            oids.append(ObjectId(str(other_id)))
+    if not oids:
+        return {}
+    result: Dict[str, Any] = {}
+    async for u in db.users.find({"_id": {"$in": oids}}):
+        result[str(u["_id"])] = u
+    return result
+
+
+async def _batch_fetch_last_messages(db, conv_ids_oid: list, conv_ids_str: list) -> Dict[str, Any]:
+    """Return {conv_id_str: last_msg_dict} using a single $group aggregation."""
+    all_ids = conv_ids_oid + conv_ids_str
+    if not all_ids:
+        return {}
+    pipeline = [
+        {_MATCH: {"conversation_id": {"$in": all_ids}, "deleted": {"$ne": True}}},
+        {_SORT: {"created_at": -1}},
+        {_GROUP: {"_id": {_TO_STRING: _CONV_ID_FIELD}, "content": {_FIRST: "$content"}, "created_at": {_FIRST: "$created_at"}}},
+    ]
+    result: Dict[str, Any] = {}
+    async for doc in db.messages.aggregate(pipeline):
+        ts = doc.get("created_at")
+        result[doc["_id"]] = {"content": doc.get("content"), "created_at": ts, "timestamp": ts.isoformat() if ts else None}
+    return result
+
+
+async def _batch_fetch_unread_counts(
+    db, conv_ids_oid: list, conv_ids_str: list, user_id: str, user_oid: Optional[ObjectId]
+) -> Dict[str, int]:
+    """Return {conv_id_str: unread_count} via aggregation, handling legacy string IDs."""
+    all_ids = conv_ids_oid + conv_ids_str
+    if not all_ids:
+        return {}
+    receiver_values = [user_oid, user_id] if user_oid else [user_id]
+    pipeline = [
+        {_MATCH: {"conversation_id": {"$in": all_ids}, "receiver_id": {"$in": receiver_values}, "read": False, "deleted": {"$ne": True}}},
+        {_GROUP: {"_id": {_TO_STRING: _CONV_ID_FIELD}, "count": {_SUM: 1}}},
+    ]
+    result: Dict[str, int] = {}
+    async for doc in db.messages.aggregate(pipeline):
+        result[doc["_id"]] = doc["count"]
+    return result
+
+
+async def _batch_fetch_settings(db, conv_ids_str: list, user_id: str) -> Dict[str, Any]:
+    """Return {conv_id_str: settings_dict} in one find query."""
+    result: Dict[str, Any] = {}
+    async for s in db.conversation_user_settings.find(
+        {"conversation_id": {"$in": conv_ids_str}, "user_id": user_id}
+    ):
+        result[str(s["conversation_id"])] = s
+    return result
+
+
+async def _batch_fetch_display_names(
+    db, users_by_id: Dict[str, Any]
+) -> tuple:
+    """Return (acharya_display, grihasta_display) dicts mapping user_id → name."""
+    acharya_ids = [str(u["_id"]) for u in users_by_id.values() if u.get("role") == UserRole.ACHARYA.value]
+    grihasta_ids = [str(u["_id"]) for u in users_by_id.values() if u.get("role") == UserRole.GRIHASTA.value]
+
+    acharya_display: Dict[str, str] = {}
+    grihasta_display: Dict[str, str] = {}
+
+    if acharya_ids:
+        async for p in db.acharya_profiles.find({"user_id": {"$in": acharya_ids}}):
+            acharya_display[str(p["user_id"])] = p.get("name", "Acharya")
+    if grihasta_ids:
+        async for p in db.grihasta_profiles.find({"user_id": {"$in": grihasta_ids}}):
+            grihasta_display[str(p["user_id"])] = p.get("name", "User")
+
+    return acharya_display, grihasta_display
+
+
+def _resolve_display_name(
+    other_user: Optional[Dict[str, Any]],
+    acharya_display: Dict[str, str],
+    grihasta_display: Dict[str, str],
+) -> str:
+    """Return display name for a user from pre-fetched profile maps."""
+    if not other_user:
+        return "User"
+    uid = str(other_user["_id"])
+    role = other_user.get("role")
+    if role == UserRole.ACHARYA.value:
+        return acharya_display.get(uid, "Acharya")
+    if role == UserRole.GRIHASTA.value:
+        return grihasta_display.get(uid, "User")
+    return "User"
+
+
+def _assemble_enriched_conversation(
+    conv: dict,
+    user_id: str,
+    users_by_id: Dict[str, Any],
+    last_messages: Dict[str, Any],
+    unread_counts: Dict[str, int],
+    settings_by_conv: Dict[str, Any],
+    acharya_display: Dict[str, str],
+    grihasta_display: Dict[str, str],
+) -> dict:
+    """Build the enriched conversation dict from pre-fetched data (no DB calls)."""
+    conv_id = str(conv["_id"])
+    other_id_raw = next((p for p in conv.get("participants", []) if str(p) != user_id), None)
+    other_uid = str(other_id_raw) if other_id_raw else None
+    other_user = users_by_id.get(other_uid) if other_uid else None
+    display_name = _resolve_display_name(other_user, acharya_display, grihasta_display)
+    settings = settings_by_conv.get(conv_id, {})
+    return {
+        "id": conv_id,
+        "_id": conv_id,
+        "other_user": {
+            "id": str(other_user["_id"]),
+            "_id": str(other_user["_id"]),
+            "name": display_name,
+            "role": other_user.get("role"),
+            "profile_picture": other_user.get("profile_picture"),
+            "profile_image": other_user.get("profile_picture"),
+        } if other_user else None,
+        "last_message": last_messages.get(conv_id),
+        "unread_count": unread_counts.get(conv_id, 0),
+        "last_message_at": conv.get("last_message_at"),
+        "participants": [str(p) for p in conv.get("participants", [])],
+        "is_pinned": settings.get("is_pinned", False),
+        "pin_rank": settings.get("pin_rank"),
+        "is_archived": settings.get("is_archived", False),
+        "muted_until": settings.get("muted_until"),
+        "notifications_on": settings.get("notifications_on", True),
+        "last_read_at": settings.get("last_read_at"),
+    }
+
+
+async def _get_conversations_batch(
+    db, conversations: list, user_id: str, user_oid: Optional[ObjectId]
+) -> list:
+    """
+    Enrich conversations with ~7 bulk DB queries (was 5*N sequential queries).
+    All helper functions are separately testable and each stays under complexity limit.
+    """
+    if not conversations:
+        return []
+
+    conv_ids_oid = [conv["_id"] for conv in conversations]
+    conv_ids_str = [str(conv["_id"]) for conv in conversations]
+
+    users_by_id = await _batch_fetch_users(db, conversations, user_id)
+    last_messages = await _batch_fetch_last_messages(db, conv_ids_oid, conv_ids_str)
+    unread_counts = await _batch_fetch_unread_counts(db, conv_ids_oid, conv_ids_str, user_id, user_oid)
+    settings_by_conv = await _batch_fetch_settings(db, conv_ids_str, user_id)
+    acharya_display, grihasta_display = await _batch_fetch_display_names(db, users_by_id)
+
+    return [
+        _assemble_enriched_conversation(
+            conv, user_id, users_by_id, last_messages, unread_counts,
+            settings_by_conv, acharya_display, grihasta_display,
+        )
+        for conv in conversations
+    ]
+
+
 
 
 async def _get_other_participant(db, conv: dict, user_id: str):
@@ -504,6 +692,13 @@ def _serialize_message_doc(msg: dict) -> dict:
         if msg.get("created_at")
         else None,
         "deleted": msg.get("deleted", False),
+        # Media fields
+        "message_type": msg.get("message_type", "text"),
+        "media_url": msg.get("media_url"),
+        "media_mime": msg.get("media_mime"),
+        "media_duration_s": msg.get("media_duration_s"),
+        "file_name": msg.get("file_name"),
+        "file_size": msg.get("file_size"),
     }
 
 
@@ -634,6 +829,11 @@ def _build_message_response(
         "created_at": message.created_at.isoformat() if message.created_at else None,
         "timestamp": message.created_at.isoformat() if message.created_at else None,
         "expires_at": message.expires_at.isoformat() if message.expires_at else None,
+        # Media fields
+        "message_type": message.message_type if message.message_type else "text",
+        "media_url": message.media_url,
+        "media_mime": message.media_mime,
+        "media_duration_s": message.media_duration_s,
     }
 
 
@@ -730,6 +930,149 @@ async def send_message(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to send message",
+        )
+
+
+@router.post(
+    "/messages/upload",
+    response_model=StandardResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Send Media Message",
+    description="Upload a voice/image/file attachment and send as a chat message",
+)
+async def send_media_message(
+    receiver_id: Annotated[Optional[str], Form()] = None,
+    message_type: Annotated[str, Form()] = "file",
+    duration_seconds: Annotated[Optional[int], Form()] = None,
+    file: UploadFile = File(None),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """Upload and send a media message (voice/image/file attachment)"""
+    try:
+        from app.models.database import MessageType
+
+        ALLOWED_TYPES = {
+            MessageType.VOICE.value,
+            MessageType.IMAGE.value,
+            MessageType.FILE.value,
+        }
+        if message_type not in ALLOWED_TYPES:
+            raise InvalidInputError(
+                message=f"message_type must be one of {list(ALLOWED_TYPES)}",
+                field="message_type",
+            )
+        if not receiver_id:
+            raise InvalidInputError(
+                message="receiver_id is required",
+                field="receiver_id",
+            )
+        if file is None:
+            raise InvalidInputError(message="file is required", field="file")
+
+        sender_id = current_user["id"]
+
+        # Save uploaded file
+        upload_dir = os.path.join("uploads", "chat")
+        os.makedirs(upload_dir, exist_ok=True)
+        original_name: str = file.filename or "attachment"
+        ext = os.path.splitext(original_name)[1] or {
+            "voice": ".m4a",
+            "image": ".jpg",
+            "file": ".bin",
+        }.get(message_type, ".bin")
+        filename = f"{uuid.uuid4().hex}{ext}"
+        filepath = os.path.join(upload_dir, filename)
+        contents = await file.read()
+        async with aiofiles.open(filepath, "wb") as f_out:
+            await f_out.write(contents)
+
+        file_size = len(contents)
+        media_url = f"/uploads/chat/{filename}"
+
+        # Build content label
+        type_labels = {
+            "voice": "\U0001f3a4 Voice message",
+            "image": "\U0001f5bc\ufe0f Image",
+            "file": f"\U0001f4ce {original_name}",
+        }
+        content_label = type_labels.get(message_type, "\U0001f4ce Attachment")
+
+        # Create conversation + base message (handles receiver resolution, sanitization)
+        message, conversation_id, conversation_doc = await _handle_one_to_one_message(
+            db, sender_id, receiver_id, content_label
+        )
+
+        # Build message dict with media overrides (not validated by Pydantic model)
+        msg_dict = message.model_dump(by_alias=True, exclude={"id"})
+        msg_dict["message_type"] = message_type
+        msg_dict["media_url"] = media_url
+        msg_dict["media_mime"] = file.content_type or "application/octet-stream"
+        msg_dict["file_name"] = original_name
+        msg_dict["file_size"] = file_size
+        if duration_seconds is not None:
+            msg_dict["media_duration_s"] = duration_seconds
+
+        result = await db.messages.insert_one(msg_dict)
+        saved_id = str(result.inserted_id)
+
+        # WebSocket broadcast
+        try:
+            ws_message = {
+                "type": "new_message",
+                "id": saved_id,
+                "_id": saved_id,
+                "conversation_id": conversation_id,
+                "sender_id": sender_id,
+                "receiver_id": receiver_id,
+                "content": content_label,
+                "message_type": message_type,
+                "media_url": media_url,
+                "media_duration_s": duration_seconds,
+                "file_name": original_name,
+                "created_at": message.created_at.isoformat()
+                if message.created_at
+                else datetime.now(timezone.utc).isoformat(),
+            }
+            await manager.send_personal_message(receiver_id, ws_message)
+            await manager.send_personal_message(sender_id, ws_message)
+        except Exception as ws_err:
+            logger.error(f"WS broadcast error for media message: {ws_err}")
+
+        # Send push notification
+        await _send_message_notification(
+            db, conversation_doc, current_user, content_label, conversation_id
+        )
+
+        return StandardResponse(
+            success=True,
+            data={
+                "message_id": saved_id,
+                "id": saved_id,
+                "_id": saved_id,
+                "conversation_id": conversation_id,
+                "sender_id": sender_id,
+                "receiver_id": receiver_id,
+                "content": content_label,
+                "message_type": message_type,
+                "media_url": media_url,
+                "media_duration_s": duration_seconds,
+                "file_name": original_name,
+                "file_size": file_size,
+                "created_at": message.created_at.isoformat()
+                if message.created_at
+                else None,
+            },
+            message="Media message sent successfully",
+        )
+
+    except (InvalidInputError, PermissionDeniedError, ResourceNotFoundError):
+        raise
+    except Exception as e:
+        logger.error(f"Media message upload error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send media message",
         )
 
 
@@ -858,10 +1201,9 @@ async def get_conversations(
                 .to_list(length=None)
             )
 
-        # Enrich each conversation with metadata and settings
-        result_conversations = [
-            await _enrich_conversation(db, conv, user_id) for conv in conversations
-        ]
+        # Batch-enrich all conversations (~7 total DB queries regardless of count)
+        # Replaces the old per-conversation N+1 loop (_enrich_conversation).
+        result_conversations = await _get_conversations_batch(db, conversations, user_id, user_oid)
 
         # Filter out archived conversations unless include_archived=True
         if not include_archived:
@@ -903,6 +1245,51 @@ async def get_conversations(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch conversations",
+        )
+
+
+@router.get(
+    "/conversations/{conversation_id}",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Single Conversation",
+    description="Get settings and metadata for a single conversation",
+)
+async def get_conversation(
+    conversation_id: str,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """Return a single conversation's settings (muted, pinned, archived, etc.)"""
+    try:
+        user_id = current_user["id"]
+        conv_oid = ObjectId(conversation_id) if ObjectId.is_valid(conversation_id) else None
+        user_oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
+
+        conv = None
+        if conv_oid:
+            conv = await db.conversations.find_one({"_id": conv_oid})
+        if not conv:
+            conv = await db.conversations.find_one({"_id": conversation_id})
+        if not conv:
+            raise ResourceNotFoundError("Conversation not found")
+
+        # Verify user is a participant
+        participants = conv.get("participants", [])
+        is_participant = user_oid in participants or user_id in participants
+        if not is_participant:
+            raise PermissionDeniedError("Not a participant of this conversation")
+
+        enriched = await _enrich_conversation(db, conv, user_id)
+        return StandardResponse(success=True, data={"conversation": enriched})
+
+    except (ResourceNotFoundError, PermissionDeniedError):
+        raise
+    except Exception as e:
+        logger.error(f"Get conversation error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch conversation",
         )
 
 
@@ -983,6 +1370,19 @@ async def get_conversation_messages(
         )
 
         await db.messages.update_many(mark_read_filter, {"$set": {"read": True}})
+
+        # Notify the other participant that their messages were read (for read receipts)
+        if recipient_info and recipient_info.get("id"):
+            other_user_id = str(recipient_info["id"])
+            try:
+                await manager.send_personal_message(other_user_id, {
+                    "type": "message_read",
+                    "conversation_id": conversation_id,
+                    "read_by": user_id,
+                    "read_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception as ws_err:
+                logger.warning(f"Failed to send message_read WS event to {other_user_id}: {ws_err}")
 
         # Total count
         total_count = await db.messages.count_documents(conv_query)

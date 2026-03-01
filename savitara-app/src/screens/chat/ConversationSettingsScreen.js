@@ -17,9 +17,11 @@ import {
     Text,
 } from 'react-native-paper';
 import { chatAPI } from '../../services/api';
+import { getInitials, getAvatarColor } from '../../constants/avatars';
+import { BRAND } from '../../constants/theme';
 
 const ConversationSettingsScreen = ({ navigation, route }) => {
-  const { conversationId, otherUserName, otherUserAvatar } = route.params;
+  const { conversationId, otherUserName, otherUserAvatar, otherUserId } = route.params;
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -31,20 +33,24 @@ const ConversationSettingsScreen = ({ navigation, route }) => {
   const loadSettings = async () => {
     try {
       setLoading(true);
-      const response = await chatAPI.getConversations({ limit: 100 });
-      const convs = response.data?.data?.conversations || response.data?.conversations || [];
-      const conv = convs.find((c) => (c.id || c._id) === conversationId);
-      
+      // Direct lookup — avoids fetching all conversations and filtering client-side
+      const response = await chatAPI.getConversation(conversationId);
+      const conv = response.data?.data?.conversation || response.data?.conversation;
+
       if (conv) {
         setSettings({
           is_muted: conv.is_muted || false,
           is_pinned: conv.is_pinned || false,
           is_archived: conv.is_archived || false,
         });
+      } else {
+        // Fallback: default to all-off if conversation not found
+        setSettings({ is_muted: false, is_pinned: false, is_archived: false });
       }
     } catch (error) {
       console.error('Failed to load settings:', error);
       Alert.alert('Error', 'Failed to load conversation settings');
+      setSettings({ is_muted: false, is_pinned: false, is_archived: false });
     } finally {
       setLoading(false);
     }
@@ -115,6 +121,61 @@ const ConversationSettingsScreen = ({ navigation, route }) => {
     );
   };
 
+  const handleBlockUser = () => {
+    if (!otherUserId) {
+      Alert.alert('Error', 'Cannot identify user to block');
+      return;
+    }
+    Alert.alert(
+      `Block ${otherUserName || 'this user'}?`,
+      'They will not be able to message you and you will not see their messages.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await chatAPI.blockUser(otherUserId);
+              Alert.alert('Blocked', `${otherUserName || 'User'} has been blocked.`);
+              navigation.navigate('ChatList');
+            } catch (err) {
+              console.error('Failed to block user:', err);
+              Alert.alert('Error', 'Failed to block user. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleReportUser = () => {
+    if (!otherUserId) {
+      Alert.alert('Error', 'Cannot identify user to report');
+      return;
+    }
+    Alert.alert(
+      `Report ${otherUserName || 'this user'}?`,
+      'Our team will review this report. Thank you for helping keep Savitara safe.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Report',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await chatAPI.reportUser(otherUserId, 'Inappropriate behavior via chat');
+              Alert.alert('Reported', 'Thank you. Our team will review your report.');
+            } catch (err) {
+              console.error('Failed to report user:', err);
+              Alert.alert('Error', 'Failed to submit report. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -139,12 +200,15 @@ const ConversationSettingsScreen = ({ navigation, route }) => {
       <ScrollView>
         {/* User Info */}
         <View style={styles.userInfo}>
-          <Avatar.Image
-            size={80}
-            source={{
-              uri: otherUserAvatar || 'https://via.placeholder.com/80',
-            }}
-          />
+          {otherUserAvatar ? (
+            <Avatar.Image size={80} source={{ uri: otherUserAvatar }} />
+          ) : (
+            <Avatar.Text
+              size={80}
+              label={getInitials(otherUserName)}
+              style={{ backgroundColor: getAvatarColor(otherUserId) }}
+            />
+          )}
           <Text style={styles.userName}>{otherUserName || 'Unknown User'}</Text>
         </View>
 
@@ -206,10 +270,28 @@ const ConversationSettingsScreen = ({ navigation, route }) => {
           <View style={styles.dangerZone}>
             <Button
               mode="outlined"
+              icon="account-cancel"
+              onPress={handleBlockUser}
+              textColor="#d32f2f"
+              style={[styles.dangerButton, { marginBottom: 12 }]}
+            >
+              Block {otherUserName || 'User'}
+            </Button>
+            <Button
+              mode="outlined"
+              icon="flag"
+              onPress={handleReportUser}
+              textColor="#e65100"
+              style={[styles.dangerButton, { marginBottom: 12 }]}
+            >
+              Report {otherUserName || 'User'}
+            </Button>
+            <Button
+              mode="outlined"
               icon="delete"
               onPress={handleDeleteConversation}
               textColor="#d32f2f"
-              style={styles.deleteButton}
+              style={styles.dangerButton}
             >
               Delete Conversation
             </Button>
@@ -242,8 +324,11 @@ const styles = StyleSheet.create({
   dangerZone: {
     padding: 16,
   },
-  deleteButton: {
+  dangerButton: {
     borderColor: '#d32f2f',
+  },
+  avatarText: {
+    backgroundColor: BRAND.primary,
   },
 });
 

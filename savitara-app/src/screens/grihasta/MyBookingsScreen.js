@@ -3,6 +3,11 @@ import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Card, Chip, SegmentedButtons, Snackbar, Text } from 'react-native-paper';
 import { useSocket } from '../../context/SocketContext';
 import { bookingAPI } from '../../services/api';
+import { getStatusColor } from '../../constants/statusColors';
+import EmptyState from '../../components/EmptyState';
+import ErrorBoundary from '../../components/ErrorBoundary';
+import ErrorScreen from '../../components/ErrorScreen';
+import LoadingScreen from '../../components/LoadingScreen';
 
 const MyBookingsScreen = ({ navigation }) => {
   const socketContext = useSocket();
@@ -10,6 +15,7 @@ const MyBookingsScreen = ({ navigation }) => {
   const [bookings, setBookings] = useState([]);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
@@ -80,33 +86,30 @@ const MyBookingsScreen = ({ navigation }) => {
   const loadBookings = async () => {
     try {
       setLoading(true);
+      setError(null);
       const params = filter !== 'all' ? { status: filter } : {};
       const response = await bookingAPI.getMyBookings(params);
       const raw = response.data?.data;
       const bookingData = Array.isArray(raw) ? raw : (raw?.bookings || response.data?.bookings || []);
       setBookings(bookingData);
-    } catch (error) {
-      console.error('Failed to load bookings:', error);
+    } catch (err) {
+      console.error('Failed to load bookings:', err);
+      setError(err.response?.data?.message || 'Failed to load bookings. Please try again.');
+      setBookings([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const getStatusColor = (status) => {
-    const colors = {
-      requested: '#42A5F5', // Blue for requested
-      pending: '#FFA726',
-      pending_payment: '#FFA726',
-      confirmed: '#42A5F5',
-      in_progress: '#66BB6A',
-      completed: '#4CAF50',
-      cancelled: '#EF5350',
-      rejected: '#EF5350',
-    };
-    return colors[status] || '#999';
-  };
+  if (error) return (
+    <ErrorScreen
+      message={error}
+      onRetry={loadBookings}
+    />
+  );
 
   return (
+    <ErrorBoundary>
     <View style={styles.container}>
       <SegmentedButtons
         value={filter}
@@ -123,9 +126,15 @@ const MyBookingsScreen = ({ navigation }) => {
 
       <ScrollView style={styles.list}>
         {loading ? (
-          <Text style={styles.centerText}>Loading...</Text>
+          <LoadingScreen text="Loading bookings…" style={{ minHeight: 200 }} />
         ) : bookings.length === 0 ? (
-          <Text style={styles.centerText}>No bookings found</Text>
+          <EmptyState
+            icon="calendar-blank-outline"
+            title="No bookings found"
+            message="Your booked poojas will appear here."
+            iconSize={48}
+            iconColor="#ccc"
+          />
         ) : (
           bookings.map((booking) => (
             <Card 
@@ -190,6 +199,7 @@ const MyBookingsScreen = ({ navigation }) => {
         {snackbarMessage}
       </Snackbar>
     </View>
+    </ErrorBoundary>
   );
 };
 

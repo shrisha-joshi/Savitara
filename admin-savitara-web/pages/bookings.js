@@ -29,6 +29,9 @@ import {
   IconButton,
   Tooltip,
   Pagination,
+  Snackbar,
+  Alert,
+  Stack,
 } from '@mui/material';
 import {
   Visibility,
@@ -37,7 +40,22 @@ import {
   HourglassEmpty,
   Refresh,
   FilterList,
+  FileDownload,
 } from '@mui/icons-material';
+
+/** Generate and trigger download of a CSV file */
+function downloadCSV(rows, filename) {
+  const csvContent = rows
+    .map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 import { format } from 'date-fns';
 import Layout from '../src/components/Layout';
 import withAuth from '../src/hoc/withAuth';
@@ -62,9 +80,24 @@ function Bookings() {
     total: 0,
     pending: 0,
     confirmed: 0,
+    in_progress: 0,
     completed: 0,
     cancelled: 0,
+    revenue: 0,
   });
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  // ── Reject dialog ───────────────────────────────────────────────────────────
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectBookingId, setRejectBookingId] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const REJECT_REASON_MAX = 300;
+
+  // ── Snackbar ────────────────────────────────────────────────────────────────
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const showSnackbar = (message, severity = 'success') =>
+    setSnackbar({ open: true, message, severity });
+  const closeSnackbar = () => setSnackbar((s) => ({ ...s, open: false }));
 
   const loadBookings = useCallback(async () => {
     try {
@@ -91,23 +124,30 @@ function Bookings() {
     }
   }, [page, statusFilter, startDate, endDate]);
 
-  const calculateStats = useCallback(() => {
-    setStats({
-      total: pagination.total,
-      pending: bookings.filter(b => b.status === 'pending' || b.status === 'requested').length,
-      confirmed: bookings.filter(b => b.status === 'confirmed').length,
-      completed: bookings.filter(b => b.status === 'completed').length,
-      cancelled: bookings.filter(b => b.status === 'cancelled').length,
-    });
-  }, [bookings, pagination.total]);
+  /** Fetch global booking stats from dedicated endpoint — counts ALL bookings */
+  const loadStats = useCallback(async () => {
+    try {
+      setStatsLoading(true);
+      const response = await adminAPI.getBookingStats();
+      const data = response.data?.data || response.data;
+      setStats({
+        total:       data.total       ?? 0,
+        pending:     data.pending     ?? 0,
+        confirmed:   data.confirmed   ?? 0,
+        in_progress: data.in_progress ?? 0,
+        completed:   data.completed   ?? 0,
+        cancelled:   data.cancelled   ?? 0,
+        revenue:     data.revenue     ?? 0,
+      });
+    } catch (error) {
+      console.error('Failed to load booking stats:', error);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
 
-  useEffect(() => {
-    loadBookings();
-  }, [loadBookings]);
-
-  useEffect(() => {
-    calculateStats();
-  }, [calculateStats]);
+  useEffect(() => { loadBookings(); }, [loadBookings]);
+  useEffect(() => { loadStats();    }, [loadStats]);
 
   const handleViewBooking = (booking) => {
     setSelectedBooking(booking);
@@ -116,31 +156,61 @@ function Bookings() {
 
   const handleApproveBooking = async (bookingId) => {
     try {
-      await adminAPI.updateBookingStatus(bookingId, { 
+      await adminAPI.updateBookingStatus(bookingId, {
         status: 'confirmed',
-        admin_notes: 'Approved by admin' 
+        admin_notes: 'Approved by admin',
       });
-      alert('Booking approved successfully');
+      showSnackbar('Booking approved successfully', 'success');
       loadBookings();
+      loadStats();
     } catch (error) {
-      alert('Failed to approve booking: ' + (error.response?.data?.detail || error.message));
+      showSnackbar(
+        'Failed to approve booking: ' + (error.response?.data?.detail || error.message),
+        'error',
+      );
     }
   };
 
-  const handleRejectBooking = async (bookingId) => {
-    const reason = prompt('Enter rejection reason:');
-    if (!reason) return;
+  /** Open the reject dialog; actual API call happens in handleConfirmReject */
+  const handleRejectBooking = (bookingId) => {
+    setRejectBookingId(bookingId);
+    setRejectReason('');
+    setRejectDialogOpen(true);
+  };
 
+  const handleConfirmReject = async () => {
+    if (!rejectReason.trim()) return;
     try {
-      await adminAPI.updateBookingStatus(bookingId, { 
+      await adminAPI.updateBookingStatus(rejectBookingId, {
         status: 'cancelled',
-        admin_notes: reason 
+        admin_notes: rejectReason.trim(),
       });
-      alert('Booking rejected');
+      showSnackbar('Booking rejected', 'info');
+      setRejectDialogOpen(false);
       loadBookings();
+      loadStats();
     } catch (error) {
-      alert('Failed to reject booking: ' + (error.response?.data?.detail || error.message));
+      showSnackbar(
+        'Failed to reject booking: ' + (error.response?.data?.detail || error.message),
+        'error',
+      );
     }
+  };
+
+  const exportBookingsCSV = () => {
+    const headers = ['Booking ID', 'Grihasta', 'Acharya', 'Service', 'Date & Time', 'Type', 'Mode', 'Status', 'Amount (₹)'];
+    const rows = bookings.map((b) => [
+      (b._id || b.id || '').slice(-8).toUpperCase(),
+      b.grihasta?.full_name || b.grihasta?.name || '',
+      b.acharya?.full_name  || b.acharya?.name  || '',
+      b.pooja_name || b.service_name || 'Custom Service',
+      formatDateTime(b.date, b.time),
+      b.booking_type  || '',
+      b.booking_mode  || 'instant',
+      b.status        || '',
+      b.total_amount  ?? 0,
+    ]);
+    downloadCSV([headers, ...rows], `bookings_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   const getStatusColor = (status) => {
@@ -194,73 +264,49 @@ function Bookings() {
           <Typography variant="h4" component="h1">
             Booking Management
           </Typography>
-          <Tooltip title="Refresh">
-            <IconButton onClick={loadBookings} color="primary">
-              <Refresh />
-            </IconButton>
-          </Tooltip>
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined"
+              startIcon={<FileDownload />}
+              onClick={exportBookingsCSV}
+              disabled={bookings.length === 0}
+            >
+              Export CSV
+            </Button>
+            <Tooltip title="Refresh">
+              <IconButton onClick={() => { loadBookings(); loadStats(); }} color="primary">
+                <Refresh />
+              </IconButton>
+            </Tooltip>
+          </Stack>
         </Box>
 
-        {/* Stats Cards */}
-        <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid item xs={12} sm={6} md={2.4}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Total Bookings
-                </Typography>
-                <Typography variant="h4">{stats.total}</Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={2.4}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Pending
-                </Typography>
-                <Typography variant="h4" color="warning.main">
-                  {stats.pending}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={2.4}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Confirmed
-                </Typography>
-                <Typography variant="h4" color="success.main">
-                  {stats.confirmed}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={2.4}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Completed
-                </Typography>
-                <Typography variant="h4" color="primary.main">
-                  {stats.completed}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={2.4}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Cancelled
-                </Typography>
-                <Typography variant="h4" color="error.main">
-                  {stats.cancelled}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
+        {/* Stats Cards — sourced from ALL bookings via GET /admin/bookings/stats */}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {[
+            { label: 'Total',        value: stats.total,       color: 'text.primary'  },
+            { label: 'Pending',      value: stats.pending,     color: 'warning.main'  },
+            { label: 'Confirmed',    value: stats.confirmed,   color: 'success.main'  },
+            { label: 'In Progress',  value: stats.in_progress, color: 'info.main'     },
+            { label: 'Completed',    value: stats.completed,   color: 'primary.main'  },
+            { label: 'Cancelled',    value: stats.cancelled,   color: 'error.main'    },
+            { label: 'Revenue (₹)',  value: Number(stats.revenue).toLocaleString('en-IN'), color: 'success.dark' },
+          ].map(({ label, value, color }) => (
+            <Grid item xs={6} sm={4} md key={label}>
+              <Card>
+                <CardContent sx={{ py: 1.5 }}>
+                  <Typography color="textSecondary" variant="caption" gutterBottom>
+                    {label}
+                  </Typography>
+                  {statsLoading ? (
+                    <CircularProgress size={20} />
+                  ) : (
+                    <Typography variant="h5" color={color}>{value}</Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
         </Grid>
 
         {/* Filters */}
@@ -581,6 +627,55 @@ function Bookings() {
             <Button onClick={() => setViewDialog(false)}>Close</Button>
           </DialogActions>
         </Dialog>
+
+        {/* ── Reject Dialog ─────────────────────────────────────────────────── */}
+        <Dialog
+          open={rejectDialogOpen}
+          onClose={() => setRejectDialogOpen(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Reject Booking</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Please provide a reason for rejecting this booking. This will be saved in the booking notes.
+            </Typography>
+            <TextField
+              autoFocus
+              fullWidth
+              multiline
+              rows={4}
+              label="Rejection reason"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value.slice(0, REJECT_REASON_MAX))}
+              helperText={`${rejectReason.length} / ${REJECT_REASON_MAX} characters`}
+              sx={{ mt: 1 }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
+            <Button
+              variant="contained"
+              color="error"
+              disabled={!rejectReason.trim()}
+              onClick={handleConfirmReject}
+            >
+              Confirm Rejection
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* ── Snackbar ──────────────────────────────────────────────────────── */}
+        <Snackbar
+          open={snackbar.open}
+          autoHideDuration={4000}
+          onClose={closeSnackbar}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        >
+          <Alert onClose={closeSnackbar} severity={snackbar.severity} variant="filled">
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
       </Container>
     </Layout>
   );

@@ -8,6 +8,7 @@ import {
   Text,
   TouchableOpacity,
   TextInput,
+  Alert,
   ActivityIndicator,
   StyleSheet,
   ScrollView
@@ -106,10 +107,10 @@ const PricingDisplay = ({ baseAmount, serviceId, onPriceCalculated }) => {
         setCouponCode('');
         setShowCoupons(false);
       } else {
-        alert(response.data.data.message || 'Invalid coupon code');
+        Alert.alert('Invalid Coupon', response.data.data.message || 'Invalid coupon code');
       }
     } catch (error) {
-      alert(error.response?.data?.detail || 'Failed to apply coupon');
+      Alert.alert('Error', error.response?.data?.detail || 'Failed to apply coupon');
     } finally {
       setLoading(false);
     }

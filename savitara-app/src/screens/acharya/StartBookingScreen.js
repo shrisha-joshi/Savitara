@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { Alert, View, StyleSheet } from 'react-native';
 import { Text, TextInput, Button } from 'react-native-paper';
 import { bookingAPI } from '../../services/api';
 
@@ -12,11 +12,12 @@ const StartBookingScreen = ({ route, navigation }) => {
     try {
       setLoading(true);
       await bookingAPI.startBooking(booking._id, otp);
-      alert('Booking started successfully!');
-      navigation.goBack();
+      Alert.alert('Success', 'Booking started successfully!', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
     } catch (error) {
       console.error('Failed to start booking:', error);
-      alert(error.response?.data?.message || 'Invalid OTP');
+      Alert.alert('Error', error.response?.data?.message || 'Invalid OTP');
     } finally {
       setLoading(false);
     }

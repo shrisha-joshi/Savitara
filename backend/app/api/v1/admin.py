@@ -1144,6 +1144,74 @@ async def get_all_bookings(
 
 
 @router.get(
+    "/bookings/stats",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Booking Statistics",
+    description="Aggregate booking counts and revenue across ALL bookings (not just the current page).",
+)
+async def get_booking_stats(
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """Return per-status booking counts and total completed revenue."""
+    try:
+        pipeline = [
+            {
+                "$group": {
+                    "_id": "$status",
+                    "count": {"$sum": 1},
+                    "revenue": {
+                        "$sum": {
+                            "$cond": [
+                                {"$eq": ["$status", "completed"]},
+                                {"$ifNull": ["$total_amount", 0]},
+                                0,
+                            ]
+                        }
+                    },
+                }
+            }
+        ]
+        results = await db.bookings.aggregate(pipeline).to_list(length=50)
+
+        counts: Dict[str, int] = {}
+        total_revenue: float = 0.0
+        for row in results:
+            key = row["_id"] or "unknown"
+            counts[key] = row["count"]
+            total_revenue += float(row.get("revenue") or 0)
+
+        pending = (
+            counts.get("pending", 0)
+            + counts.get("requested", 0)
+            + counts.get("pending_payment", 0)
+        )
+
+        return StandardResponse(
+            success=True,
+            data={
+                "total": sum(counts.values()),
+                "pending": pending,
+                "confirmed": counts.get("confirmed", 0),
+                "in_progress": counts.get("in_progress", 0),
+                "completed": counts.get("completed", 0),
+                "cancelled": counts.get("cancelled", 0),
+                "rejected": counts.get("rejected", 0),
+                "failed": counts.get("failed", 0),
+                "revenue": round(total_revenue, 2),
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Get booking stats error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch booking statistics",
+        )
+
+
+@router.get(
     "/audit-logs",
     response_model=StandardResponse,
     status_code=status.HTTP_200_OK,
@@ -1572,4 +1640,112 @@ async def review_report(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to review report",
+        )
+
+
+@router.get(
+    "/analytics/hotspots",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Pooja Hotspots",
+    description="Get demand density hotspots for city managers with Redis caching (TTL 3600s)",
+)
+async def get_pooja_hotspots(
+    city: str = Query(default="Bangalore", description="City to analyze"),
+    days: int = Query(default=30, ge=1, le=90, description="Number of days to analyze"),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """
+    Get "Pooja Hotspots" - residential clusters with high booking density.
+    
+    Implements Prompt 4: Real-Time Admin Dashboard Analytics Aggregation
+    
+    Uses MongoDB geospatial aggregation to identify demand hotspots:
+    - Groups completed bookings by geographic clusters
+    - Calculates total revenue and booking count
+    - Sorts by popularity score
+    - Results cached in Redis for 1 hour (3600s TTL)
+    
+    Args:
+        city: City name to filter (default: Bangalore)
+        days: Number of days to look back (1-90, default: 30)
+    
+    Returns:
+        List of hotspot clusters with booking stats
+    
+    Example:
+        GET /api/v1/admin/analytics/hotspots?city=Bangalore&days=30
+    """
+    try:
+        # Import here to avoid circular dependency
+        from app.db.aggregations.analytics_agg import get_pooja_hotspots as fetch_hotspots
+        from app.db.redis import get_redis
+        from redis.asyncio import Redis
+        import json
+        
+        # Create cache key
+        cache_key = f"analytics:hotspots:{city}:{days}"
+        
+        # Try to get from Redis cache
+        redis_client: Optional[Redis] = None
+        try:
+            # Get Redis dependency manually since we're already in an endpoint
+            async for r in get_redis():
+                redis_client = r
+                break
+            
+            if redis_client:
+                cached_data = await redis_client.get(cache_key)
+                if cached_data:
+                    logger.info(f"Cache hit for hotspots: {cache_key}")
+                    hotspots = json.loads(cached_data)
+                    return StandardResponse(
+                        success=True,
+                        data={
+                            "city": city,
+                            "days": days,
+                            "hotspots": hotspots,
+                            "total_clusters": len(hotspots),
+                            "cached": True,
+                        },
+                        message=f"Found {len(hotspots)} hotspot clusters (cached)",
+                    )
+        except Exception as e:
+            logger.warning(f"Redis cache read failed: {e}")
+            # Continue without cache if Redis fails
+        
+        # Cache miss or no Redis - fetch from MongoDB
+        logger.info(f"Cache miss for hotspots: {cache_key}, fetching from DB")
+        hotspots = await fetch_hotspots(db, city=city, days=days)
+        
+        # Try to cache results in Redis (TTL: 3600s = 1 hour)
+        if redis_client:
+            try:
+                await redis_client.setex(
+                    cache_key,
+                    3600,  # TTL: 1 hour
+                    json.dumps(hotspots, default=str)  # Convert ObjectId/datetime to str
+                )
+                logger.info(f"Cached hotspots data: {cache_key}")
+            except Exception as e:
+                logger.warning(f"Redis cache write failed: {e}")
+        
+        return StandardResponse(
+            success=True,
+            data={
+                "city": city,
+                "days": days,
+                "hotspots": hotspots,
+                "total_clusters": len(hotspots),
+                "cached": False,
+            },
+            message=f"Found {len(hotspots)} hotspot clusters",
+        )
+    
+    except Exception as e:
+        logger.error(f"Get pooja hotspots error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch hotspots analytics",
         )

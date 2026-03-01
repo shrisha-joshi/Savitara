@@ -2,8 +2,30 @@ import * as Haptics from 'expo-haptics';
 import PropTypes from 'prop-types';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
-import { Avatar, Badge, Divider, IconButton, List, Menu, Portal, Searchbar, Text } from 'react-native-paper';
+import { Avatar, ActivityIndicator, Badge, Button, Divider, IconButton, List, Menu, Portal, Searchbar, Text } from 'react-native-paper';
 import { chatAPI } from '../../services/api';
+import { getInitials, getAvatarColor } from '../../constants/avatars';
+import { BRAND } from '../../constants/theme';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const getRelativeTime = (dateStr) => {
+  if (!dateStr) return '';
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return date.toLocaleDateString('en-US', { weekday: 'short' });
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const ChatListScreen = ({ navigation }) => {
   const [conversations, setConversations] = useState([]);
@@ -23,6 +45,7 @@ const ChatListScreen = ({ navigation }) => {
   }, []);
   const [menuVisible, setMenuVisible] = useState(null); // conversation id for menu
   const [selectedConv, setSelectedConv] = useState(null);
+  const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     loadConversations();
@@ -69,9 +92,12 @@ const ChatListScreen = ({ navigation }) => {
     loadConversations();
   };
 
-  const openMenu = (conv) => {
+  const openMenu = (conv, event) => {
     setSelectedConv(conv);
     setMenuVisible(conv.id || conv._id);
+    if (event?.nativeEvent) {
+      setMenuAnchor({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY });
+    }
   };
 
   const closeMenu = () => {
@@ -171,21 +197,34 @@ const ChatListScreen = ({ navigation }) => {
             </View>
           )}
           left={() => (
-            <Avatar.Image 
-              size={50} 
-              source={{ uri: otherUser.profile_picture || otherUser.profile_image || 'https://via.placeholder.com/50' }} 
-            />
+            otherUser.profile_picture || otherUser.profile_image ? (
+              <Avatar.Image
+                size={50}
+                source={{ uri: otherUser.profile_picture || otherUser.profile_image }}
+              />
+            ) : (
+              <Avatar.Text
+                size={50}
+                label={getInitials(otherUser.name || 'U')}
+                style={{ backgroundColor: getAvatarColor(otherUser.id || otherUser._id) }}
+              />
+            )
           )}
           right={() => (
             <View style={styles.rightContainer}>
-              {item.unread_count > 0 && (
-                <Badge style={styles.badge} size={24}>{item.unread_count}</Badge>
-              )}
-              <IconButton
-                icon="dots-vertical"
-                size={20}
-                onPress={() => openMenu(item)}
-              />
+              <Text style={styles.timestamp}>
+                {getRelativeTime(item.updated_at || lastMsg.created_at)}
+              </Text>
+              <View style={styles.rightBottom}>
+                {item.unread_count > 0 && (
+                  <Badge style={styles.badge} size={24}>{item.unread_count}</Badge>
+                )}
+                <IconButton
+                  icon="dots-vertical"
+                  size={20}
+                  onPress={(e) => openMenu(item, e)}
+                />
+              </View>
             </View>
           )}
           onPress={() => navigation.navigate('Conversation', {
@@ -193,7 +232,7 @@ const ChatListScreen = ({ navigation }) => {
             otherUserName: otherUser.name || 'Unknown User',
             otherUserId: otherUser.id || otherUser._id,
           })}
-          onLongPress={() => openMenu(item)}
+          onLongPress={(e) => openMenu(item, e)}
         />
         
         {menuVisible === convId && (
@@ -201,7 +240,7 @@ const ChatListScreen = ({ navigation }) => {
             <Menu
               visible={menuVisible === convId}
               onDismiss={closeMenu}
-              anchor={{ x: 300, y: 200 }}
+              anchor={menuAnchor}
             >
               <Menu.Item
                 onPress={handlePin}
@@ -232,6 +271,40 @@ const ChatListScreen = ({ navigation }) => {
     );
   };
 
+  const listContent = loading ? (
+    <ActivityIndicator animating size="large" color={BRAND.primary} style={styles.loadingIndicator} />
+  ) : filteredConversations.length === 0 ? (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptyIcon}>💬</Text>
+      <Text style={styles.emptyTitle}>
+        {searchQuery ? 'No conversations found' : 'No conversations yet'}
+      </Text>
+      {!searchQuery && (
+        <>
+          <Text style={styles.emptySubtitle}>Find an Acharya and start a conversation</Text>
+          <Button
+            mode="contained"
+            icon="magnify"
+            onPress={() => navigation.navigate('Home')}
+            style={styles.emptyButton}
+            buttonColor={BRAND.primary}
+          >
+            Find an Acharya
+          </Button>
+        </>
+      )}
+    </View>
+  ) : (
+    <FlatList
+      data={filteredConversations}
+      renderItem={renderConversation}
+      keyExtractor={(item) => item.id || item._id}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    />
+  );
+
   return (
     <View style={styles.container}>
       <Searchbar
@@ -239,23 +312,7 @@ const ChatListScreen = ({ navigation }) => {
         onChangeText={handleSearchChange}
         style={styles.searchBar}
       />
-      {loading ? (
-        <Text style={styles.centerText}>Loading...</Text>
-      ) : (
-        filteredConversations.length === 0 ? (
-          <Text style={styles.centerText}>
-            {searchQuery ? 'No conversations found' : 'No conversations yet'}
-          </Text>
-        ) : (
-          <FlatList
-          data={filteredConversations}
-          renderItem={renderConversation}
-          keyExtractor={(item) => item.id || item._id}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-        />
-      )}
+      {listContent}
     </View>
   );
 };
@@ -302,17 +359,59 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
+  // Right column: timestamp on top, badge+menu button below
   rightContainer: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    minWidth: 64,
+  },
+  rightBottom: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  badge: {
-    marginRight: 8,
-  },
-  centerText: {
-    textAlign: 'center',
-    marginTop: 50,
+  timestamp: {
+    fontSize: 11,
     color: '#999',
+    marginRight: 4,
+    marginTop: 4,
+  },
+  badge: {
+    marginRight: 4,
+  },
+  avatarText: {
+    backgroundColor: BRAND.primary,
+  },
+  loadingIndicator: {
+    marginTop: 50,
+  },
+  // Empty state
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#888',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  emptyButton: {
+    borderRadius: 24,
+    paddingHorizontal: 8,
   },
 });
 

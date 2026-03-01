@@ -174,24 +174,39 @@ export default function Payment() {
         return;
       }
 
+      // For request-mode bookings without an existing order, create one first
+      let orderId = booking.razorpay_order_id;
+      if (!orderId) {
+        try {
+          const orderRes = await api.post(`/bookings/${bookingId}/create-payment-order`);
+          if (orderRes.data.success) {
+            orderId = orderRes.data.data?.razorpay_order_id;
+          }
+        } catch (orderErr) {
+          console.error('Failed to create payment order:', orderErr);
+          setError('Failed to create payment order. Please try again.');
+          setPaying(false);
+          return;
+        }
+      }
+
+      const finalAmount = calculatedPrice?.final_amount ?? booking.total_amount ?? 0;
+
       const options = {
         key: RAZORPAY_KEY,
-        amount: Math.round((booking.total_amount || 0) * 100), // Razorpay expects paise
+        amount: Math.round(finalAmount * 100), // Razorpay expects paise
         currency: 'INR',
         name: 'Savitara',
         description: `Pooja Booking - ${booking.pooja?.name || 'Booking'}`,
-        order_id: booking.razorpay_order_id,
+        order_id: orderId,
         handler: async function (response) {
-          // Payment successful - verify with backend
+          // Payment successful — verify with backend (body, not query params)
           try {
             const verifyResponse = await api.post(
               `/bookings/${bookingId}/payment/verify`,
-              null,
               {
-                params: {
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature
-                }
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
               }
             );
             if (verifyResponse.data.success) {

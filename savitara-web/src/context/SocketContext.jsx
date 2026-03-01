@@ -105,6 +105,18 @@ export const SocketProvider = ({ children }) => {
     }
   }, []);
 
+  // Upgrade message delivery status (sent → delivered → read). Never downgrade.
+  const handleDeliveryStatus = useCallback((data) => {
+    const statusOrder = { sending: 0, sent: 1, delivered: 2, read: 3 };
+    const newRank = statusOrder[data.status] ?? -1;
+    setMessages(prev => prev.map(msg => {
+      const msgId = msg.id || msg._id || msg.message_id;
+      if (!msgId || msgId !== data.message_id) return msg;
+      const currentRank = statusOrder[msg.status] ?? -1;
+      return newRank > currentRank ? { ...msg, status: data.status } : msg;
+    }));
+  }, []);
+
   const connect = useCallback(async () => {
     if (!user || !token || socket?.readyState === WebSocket.OPEN || connectingRef.current) return;
 
@@ -211,6 +223,8 @@ export const SocketProvider = ({ children }) => {
             received_at: Date.now(),
           };
           setBookingUpdates(prev => [...prev.slice(-10), normalized]);
+        } else if (data.type === 'delivery_status') {
+          handleDeliveryStatus(data);
         }
       } catch (err) {
         console.error('WS Parse Error:', err);
@@ -251,7 +265,7 @@ export const SocketProvider = ({ children }) => {
       // Let onclose handle reconnection
     };
 
-  }, [user, token, socket, offlineQueue, startHeartbeat, stopHeartbeat, handleTypingIndicator, handlePaymentRequired]);
+  }, [user, token, socket, offlineQueue, startHeartbeat, stopHeartbeat, handleTypingIndicator, handlePaymentRequired, handleDeliveryStatus]);
 
   useEffect(() => {
     if (user && token) {

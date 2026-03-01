@@ -21,6 +21,8 @@ import {
   Dialog,
 } from 'react-native-paper';
 import { chatAPI } from '../../services/api';
+import { getInitials, getAvatarColor } from '../../constants/avatars';
+import { BRAND } from '../../constants/theme';
 
 const MAX_FORWARD_TARGETS = 50;
 
@@ -144,15 +146,18 @@ const ForwardMessageScreen = ({ navigation, route }) => {
         title={otherUser.name || 'Unknown User'}
         description={item.last_message?.content || 'No messages yet'}
         left={() => (
-          <Avatar.Image
-            size={50}
-            source={{
-              uri:
-                otherUser.profile_picture ||
-                otherUser.profile_image ||
-                'https://via.placeholder.com/50',
-            }}
-          />
+          otherUser.profile_picture || otherUser.profile_image ? (
+            <Avatar.Image
+              size={50}
+              source={{ uri: otherUser.profile_picture || otherUser.profile_image }}
+            />
+          ) : (
+            <Avatar.Text
+              size={50}
+              label={getInitials(otherUser.name)}
+              style={{ backgroundColor: getAvatarColor(otherUser.id || otherUser._id) }}
+            />
+          )
         )}
         right={() => <Checkbox status={isSelected ? 'checked' : 'unchecked'} />}
         onPress={() => handleToggleConversation(convId)}
@@ -202,7 +207,7 @@ const ForwardMessageScreen = ({ navigation, route }) => {
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" />
+          <ActivityIndicator size="large" color={BRAND.primary} />
         </View>
       ) : filteredConversations.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -222,7 +227,7 @@ const ForwardMessageScreen = ({ navigation, route }) => {
         <Dialog visible={isSending} dismissable={false}>
           <Dialog.Content>
             <View style={styles.sendingContainer}>
-              <ActivityIndicator size="large" />
+              <ActivityIndicator size="large" color={BRAND.primary} />
               <Text style={styles.sendingText}>Forwarding message...</Text>
             </View>
           </Dialog.Content>
@@ -292,6 +297,9 @@ const styles = StyleSheet.create({
   },
   sendingText: {
     fontSize: 16,
+  },
+  avatarText: {
+    backgroundColor: BRAND.primary,
   },
 });
 

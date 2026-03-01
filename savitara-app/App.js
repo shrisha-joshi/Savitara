@@ -18,6 +18,7 @@ import { useCallback, useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import ConnectionBanner from './src/components/ConnectionBanner';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { AuthProvider } from './src/context/AuthContext';
 import { SocketProvider } from './src/context/SocketContext';
@@ -79,7 +80,10 @@ export default function App() {
         <PaperProvider>
           <AuthProvider>
             <SocketProvider>
-              <AppContent />
+              <View style={styles.socketContainer}>
+                <AppContent />
+                <ConnectionBanner />
+              </View>
               <StatusBar style="auto" />
             </SocketProvider>
           </AuthProvider>
@@ -95,5 +99,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFF5E6',
+  },
+  socketContainer: {
+    flex: 1,
   },
 });

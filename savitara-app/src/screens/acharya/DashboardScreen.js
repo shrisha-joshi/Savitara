@@ -3,6 +3,10 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Card } from 'react-native-paper';
 import { bookingAPI } from '../../services/api';
 import PanchangaWidget from '../../components/PanchangaWidget';
+import EmptyState from '../../components/EmptyState';
+import ErrorBoundary from '../../components/ErrorBoundary';
+import ErrorScreen from '../../components/ErrorScreen';
+import LoadingScreen from '../../components/LoadingScreen';
 
 const DashboardScreen = () => {
   const [stats, setStats] = useState({
@@ -13,6 +17,7 @@ const DashboardScreen = () => {
   });
   const [recentBookings, setRecentBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -33,14 +38,24 @@ const DashboardScreen = () => {
         .reduce((sum, b) => sum + b.total_amount, 0);
       
       setStats({ pending, confirmed, completed, totalEarnings });
-    } catch (error) {
-      console.error('Failed to load dashboard:', error);
+    } catch (err) {
+      console.error('Failed to load dashboard:', err);
+      setError(err.response?.data?.message || 'Failed to load dashboard. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  if (loading) return <LoadingScreen text="Loading dashboard…" />;
+  if (error) return (
+    <ErrorScreen
+      message={error}
+      onRetry={() => { setError(null); setLoading(true); loadDashboardData(); }}
+    />
+  );
+
   return (
+    <ErrorBoundary>
     <ScrollView style={styles.container}>
       <Text variant="headlineMedium" style={styles.title}>
         Dashboard
@@ -90,10 +105,14 @@ const DashboardScreen = () => {
         <Text variant="titleLarge" style={styles.sectionTitle}>
           Recent Bookings
         </Text>
-        {loading ? (
-          <Text>Loading...</Text>
-        ) : recentBookings.length === 0 ? (
-          <Text>No recent bookings</Text>
+        {recentBookings.length === 0 ? (
+          <EmptyState
+            icon="calendar-outline"
+            title="No recent bookings"
+            message="Your confirmed bookings will appear here."
+            iconSize={40}
+            iconColor="#ccc"
+          />
         ) : (
           recentBookings.map((booking) => (
             <Card key={booking._id} style={styles.bookingCard}>
@@ -113,6 +132,7 @@ const DashboardScreen = () => {
         )}
       </View>
     </ScrollView>
+    </ErrorBoundary>
   );
 };
 

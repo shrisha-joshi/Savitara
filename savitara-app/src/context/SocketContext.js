@@ -24,6 +24,8 @@ export const useSocket = () => {
 export const SocketProvider = ({ children }) => {
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
+  // 'connecting' | 'connected' | 'reconnecting' | 'disconnected'
+  const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [chatMessages, setChatMessages] = useState([]);
   const [bookingUpdates, setBookingUpdates] = useState([]);
   const [paymentNotifications, setPaymentNotifications] = useState([]);
@@ -252,17 +254,20 @@ export const SocketProvider = ({ children }) => {
     const wsConfig = await getWebSocketUrl();
     if (!wsConfig) {
       console.log('[WS] Cannot connect - missing credentials');
+      setConnectionStatus('disconnected');
       return;
     }
 
     try {
       console.log('[WS] Connecting to:', wsConfig.url.split('?')[0]); // Don't log token
+      setConnectionStatus(reconnectAttemptsRef.current > 0 ? 'reconnecting' : 'connecting');
 
       const ws = new WebSocket(wsConfig.url);
 
       ws.onopen = async () => {
         console.log('[WS] Connected successfully');
         setConnected(true);
+        setConnectionStatus('connected');
         reconnectAttemptsRef.current = 0;
         
         // Start heartbeat
@@ -277,6 +282,7 @@ export const SocketProvider = ({ children }) => {
       ws.onerror = (error) => {
         console.error('[WS] Error:', error);
         setConnected(false);
+        // onclose fires right after onerror, status updated there
       };
 
       ws.onclose = (event) => {
@@ -290,6 +296,7 @@ export const SocketProvider = ({ children }) => {
           console.log(
             `[WS] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current + 1}/${MAX_RECONNECT_ATTEMPTS})`
           );
+          setConnectionStatus('reconnecting');
 
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectAttemptsRef.current += 1;
@@ -297,6 +304,7 @@ export const SocketProvider = ({ children }) => {
           }, delay);
         } else {
           console.error('[WS] Max reconnection attempts reached');
+          setConnectionStatus('disconnected');
           Alert.alert(
             'Connection Lost',
             'Unable to connect to chat. Please check your internet connection and restart the app.',
@@ -326,6 +334,7 @@ export const SocketProvider = ({ children }) => {
       socketRef.current = null;
       setSocket(null);
       setConnected(false);
+      setConnectionStatus('disconnected');
     }
   }, [stopHeartbeat]);
 
@@ -380,6 +389,7 @@ export const SocketProvider = ({ children }) => {
     () => ({
       socket,
       connected,
+      connectionStatus,
       sendMessage,
       sendTypingIndicator,
       chatMessages,
@@ -395,6 +405,7 @@ export const SocketProvider = ({ children }) => {
     [
       socket,
       connected,
+      connectionStatus,
       sendMessage,
       sendTypingIndicator,
       chatMessages,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Image } from 'react-native';
-import { Text, Searchbar, Card, Chip, Button } from 'react-native-paper';
+import { Text, Searchbar, Card, Chip, Avatar } from 'react-native-paper';
 import { userAPI } from '../../services/api';
 
 const SearchAcharyasScreen = ({ navigation }) => {
@@ -86,10 +86,9 @@ const SearchAcharyasScreen = ({ navigation }) => {
               onPress={() => navigation.navigate('AcharyaDetails', { acharyaId: acharya._id })}
             >
               <Card.Content style={styles.cardContent}>
-                <Image 
-                  source={{ uri: acharya.profile_picture || 'https://via.placeholder.com/80' }}
-                  style={styles.avatar}
-                />
+                {acharya.profile_picture
+                  ? <Image source={{ uri: acharya.profile_picture }} style={styles.avatar} />
+                  : <Avatar.Text size={40} label={(acharya.full_name || 'A')[0].toUpperCase()} style={styles.avatar} />}
                 <View style={styles.cardInfo}>
                   <View style={styles.nameRow}>
                     <Text variant="titleMedium">{acharya.full_name}</Text>

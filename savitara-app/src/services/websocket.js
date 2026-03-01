@@ -2,6 +2,7 @@
  * WebSocket Service for Real-time Communication
  */
 import { API_CONFIG } from '../config/api.config';
+import api from './api';
 
 class WebSocketService {
   ws = null;
@@ -10,8 +11,10 @@ class WebSocketService {
   reconnectDelay = 1000;
   listeners = {};
   isConnecting = false;
+  heartbeatInterval = null;
+  heartbeatMs = 30000;
 
-  connect(userId, token) {
+  async connect(userId, token) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       console.log('WebSocket already connected');
       return;
@@ -25,14 +28,34 @@ class WebSocketService {
     this.isConnecting = true;
 
     try {
-      const wsUrl = API_CONFIG.baseURL.replace('http', 'ws');
-      this.ws = new WebSocket(`${wsUrl}/ws/${userId}?token=${token}`);
+      const baseHttp = API_CONFIG.baseURL.replace(/\/$/, '').replace(/\/api\/v1$/, '');
+      const wsBase = baseHttp.replace('http', 'ws');
+
+      let authParam;
+      try {
+        const ticketRes = await api.post('/auth/ws-ticket');
+        const ticket = ticketRes?.data?.data?.ticket;
+        if (!ticket) throw new Error('Missing ticket');
+        authParam = `ticket=${ticket}`;
+      } catch (err) {
+        if (__DEV__ && token) {
+          console.warn('[WS] Ticket fetch failed, falling back to token in dev:', err?.message || err);
+          authParam = `token=${token}`;
+        } else {
+          this.isConnecting = false;
+          this.emit('error', err);
+          return;
+        }
+      }
+
+      this.ws = new WebSocket(`${wsBase}/ws/${userId}?${authParam}`);
 
       this.ws.onopen = () => {
         console.log('WebSocket connected');
         this.reconnectAttempts = 0;
         this.isConnecting = false;
         this.emit('connected', { userId });
+        this.startHeartbeat();
       };
 
       this.ws.onmessage = (event) => {
@@ -55,6 +78,7 @@ class WebSocketService {
         console.log('WebSocket disconnected');
         this.isConnecting = false;
         this.emit('disconnected');
+        this.stopHeartbeat();
         
         // Attempt to reconnect
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
@@ -79,6 +103,7 @@ class WebSocketService {
       this.ws = null;
     }
     this.reconnectAttempts = this.maxReconnectAttempts; // Prevent auto-reconnect
+    this.stopHeartbeat();
   }
 
   send(data) {
@@ -86,6 +111,22 @@ class WebSocketService {
       this.ws.send(JSON.stringify(data));
     } else {
       console.error('WebSocket is not connected');
+    }
+  }
+
+  startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatInterval = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, this.heartbeatMs);
+  }
+
+  stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
     }
   }
 

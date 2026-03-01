@@ -363,6 +363,119 @@ def _parse_grihasta_id(user_id_str: str) -> Any:
         return user_id_str
 
 
+@router.get(
+    "/price-estimate",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Dynamic Price Estimate",
+    description=(
+        "Returns a full price breakdown for a proposed booking using PricingService. "
+        "Call this whenever the user changes date, time, duration, or booking type to "
+        "show real-time dynamic pricing (weekend/peak/festival surcharges, platform fee, GST)."
+    ),
+)
+async def get_price_estimate(
+    acharya_id: str = Query(..., description="Acharya profile ID"),
+    date_time: str = Query(..., description="ISO-8601 datetime e.g. 2026-03-15T14:00:00"),
+    duration_hours: int = Query(2, ge=1, le=12, description="Booking duration in hours"),
+    booking_type: str = Query("only", description="'only' or 'with_samagri'"),
+    pooja_id: Optional[str] = Query(None, description="Optional pooja/service ID for base price"),
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """
+    Dynamic price estimate endpoint — called by mobile BookingScreen on every
+    date/time/duration change so users see accurate pricing before booking.
+
+    Price components returned:
+      • base_price         — hourly_rate × duration_hours
+      • weekend_surcharge  — +50% on Saturday/Sunday
+      • peak_hour_adj      — +20% during 17:00–22:00
+      • off_peak_discount  — −15% on weekday 06:00–10:00
+      • urgent_surcharge   — +50% if booking is < 24 h away
+      • festival_surcharge — +30% on major Hindu festival days (from PanchangaService)
+      • festival_name      — name of the festival (if applicable)
+      • samagri_fee        — ₹200/hr when booking_type == 'with_samagri'
+      • platform_fee       — 10% of subtotal
+      • gst                — 18% of subtotal
+      • subtotal           — after all surcharges/discounts, before platform_fee/GST
+      • total_price        — final amount Grihasta pays
+      • acharya_earnings   — after platform cut
+    """
+    # ── 1. Validate Acharya ────────────────────────────────────────────────
+    if not ObjectId.is_valid(acharya_id):
+        raise InvalidInputError(message="Invalid acharya_id format", field="acharya_id")
+
+    acharya = await db.acharya_profiles.find_one({"_id": ObjectId(acharya_id)})
+    if not acharya:
+        raise ResourceNotFoundError(resource_type="Acharya", resource_id=acharya_id)
+
+    # ── 2. Resolve base hourly rate ────────────────────────────────────────
+    # Prefer pooja base_price when a specific pooja is selected
+    base_hourly_rate = float(acharya.get("hourly_rate", 500.0))
+    if pooja_id and ObjectId.is_valid(pooja_id):
+        pooja = await db.poojas.find_one({"_id": ObjectId(pooja_id)})
+        if pooja and "base_price" in pooja:
+            # base_price in poojas is total, not per-hour — keep as-is for the estimate
+            base_hourly_rate = float(pooja["base_price"])
+
+    # ── 3. Parse datetime ──────────────────────────────────────────────────
+    try:
+        booking_dt = datetime.fromisoformat(date_time.replace("Z", "+00:00"))
+        if booking_dt.tzinfo is None:
+            booking_dt = booking_dt.replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise InvalidInputError(
+            message=f"Invalid date_time format: {exc}. Use ISO-8601, e.g. 2026-03-15T14:00:00",
+            field="date_time",
+        ) from exc
+
+    if booking_dt < datetime.now(timezone.utc):
+        raise InvalidInputError(
+            message="date_time must be in the future",
+            field="date_time",
+        )
+
+    # ── 4. Calculate pricing ───────────────────────────────────────────────
+    has_samagri = booking_type == "with_samagri"
+    estimate = PricingService.get_price_estimate(
+        base_hourly_rate=base_hourly_rate,
+        booking_datetime=booking_dt,
+        duration_hours=duration_hours,
+        has_samagri=has_samagri,
+    )
+
+    pricing = estimate["estimate"]
+
+    # ── 5. Flatten to a frontend-friendly structure ────────────────────────
+    surcharges = pricing.get("surcharges", {})
+    fees = pricing.get("fees", {})
+
+    acharya_earnings = PricingService.estimate_acharya_earnings(pricing["total"])
+
+    return StandardResponse(
+        success=True,
+        data={
+            "base_price": pricing["base_price"],
+            "weekend_surcharge": surcharges.get("weekend", 0.0),
+            "peak_hour_adj": surcharges.get("peak_hours", 0.0),
+            "off_peak_discount": surcharges.get("off_peak_discount", 0.0),
+            "urgent_surcharge": surcharges.get("urgent_booking", 0.0),
+            "festival_surcharge": surcharges.get("festival", 0.0),
+            "festival_name": surcharges.get("festival_name"),
+            "samagri_fee": fees.get("samagri", 0.0),
+            "platform_fee": fees.get("platform_fee", 0.0),
+            "gst": fees.get("gst", 0.0),
+            "subtotal": pricing["subtotal"],
+            "total_price": pricing["total"],
+            "acharya_earnings": acharya_earnings["acharya_earnings"],
+            "duration_hours": duration_hours,
+            "currency": "INR",
+            "booking_datetime": booking_dt.isoformat(),
+        },
+    )
+
+
 @router.post(
     "",
     response_model=StandardResponse,

@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import * as ScreenCapture from 'expo-screen-capture';
 import PropTypes from 'prop-types';
 import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { Bubble, GiftedChat } from 'react-native-gifted-chat';
 import EmojiPicker from '../../components/EmojiPicker';
 import MessageReactions from '../../components/MessageReactions';
@@ -138,20 +138,42 @@ const ConversationScreen = ({ route }) => {
         },
       })).reverse();
       setMessages(formattedMessages);
-      
-      // Skip individual reaction loading (reactions come via messages or WS)
+
+      // Seed reactions from loaded messages so they display before any WS events
+      const reactionsMap = {};
+      messagesData.forEach((msg) => {
+        const id = msg._id || msg.id;
+        if (id && Array.isArray(msg.reactions) && msg.reactions.length > 0) {
+          reactionsMap[id] = msg.reactions;
+        }
+      });
+      setMessageReactions(reactionsMap);
     } catch (error) {
       console.error('Failed to load messages:', error);
     }
   };
 
   const handleReactionUpdate = (data) => {
-    if (data.message_id) {
-      setMessageReactions((prev) => ({
-        ...prev,
-        [data.message_id]: data.reactions || [],
-      }));
-    }
+    if (!data.message_id) return;
+    const { message_id, type, user_id, emoji } = data;
+    setMessageReactions((prev) => {
+      const current = prev[message_id] || [];
+      let updated;
+      if (type === 'reaction_added') {
+        const alreadyExists = current.some(
+          (r) => r.user_id === user_id && r.emoji === emoji
+        );
+        updated = alreadyExists
+          ? current
+          : [...current, { user_id, emoji, created_at: new Date().toISOString() }];
+      } else {
+        // reaction_removed
+        updated = current.filter(
+          (r) => !(r.user_id === user_id && r.emoji === emoji)
+        );
+      }
+      return { ...prev, [message_id]: updated };
+    });
   };
 
   const markAsRead = async () => {
@@ -172,7 +194,7 @@ const ConversationScreen = ({ route }) => {
       );
     } catch (error) {
       console.error('Failed to send message:', error);
-      alert('Failed to send message');
+      Alert.alert('Error', 'Failed to send message');
     }
   }, [conversationId, receiverId]);
 
@@ -244,7 +266,7 @@ const ConversationScreen = ({ route }) => {
       <EmojiPicker
         visible={emojiPickerVisible}
         onClose={() => setEmojiPickerVisible(false)}
-        onSelectEmoji={handleAddReaction}
+        onSelectEmoji={(emoji, msgId) => handleAddReaction(msgId, emoji)}
         messageId={selectedMessageId}
       />
     </View>
@@ -275,10 +297,6 @@ const styles = StyleSheet.create({
     color: '#000',
   },
 });
-
-ConversationScreen.propTypes = {
-  route: PropTypes.object.isRequired,
-};
 
 ConversationScreen.propTypes = {
   route: PropTypes.shape({

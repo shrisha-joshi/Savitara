@@ -9,6 +9,7 @@ import PropTypes from 'prop-types';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { API_CONFIG } from '../config/api.config';
+import api from '../services/api';
 
 const SocketContext = createContext(null);
 
@@ -41,10 +42,10 @@ export const SocketProvider = ({ children }) => {
   // Get WebSocket URL from API config
   const getWebSocketUrl = useCallback(async () => {
     try {
-      const token = await SecureStore.getItemAsync('accessToken');
       const userJson = await AsyncStorage.getItem('user');
       const userId = userJson ? JSON.parse(userJson)?.id || JSON.parse(userJson)?._id : null;
-      
+      const token = await SecureStore.getItemAsync('accessToken');
+
       if (!token || !userId) {
         console.log('[WS] No token or userId found');
         return null;
@@ -54,7 +55,7 @@ export const SocketProvider = ({ children }) => {
       let wsUrl = API_CONFIG.baseURL
         .replace('http://', 'ws://')
         .replace('https://', 'wss://')
-        .replace('/api/v1', '');
+        .replace(/\/?api\/v1$/, '');
 
       // Enforce WSS in production
       if (!__DEV__ && wsUrl.startsWith('ws://')) {
@@ -62,8 +63,24 @@ export const SocketProvider = ({ children }) => {
         wsUrl = wsUrl.replace('ws://', 'wss://');
       }
 
+      let authParam;
+      try {
+        const ticketRes = await api.post('/auth/ws-ticket');
+        const ticket = ticketRes?.data?.data?.ticket;
+        if (!ticket) throw new Error('Missing WS ticket');
+        authParam = `ticket=${ticket}`;
+      } catch (err) {
+        if (__DEV__ && token) {
+          console.warn('[WS] Ticket fetch failed, falling back to token in dev:', err?.message || err);
+          authParam = `token=${token}`;
+        } else {
+          console.error('[WS] Ticket required for WebSocket connection');
+          return null;
+        }
+      }
+
       return {
-        url: `${wsUrl}/ws/${userId}?token=${token}`,
+        url: `${wsUrl}/ws/${userId}?${authParam}`,
         userId,
         token,
       };
@@ -180,7 +197,15 @@ export const SocketProvider = ({ children }) => {
         case 'booking_update':
           setBookingUpdates(prev => [
             ...prev.slice(-10),
-            { ...payload, received_at: Date.now() },
+            {
+              booking_id: payload.booking_id || payload.booking?.id,
+              status: payload.status || payload.booking?.status,
+              grihasta_id: payload.grihasta_id || payload.booking?.grihasta_id,
+              acharya_id: payload.acharya_id || payload.booking?.acharya_id,
+              initiator_id: payload.initiator_id,
+              timestamp: payload.timestamp,
+              received_at: Date.now(),
+            },
           ]);
           break;
 

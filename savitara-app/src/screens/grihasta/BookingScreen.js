@@ -1,14 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { Text, TextInput, Button, RadioButton, ActivityIndicator } from 'react-native-paper';
+import { Text, TextInput, Button, RadioButton, ActivityIndicator, Surface, Divider } from 'react-native-paper';
 import { Calendar } from 'react-native-calendars';
 import { bookingAPI } from '../../services/api';
 
 const BookingScreen = ({ route, navigation }) => {
-  const { acharya } = route.params;
-  const [validationError, setValidationError] = useState(null);
+  // Safely extract params — may be undefined if navigation is misconfigured
+  const acharya = route.params?.acharya;
 
-  // Validate acharya data on mount
+  // ── All hooks MUST be declared before any conditional return ──────────────
+  const [validationError, setValidationError] = useState(null);
+  const [formData, setFormData] = useState({
+    pooja_type: '',
+    service_name: '',
+    booking_type: 'only',    // 'only' | 'with_samagri'
+    booking_mode: 'instant', // 'instant' | 'request'
+    scheduled_date: '',
+    scheduled_time: '',
+    location: '',
+    requirements: '',
+    notes: '',
+    duration_hours: 2,
+  });
+  const [loading, setLoading] = useState(false);
+  const [priceEstimate, setPriceEstimate] = useState(null);
+  const [priceLoading, setPriceLoading] = useState(false);
+  const priceDebounceRef = useRef(null);
+
+  // Validate acharya data on mount — sets validationError, does NOT return early
   useEffect(() => {
     if (!acharya || !acharya._id || acharya._id === 'undefined' || acharya._id === 'null') {
       setValidationError('Invalid Acharya ID. Please try again from the Acharya profile.');
@@ -18,6 +37,40 @@ const BookingScreen = ({ route, navigation }) => {
     }
   }, [acharya, navigation]);
 
+  // Fetch real-time dynamic price estimate whenever date / time / duration / type changes
+  useEffect(() => {
+    if (!acharya?._id || !formData.scheduled_date || !formData.scheduled_time) {
+      setPriceEstimate(null);
+      return;
+    }
+    // Only proceed once time looks like HH:MM
+    if (!/^\d{2}:\d{2}$/.test(formData.scheduled_time)) return;
+
+    if (priceDebounceRef.current) clearTimeout(priceDebounceRef.current);
+
+    priceDebounceRef.current = setTimeout(async () => {
+      try {
+        setPriceLoading(true);
+        const dateTimeStr = `${formData.scheduled_date}T${formData.scheduled_time}:00`;
+        const res = await bookingAPI.getPriceEstimate({
+          acharya_id: acharya._id,
+          date_time: dateTimeStr,
+          duration_hours: formData.duration_hours,
+          booking_type: formData.booking_type,
+        });
+        setPriceEstimate(res.data?.data || null);
+      } catch (err) {
+        console.warn('Price estimate error:', err?.response?.data?.detail || err.message);
+        setPriceEstimate(null);
+      } finally {
+        setPriceLoading(false);
+      }
+    }, 600);
+
+    return () => { if (priceDebounceRef.current) clearTimeout(priceDebounceRef.current); };
+  }, [acharya?._id, formData.scheduled_date, formData.scheduled_time, formData.duration_hours, formData.booking_type]);
+
+  // Conditional render AFTER all hooks
   if (validationError) {
     return (
       <View style={[styles.container, styles.centerContent]}>
@@ -28,18 +81,6 @@ const BookingScreen = ({ route, navigation }) => {
       </View>
     );
   }
-  const [formData, setFormData] = useState({
-    pooja_type: '',
-    service_name: '',
-    booking_type: 'only', // 'only' or 'with_samagri'
-    booking_mode: 'instant', // 'instant' or 'request'
-    scheduled_date: '',
-    scheduled_time: '',
-    location: '',
-    requirements: '',
-    notes: '',
-  });
-  const [loading, setLoading] = useState(false);
 
   const handleDateSelect = (day) => {
     setFormData({ ...formData, scheduled_date: day.dateString });
@@ -68,6 +109,7 @@ const BookingScreen = ({ route, navigation }) => {
         booking_mode: formData.booking_mode,
         date: formData.scheduled_date,
         time: formData.scheduled_time,
+        duration_hours: formData.duration_hours,
         service_name: formData.service_name || formData.pooja_type,
         requirements: formData.requirements || null,
         notes: formData.notes || null,
@@ -98,8 +140,6 @@ const BookingScreen = ({ route, navigation }) => {
       setLoading(false);
     }
   };
-
-  const estimatedAmount = acharya.acharya_profile?.hourly_rate || 0;
 
   return (
     <ScrollView style={styles.container}>
@@ -173,6 +213,22 @@ const BookingScreen = ({ route, navigation }) => {
       />
 
       <TextInput
+        label="Duration (hours)"
+        value={String(formData.duration_hours)}
+        onChangeText={(text) => {
+          const n = parseInt(text, 10);
+          if (!isNaN(n) && n >= 1 && n <= 12) {
+            setFormData({ ...formData, duration_hours: n });
+          } else if (text === '') {
+            setFormData({ ...formData, duration_hours: 1 });
+          }
+        }}
+        keyboardType="numeric"
+        style={styles.input}
+        right={<TextInput.Affix text="hr" />}
+      />
+
+      <TextInput
         label="Location"
         value={formData.location}
         onChangeText={(text) => setFormData({ ...formData, location: text })}
@@ -202,20 +258,55 @@ const BookingScreen = ({ route, navigation }) => {
         numberOfLines={2}
       />
 
-      {formData.booking_mode === 'instant' && (
-        <View style={styles.summary}>
-          <Text variant="titleMedium">Estimated Amount</Text>
-          <View style={styles.summaryRow}>
-            <Text>Acharya Rate:</Text>
-            <Text>₹{estimatedAmount}</Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Text variant="bodySmall" style={styles.note}>
-              {formData.booking_type === 'with_samagri' 
-                ? 'Final amount includes samagri cost' 
-                : 'Service only'}
-            </Text>
-          </View>
+      {/* Dynamic price breakdown — shown once a date + valid time are selected */}
+      {(priceEstimate || priceLoading) && (
+        <Surface style={styles.priceCard} elevation={1}>
+          <Text variant="titleMedium" style={styles.priceCardTitle}>Price Breakdown</Text>
+          {priceLoading ? (
+            <ActivityIndicator size="small" color="#FF6B35" style={{ marginVertical: 10 }} />
+          ) : (
+            <>
+              <PriceRow
+                label={`Base (₹${acharya.acharya_profile?.hourly_rate || 0}/hr × ${formData.duration_hours}h)`}
+                value={priceEstimate.base_price}
+              />
+              {priceEstimate.weekend_surcharge > 0 && (
+                <PriceRow label="Weekend surcharge (+50%)" value={priceEstimate.weekend_surcharge} />
+              )}
+              {priceEstimate.peak_hour_adj > 0 && (
+                <PriceRow label="Peak hour (+20%)" value={priceEstimate.peak_hour_adj} />
+              )}
+              {priceEstimate.off_peak_discount < 0 && (
+                <PriceRow label="Off-peak discount (−15%)" value={priceEstimate.off_peak_discount} discount />
+              )}
+              {priceEstimate.urgent_surcharge > 0 && (
+                <PriceRow label="Urgent booking (+50%)" value={priceEstimate.urgent_surcharge} />
+              )}
+              {priceEstimate.festival_surcharge > 0 && (
+                <PriceRow
+                  label={`${priceEstimate.festival_name || 'Festival'} (+30%)`}
+                  value={priceEstimate.festival_surcharge}
+                />
+              )}
+              {priceEstimate.samagri_fee > 0 && (
+                <PriceRow label="Samagri" value={priceEstimate.samagri_fee} />
+              )}
+              <Divider style={{ marginVertical: 6 }} />
+              <PriceRow label="Subtotal" value={priceEstimate.subtotal} />
+              <PriceRow label="Platform fee (10%)" value={priceEstimate.platform_fee} />
+              <PriceRow label="GST (18%)" value={priceEstimate.gst} />
+              <Divider style={{ marginVertical: 6 }} />
+              <PriceRow label="Total" value={priceEstimate.total_price} highlight />
+            </>
+          )}
+        </Surface>
+      )}
+
+      {!priceEstimate && !priceLoading && formData.booking_mode === 'instant' && (
+        <View style={styles.infoBox}>
+          <Text variant="bodySmall" style={{ color: '#555' }}>
+            Select a date and time to see the full price breakdown.
+          </Text>
         </View>
       )}
 
@@ -275,24 +366,46 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 10,
   },
-  summary: {
-    marginTop: 20,
-    padding: 15,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 5,
-  },
-  total: {
-    color: '#FF6B35',
-    fontWeight: 'bold',
-  },
   note: {
     fontStyle: 'italic',
     color: '#666',
+  },
+  priceCard: {
+    marginTop: 20,
+    padding: 14,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+  },
+  priceCardTitle: {
+    marginBottom: 10,
+    color: '#FF6B35',
+    fontWeight: 'bold',
+  },
+  priceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 3,
+  },
+  priceRowLabel: {
+    color: '#555',
+    flex: 1,
+  },
+  priceRowLabelBold: {
+    color: '#222',
+    fontWeight: '600',
+    flex: 1,
+  },
+  priceValue: {
+    color: '#333',
+  },
+  priceHighlight: {
+    color: '#FF6B35',
+    fontWeight: 'bold',
+  },
+  priceDiscount: {
+    color: '#4CAF50',
+    fontWeight: '500',
   },
   infoBox: {
     marginTop: 15,
@@ -308,5 +421,29 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF6B35',
   },
 });
+
+/** Small helper row for the price breakdown card */
+const PriceRow = ({ label, value, highlight, discount }) => (
+  <View style={styles.priceRow}>
+    <Text
+      variant={highlight ? 'titleSmall' : 'bodySmall'}
+      style={highlight ? styles.priceRowLabelBold : styles.priceRowLabel}
+    >
+      {label}
+    </Text>
+    <Text
+      variant={highlight ? 'titleSmall' : 'bodySmall'}
+      style={
+        highlight
+          ? styles.priceHighlight
+          : discount
+          ? styles.priceDiscount
+          : styles.priceValue
+      }
+    >
+      {discount && value < 0 ? `−₹${Math.abs(value)}` : `₹${value}`}
+    </Text>
+  </View>
+);
 
 export default BookingScreen;

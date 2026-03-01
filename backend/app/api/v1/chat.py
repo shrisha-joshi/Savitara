@@ -54,9 +54,46 @@ def sanitize_message_content(content: str) -> Tuple[str, bool]:
     # 5. Email addresses (all TLDs)
     email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 
-    # 6. Obfuscated email tricks ("at", "dot")
-    obfuscated_at = r"(?<!\S)(?:at|\[at\]|\(at\)|@)(?!\S)"
-    obfuscated_dot = r"(?<!\S)(?:dot|\[dot\]|\(dot\)|\.)(?!\S)"
+    # 6. Obfuscated "at" tricks — precision patterns to avoid false positives.
+    #
+    # OLD bad pattern `(?<!\S)(?:at|\[at\]|...)(?!\S)` matched ANY standalone word "at",
+    # which flagged innocent messages like "Meet at 5pm" or "I was at the temple".
+    #
+    # NEW approach: require email-like context on BOTH sides of "at".
+
+    # 6a. Full obfuscated email: "word AT word DOT tld"
+    # Catches: "email at gmail dot com", "john at yahoo dot in"
+    # Does NOT catch: "Meet at 5pm", "I was at the temple" (no trailing dot-TLD)
+    _TLD = r"(?:com|net|org|in|io|co|biz|info|edu|gov|ai|app|dev|me|tech|uk|us|au|ca)"
+    obfuscated_full_email = (
+        r"\w[\w.%+-]*\s+(?:at|\[at\]|\(at\))\s+[a-zA-Z]\w*"
+        r"\s+(?:dot|\[dot\]|\(dot\))\s+" + _TLD + r"\b"
+    )
+
+    # 6b. Obfuscated "at" where domain still has a literal dot-TLD:
+    # Catches: "john at gmail.com", "me at savitara.in"
+    # Does NOT catch: "Meet at 5pm" ("5pm" has no dot-TLD suffix)
+    obfuscated_at_real_domain = (
+        r"\w[\w.%+-]*\s+(?:at|\[at\]|\(at\))\s+[a-zA-Z]\w*\.[a-zA-Z]{2,}"
+    )
+
+    # 6c. Spaced @ symbol: "john @ gmail.com" — email_pattern won't catch the spaces
+    spaced_at_symbol = r"[a-zA-Z0-9._%+-]\s+@\s+[a-zA-Z0-9]"
+
+    # 6d. Generic social/contact @handle — @word not preceded by a word character
+    # Catches: "@johndoe", "ping me @username"
+    # Does NOT catch: "john@gmail.com" (@ preceded by word char; email_pattern covers it)
+    social_at_handle = r"(?<!\w)@[a-zA-Z]\w*"
+
+    # 7. Obfuscated "dot" — ONLY flag when it's a domain context (TLD follows).
+    # OLD pattern matched standalone "dot" anywhere, e.g. "connecting the dots".
+    # NEW pattern requires a recognised TLD to follow.
+    # Catches: "gmail dot com", "yahoo dot co dot in"
+    # Does NOT catch: ordinary "dot" in prose
+    _TLD_DOT = r"(?:com|net|org|in|io|co|biz|info|edu|gov|ai|app|dev|me|tech|uk|us|au|ca)"
+    obfuscated_dot = (
+        r"[a-zA-Z0-9]\s+(?:dot|\[dot\]|\(dot\))\s+" + _TLD_DOT + r"\b"
+    )
 
     # 7. Social handles and platforms
     # WhatsApp, Telegram, Instagram, Signal, etc.
@@ -72,7 +109,10 @@ def sanitize_message_content(content: str) -> Tuple[str, bool]:
         indian_landline,
         intl_phone,
         email_pattern,
-        obfuscated_at,
+        obfuscated_full_email,
+        obfuscated_at_real_domain,
+        spaced_at_symbol,
+        social_at_handle,
         obfuscated_dot,
         social_handles,
         url_pattern,

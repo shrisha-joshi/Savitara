@@ -275,6 +275,27 @@ async def health_check():
     }
 
 
+@app.get("/health/ws", tags=["Health"])
+async def websocket_health():
+    """WebSocket health probe: reports redis + active connection counts."""
+    redis_status = "unconfigured" if not settings.REDIS_URL else "initializing"
+    try:
+        if manager.redis_client:
+            await manager.redis_client.ping()
+            redis_status = "healthy"
+        elif settings.REDIS_URL:
+            redis_status = "connecting"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"WS health redis ping failed: {exc}")
+        redis_status = "degraded"
+
+    return {
+        "status": "healthy" if redis_status in {"healthy", "unconfigured"} else "degraded",
+        "redis": redis_status,
+        "connections": len(manager.active_connections),
+    }
+
+
 # Simple readiness probe for Railway
 @app.get("/", tags=["Root"], status_code=200)
 async def root():

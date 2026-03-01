@@ -355,3 +355,102 @@ class TestSanitizeContactInfo:
         from app.api.v1.chat import sanitize_message_content
         _, blocked = sanitize_message_content("+91 98765 43210")
         assert blocked is True
+
+
+# ---------------------------------------------------------------------------
+# TestSanitizeObfuscationPrecision
+# Tests that the "at" / "dot" patterns are precise enough not to generate
+# false positives on ordinary English sentences.
+# ---------------------------------------------------------------------------
+
+class TestSanitizeObfuscationPrecision:
+    """Precision tests for the refactored obfuscated-at / obfuscated-dot patterns."""
+
+    # ── Messages that MUST NOT be blocked ────────────────────────────────
+
+    def test_meet_at_time_allowed(self):
+        """'Meet at 5pm' — standalone 'at' in an innocent sentence."""
+        from app.api.v1.chat import sanitize_message_content
+        content, blocked = sanitize_message_content("Meet at 5pm")
+        assert blocked is False, "'Meet at 5pm' should not be blocked"
+        assert content == "Meet at 5pm"
+
+    def test_was_at_temple_allowed(self):
+        """'I was at the temple' — simple preposition use."""
+        from app.api.v1.chat import sanitize_message_content
+        _, blocked = sanitize_message_content("I was at the temple")
+        assert blocked is False, "'I was at the temple' should not be blocked"
+
+    def test_reaching_at_noon_allowed(self):
+        """'I am reaching at noon' — no email context."""
+        from app.api.v1.chat import sanitize_message_content
+        _, blocked = sanitize_message_content("I am reaching at noon")
+        assert blocked is False
+
+    def test_standalone_dot_prose_allowed(self):
+        """'Connect the dots' — 'dot' in prose without a TLD following."""
+        from app.api.v1.chat import sanitize_message_content
+        _, blocked = sanitize_message_content("Connect the dots to understand the pattern")
+        assert blocked is False, "'connect the dots' prose should not be blocked"
+
+    def test_at_in_long_sentence_allowed(self):
+        """Multi-word sentence: 'Please be at the venue by 10am.'"""
+        from app.api.v1.chat import sanitize_message_content
+        _, blocked = sanitize_message_content("Please be at the venue by 10am.")
+        assert blocked is False
+
+    # ── Messages that MUST be blocked ────────────────────────────────────
+
+    def test_obfuscated_email_at_dot_blocked(self):
+        """Full obfuscation: 'email at gmail dot com'."""
+        from app.api.v1.chat import sanitize_message_content
+        _, blocked = sanitize_message_content("email at gmail dot com")
+        assert blocked is True, "'email at gmail dot com' should be blocked"
+
+    def test_obfuscated_email_dot_in_blocked(self):
+        """Full obfuscation with Indian TLD: 'john at yahoo dot in'."""
+        from app.api.v1.chat import sanitize_message_content
+        _, blocked = sanitize_message_content("john at yahoo dot in")
+        assert blocked is True
+
+    def test_real_email_with_at_word_blocked(self):
+        """'contact me at john@gmail.com' — real @ in domain part."""
+        from app.api.v1.chat import sanitize_message_content
+        _, blocked = sanitize_message_content("contact me at john@gmail.com")
+        assert blocked is True, "Actual email address should be blocked"
+
+    def test_at_word_real_domain_blocked(self):
+        """'john at gmail.com' — 'at' with real dot-TLD on right side."""
+        from app.api.v1.chat import sanitize_message_content
+        _, blocked = sanitize_message_content("Reach me at gmail.com")
+        assert blocked is True
+
+    def test_social_at_handle_blocked(self):
+        """'Check my insta @handle' — generic @username."""
+        from app.api.v1.chat import sanitize_message_content
+        _, blocked = sanitize_message_content("Check my insta @handle")
+        assert blocked is True, "'@handle' social mention should be blocked"
+
+    def test_at_handle_without_platform_blocked(self):
+        """'Contact me @johndoe' — bare @handle, no platform keyword needed."""
+        from app.api.v1.chat import sanitize_message_content
+        _, blocked = sanitize_message_content("Contact me @johndoe")
+        assert blocked is True
+
+    def test_obfuscated_dot_tld_blocked(self):
+        """'gmail dot com' — 'dot' with recognised TLD."""
+        from app.api.v1.chat import sanitize_message_content
+        _, blocked = sanitize_message_content("My address is gmail dot com")
+        assert blocked is True
+
+    def test_bracket_obfuscation_blocked(self):
+        """'user [at] domain [dot] com' — bracket encoding variant."""
+        from app.api.v1.chat import sanitize_message_content
+        _, blocked = sanitize_message_content("user [at] domain [dot] com")
+        assert blocked is True
+
+    def test_spaced_at_symbol_blocked(self):
+        """'john @ gmail.com' — space around @ symbol."""
+        from app.api.v1.chat import sanitize_message_content
+        _, blocked = sanitize_message_content("john @ gmail.com")
+        assert blocked is True, "Spaced @ should be blocked"

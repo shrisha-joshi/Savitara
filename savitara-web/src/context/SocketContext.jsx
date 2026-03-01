@@ -134,9 +134,15 @@ export const SocketProvider = ({ children }) => {
       if (!ticket) throw new Error('No ticket in response');
       wsAuthParam = `ticket=${ticket}`;
     } catch (err) {
-      console.error('[WS] Failed to get WS ticket, falling back to token:', err);
-      // Fallback: use token (will be blocked by server in production)
-      wsAuthParam = `token=${token}`;
+      const env = import.meta.env.VITE_ENV || 'development';
+      if (env === 'production') {
+        console.error('[WS] Ticket required in production. Aborting connection:', err);
+        setIsConnecting(false);
+        connectingRef.current = false;
+        return;
+      }
+      console.error('[WS] Failed to get WS ticket, falling back to token (non-prod):', err);
+      wsAuthParam = `token=${token}`; // server blocks in prod
     }
     
     const wsUrl = `${protocol}//${wsHost}/ws/${user.id}?${wsAuthParam}`;
@@ -188,12 +194,23 @@ export const SocketProvider = ({ children }) => {
             }
             return msg;
           }));
+        } else if (data.type === 'pong') {
+          // heartbeat response; no-op
         } else if (data.type === 'typing_indicator') {
           handleTypingIndicator(data);
         } else if (data.type === 'payment_required') {
           handlePaymentRequired(data);
         } else if (data.type === 'booking_update') {
-          setBookingUpdates(prev => [...prev.slice(-10), { ...data, received_at: Date.now() }]);
+          const normalized = {
+            booking_id: data.booking_id || data.booking?.id,
+            status: data.status || data.booking?.status,
+            grihasta_id: data.grihasta_id || data.booking?.grihasta_id,
+            acharya_id: data.acharya_id || data.booking?.acharya_id,
+            initiator_id: data.initiator_id,
+            timestamp: data.timestamp,
+            received_at: Date.now(),
+          };
+          setBookingUpdates(prev => [...prev.slice(-10), normalized]);
         }
       } catch (err) {
         console.error('WS Parse Error:', err);

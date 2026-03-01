@@ -50,6 +50,7 @@ export const bookingAPI = {
   updateBookingStatus: (id, data) => api.put(`/bookings/${id}/status`, data),
   createPaymentOrder: (id) => api.post(`/bookings/${id}/create-payment-order`),
   verifyPayment: (id, data) => api.post(`/bookings/${id}/payment/verify`, data),
+  getPriceEstimate: (params) => api.get('/bookings/price-estimate', { params }),
   startBooking: (id, otp) => api.post(`/bookings/${id}/start`, { otp }),
   confirmAttendance: (id, data) => api.post(`/bookings/${id}/attendance/confirm`, data),
   referBooking: (bookingId, newAcharyaId, notes) => api.put(`/bookings/${bookingId}/refer`, { new_acharya_id: newAcharyaId, notes }),

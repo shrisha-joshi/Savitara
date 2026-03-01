@@ -39,6 +39,14 @@ class ConnectionManager:
         # Background task for listening to Redis
         self.listener_task: Optional[asyncio.Task] = None
 
+    def _log_event(self, event: str, **fields) -> None:
+        """Emit a structured WebSocket event log (lightweight, no metrics backend)."""
+        try:
+            logger.info("ws_event", extra={"ws": {"event": event, **fields}})
+        except Exception:
+            # Never fail the main flow due to logging
+            logger.debug(f"ws_event {event} {fields}")
+
     async def connect_redis(self):
         """Initialize Redis connection for Pub/Sub"""
         if self.redis_client:
@@ -56,8 +64,10 @@ class ConnectionManager:
             # Start the listener loop in background
             self.listener_task = asyncio.create_task(self._redis_listener())
             logger.info("WebSocket Manager connected to Redis")
+            self._log_event("redis_connected")
         except Exception as e:
             logger.error(f"Failed to connect WebSocket Manager to Redis: {e}")
+            self._log_event("redis_connect_failed", error=str(e))
 
     async def _handle_user_message(self, channel: str, data: dict) -> None:
         """Handle a message for a specific user channel"""
@@ -69,6 +79,7 @@ class ConnectionManager:
                 await websocket.send_json(data)
             except Exception as e:
                 logger.error(f"Error sending to {user_id}: {e}")
+                self._log_event("deliver_failed", user_id=user_id, error=str(e))
 
     def _parse_message_data(self, data_str: str) -> Optional[dict]:
         """Parse JSON message data, return None on failure"""
@@ -98,6 +109,7 @@ class ConnectionManager:
 
         except Exception as e:
             logger.error(f"Redis listener error: {e}")
+            self._log_event("redis_listener_error", error=str(e))
 
     async def connect(self, user_id: str, websocket: WebSocket):
         """Accept new WebSocket connection"""
@@ -112,6 +124,12 @@ class ConnectionManager:
 
         logger.info(
             f"User {user_id} connected. Total local connections: {len(self.active_connections)}"
+        )
+        self._log_event(
+            "connect",
+            user_id=user_id,
+            connections=len(self.active_connections),
+            has_redis=bool(self.redis_client),
         )
 
         # Send connection confirmation
@@ -142,12 +160,16 @@ class ConnectionManager:
 
             await self.redis_client.delete(queue_key)
             logger.info(f"Delivered {len(messages)} offline messages to {user_id}")
+            self._log_event("offline_delivered", user_id=user_id, count=len(messages))
+        else:
+            logger.debug(f"No offline messages for {user_id}")
 
     def disconnect(self, user_id: str):
         """Remove WebSocket connection"""
         if user_id in self.active_connections:
             del self.active_connections[user_id]
             logger.info(f"User {user_id} disconnected.")
+            self._log_event("disconnect", user_id=user_id, connections=len(self.active_connections))
 
         if self.pubsub:
             # Unsubscribe in background
@@ -161,16 +183,25 @@ class ConnectionManager:
         for room_users in self.rooms.values():
             room_users.discard(user_id)
 
-    async def send_personal_message(self, user_id: str, message: dict):
-        """Send message to specific user via Redis Pub/Sub"""
+    async def send_personal_message(self, user_id: str, message: dict) -> str:
+        """Send message to specific user via Redis Pub/Sub.
+
+        Returns delivery status: "delivered" (subscriber active), "queued" (offline),
+        or "local" (no Redis, sent only to local connection). Emits lightweight logs for observability.
+        """
+
         if not self.redis_client:
             if user_id in self.active_connections:
                 try:
                     await self.active_connections[user_id].send_json(message)
+                    logger.debug(f"WS local delivery to {user_id}")
+                    self._log_event("local", user_id=user_id)
+                    return "local"
                 except Exception as e:
                     logger.error(f"Failed to send local message: {e}")
+                    self._log_event("local_failed", user_id=user_id, error=str(e))
                     self.disconnect(user_id)
-            return
+            return "queued"
 
         channel = f"user:{user_id}"
         message_str = json.dumps(message)
@@ -185,12 +216,28 @@ class ConnectionManager:
                 await self.redis_client.expire(
                     f"offline_queue:{user_id}", 86400 * 7
                 )  # 7 days
+                logger.info(f"WS queued message for offline user {user_id}")
+                self._log_event("queued", user_id=user_id, channel=channel)
+                return "queued"
+
+            logger.debug(f"WS delivered to {user_id} via Redis pubsub")
+            self._log_event("delivered", user_id=user_id, channel=channel)
+            return "delivered"
 
         except Exception as e:
             logger.error(f"Redis publish error: {e}")
+            self._log_event("publish_error", user_id=user_id, error=str(e))
             # Fallback local check
             if user_id in self.active_connections:
-                await self.active_connections[user_id].send_json(message)
+                try:
+                    await self.active_connections[user_id].send_json(message)
+                    logger.debug(f"WS local fallback delivery to {user_id}")
+                    self._log_event("local_fallback", user_id=user_id)
+                    return "local"
+                except Exception as e2:  # noqa: BLE001
+                    logger.error(f"WS local fallback failed for {user_id}: {e2}")
+                    self._log_event("local_fallback_failed", user_id=user_id, error=str(e2))
+            return "queued"
 
     async def broadcast(self, message: dict, exclude: List[str] = None):
         """Broadcast message to all connected users (Local Implementation for Phase 2)"""
@@ -268,15 +315,16 @@ async def handle_chat_message(user_id: str, data: dict):
         "timestamp": datetime.now().isoformat(),
     }
 
-    # Send to receiver if online
-    await manager.send_personal_message(receiver_id, message)
+    # Send to receiver and capture delivery status
+    delivery_status = await manager.send_personal_message(receiver_id, message)
 
-    # Send confirmation to sender
+    # Send confirmation to sender with delivery status
     await manager.send_personal_message(
         user_id,
         {
             "type": "message_sent",
             "conversation_id": conversation_id,
+            "delivery_status": delivery_status,
             "timestamp": datetime.now().isoformat(),
         },
     )
@@ -312,6 +360,9 @@ async def handle_booking_update(user_id: str, data: dict):
         "type": "booking_update",
         "booking_id": booking_id,
         "status": status,
+        "grihasta_id": grihasta_id,
+        "acharya_id": acharya_id,
+        "initiator_id": user_id,
         "timestamp": datetime.now().isoformat(),
     }
 
@@ -319,11 +370,23 @@ async def handle_booking_update(user_id: str, data: dict):
     await manager.send_personal_message(acharya_id, update_message)
 
 
+async def handle_ping(user_id: str, data: dict):
+    """Respond to client heartbeat ping."""
+    await manager.send_personal_message(
+        user_id,
+        {
+            "type": "pong",
+            "server_time": datetime.now().isoformat(),
+        },
+    )
+
+
 # Message router
 MESSAGE_HANDLERS = {
     "chat_message": handle_chat_message,
     "typing_indicator": handle_typing_indicator,
     "booking_update": handle_booking_update,
+    "ping": handle_ping,
 }
 
 
@@ -331,7 +394,15 @@ async def process_websocket_message(user_id: str, message: dict):
     """Process incoming WebSocket message"""
     message_type = message.get("type")
 
-    if message_type in MESSAGE_HANDLERS:
-        await MESSAGE_HANDLERS[message_type](user_id, message)
+    if not message_type:
+        logger.warning("Dropped WS message with no type")
+        return
+
+    handler = MESSAGE_HANDLERS.get(message_type)
+    if handler:
+        try:
+            await handler(user_id, message)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"WS handler error for {message_type}: {exc}")
     else:
         logger.warning(f"Unknown message type: {message_type}")

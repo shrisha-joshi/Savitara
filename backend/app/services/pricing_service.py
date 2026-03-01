@@ -1,9 +1,12 @@
 """
 Dynamic Pricing Service
 """
-from datetime import datetime
-from typing import Dict
+from datetime import datetime, timezone
+from typing import Dict, Optional
 from enum import Enum
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class PricingMultiplier(float, Enum):
@@ -33,17 +36,27 @@ class PricingService:
     PEAK_HOURS = [(17, 22)]  # 5 PM - 10 PM
     OFF_PEAK_HOURS = [(6, 10)]  # 6 AM - 10 AM weekday mornings (Strategy Report §6.7)
 
-    FESTIVALS = {
-        # Format: (month, day): "festival_name"
-        (1, 14): "Makar Sankranti",
-        (2, 19): "Maha Shivratri",
-        (3, 25): "Holi",
-        (4, 14): "Ugadi",
-        (8, 15): "Independence Day",
-        (8, 30): "Ganesh Chaturthi",
-        (10, 24): "Diwali",
-        (11, 12): "Diwali",
-    }
+    # Festival dates are NOT hardcoded here — they follow the Hindu lunar calendar
+    # and change every year.  PricingService._is_festival_day() delegates to
+    # PanchangaService which uses MAJOR_FESTIVALS (the single source of truth).
+    # To add/edit festival dates, update panchanga_service.py::MAJOR_FESTIVALS.
+
+    @classmethod
+    def _is_festival_day(cls, booking_datetime: datetime) -> Optional[str]:
+        """Return festival name if booking_datetime falls on a known festival, else None.
+
+        Delegates to PanchangaService so there is a single source of truth for
+        Hindu festival dates.  Silently returns None on any error.
+        """
+        try:
+            from app.services.panchanga_service import PanchangaService  # lazy import avoids circular deps
+            svc = PanchangaService()
+            festivals = svc.get_festivals_for_date(booking_datetime.date())
+            if festivals:
+                return festivals[0]["name"]
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("PanchangaService festival lookup failed: %s", exc)
+        return None
 
     @classmethod
     def calculate_price(
@@ -91,18 +104,26 @@ class PricingService:
             subtotal -= off_peak_discount
 
         # Urgent booking (< 24 hours notice)
-        hours_until = (booking_datetime - datetime.now()).total_seconds() / 3600
+        # Use timezone-aware now() so comparison works whether booking_datetime is
+        # naive or aware (SonarQube S6971 / Python datetime best-practice).
+        now_utc = datetime.now(timezone.utc)
+        bdt_aware = (
+            booking_datetime
+            if booking_datetime.tzinfo is not None
+            else booking_datetime.replace(tzinfo=timezone.utc)
+        )
+        hours_until = (bdt_aware - now_utc).total_seconds() / 3600
         if 0 < hours_until < 24:
             urgent_surcharge = subtotal * (PricingMultiplier.URGENT_BOOKING.value - 1)
             breakdown["surcharges"]["urgent_booking"] = round(urgent_surcharge, 2)
             subtotal += urgent_surcharge
 
-        # Festival/Special occasion
-        date_key = (booking_datetime.month, booking_datetime.day)
-        if date_key in cls.FESTIVALS:
+        # Festival/Special occasion — delegated to PanchangaService (single source of truth)
+        festival_name = cls._is_festival_day(booking_datetime)
+        if festival_name:
             festival_surcharge = subtotal * (PricingMultiplier.FESTIVAL.value - 1)
             breakdown["surcharges"]["festival"] = round(festival_surcharge, 2)
-            breakdown["surcharges"]["festival_name"] = cls.FESTIVALS[date_key]
+            breakdown["surcharges"]["festival_name"] = festival_name
             subtotal += festival_surcharge
 
         # Samagri cost

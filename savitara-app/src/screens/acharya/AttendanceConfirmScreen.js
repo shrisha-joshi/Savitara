@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, View, StyleSheet } from 'react-native';
 import { Text, TextInput, Button, RadioButton } from 'react-native-paper';
+import PropTypes from 'prop-types';
 import { bookingAPI } from '../../services/api';
 
 const AttendanceConfirmScreen = ({ route, navigation }) => {
@@ -108,5 +109,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF6B35',
   },
 });
+
+AttendanceConfirmScreen.propTypes = {
+  navigation: PropTypes.shape({
+    goBack: PropTypes.func.isRequired,
+  }).isRequired,
+  route: PropTypes.shape({
+    params: PropTypes.shape({
+      booking: PropTypes.shape({
+        _id: PropTypes.string.isRequired,
+        pooja_type: PropTypes.string,
+        grihasta_name: PropTypes.string,
+        scheduled_datetime: PropTypes.string,
+        total_amount: PropTypes.number,
+      }).isRequired,
+    }).isRequired,
+  }).isRequired,
+};
 
 export default AttendanceConfirmScreen;

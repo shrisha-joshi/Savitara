@@ -46,7 +46,7 @@ import {
 /** Generate and trigger download of a CSV file */
 function downloadCSV(rows, filename) {
   const csvContent = rows
-    .map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+    .map((r) => r.map((c) => `"${String(c ?? '').replaceAll('"', '""')}"`.join(','))
     .join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);

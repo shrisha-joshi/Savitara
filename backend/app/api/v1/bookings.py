@@ -1,3 +1,79 @@
+async def _fetch_and_validate_booking(booking_id, current_user, db):
+    booking_doc = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+    if not booking_doc:
+        raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
+    if str(booking_doc["grihasta_id"]) != current_user["id"]:
+        raise PermissionDeniedError(action="Verify payment")
+    return booking_doc
+
+def _check_idempotency(booking_doc, booking_id):
+    if (
+        booking_doc.get("status") == BookingStatus.CONFIRMED.value
+        and booking_doc.get("payment_status") == PaymentStatus.COMPLETED.value
+    ):
+        return StandardResponse(
+            success=True,
+            data={
+                "booking_id": booking_id,
+                "status": BookingStatus.CONFIRMED.value,
+                "start_otp": booking_doc.get("start_otp"),
+            },
+            message="Payment already verified. Booking is confirmed.",
+        )
+    return None
+
+def _verify_razorpay_signature(payment_service, booking_doc, razorpay_payment_id, razorpay_signature):
+    is_valid = payment_service.verify_payment_signature(
+        razorpay_order_id=booking_doc["razorpay_order_id"],
+        razorpay_payment_id=razorpay_payment_id,
+        razorpay_signature=razorpay_signature,
+    )
+    if not is_valid:
+        raise PaymentFailedError(
+            order_id=booking_doc["razorpay_order_id"],
+            details={"error": "Invalid payment signature"},
+        )
+
+def _validate_acharya_id(acharya_id, db):
+    if not ObjectId.is_valid(acharya_id):
+        raise InvalidInputError(message="Invalid acharya_id format", field="acharya_id")
+    return db.acharya_profiles.find_one({"_id": ObjectId(acharya_id)})
+
+def _parse_requested_start(date_time):
+    try:
+        requested_start = datetime.fromisoformat(date_time.replace("Z", TIMEZONE_UTC_OFFSET))
+        if requested_start.tzinfo is None:
+            requested_start = requested_start.replace(tzinfo=timezone.utc)
+        return requested_start
+    except ValueError as exc:
+        raise InvalidInputError(
+            message=f"Invalid date_time: {exc}. Use ISO-8601, e.g. 2026-03-15T14:00:00",
+            field="date_time",
+        ) from exc
+
+def _find_conflicts(candidates, requested_start, requested_end):
+    conflicts = []
+    latest_conflict_end = None
+    for booking in candidates:
+        b_start = booking.get("scheduled_datetime")
+        if b_start is None:
+            continue
+        if isinstance(b_start, str):
+            b_start = datetime.fromisoformat(b_start.replace("Z", TIMEZONE_UTC_OFFSET))
+        if b_start.tzinfo is None:
+            b_start = b_start.replace(tzinfo=timezone.utc)
+        b_duration = booking.get("duration_hours", 2)
+        b_end = b_start + timedelta(hours=b_duration)
+        if b_start < requested_end and b_end > requested_start:
+            conflicts.append({
+                "booking_id": str(booking["_id"]),
+                "start": b_start.isoformat(),
+                "end": b_end.isoformat(),
+            })
+            if latest_conflict_end is None or b_end > latest_conflict_end:
+                latest_conflict_end = b_end
+    return conflicts, latest_conflict_end
+
 """
 Booking API Endpoints
 Handles booking creation, management, and attendance confirmation
@@ -32,6 +108,7 @@ from app.core.constants import (
     MONGO_IF_NULL,
     FIELD_POOJA_NAME,
     FIELD_SERVICE_NAME,
+    TIMEZONE_UTC_OFFSET,
 )
 from app.core.config import settings
 from app.core.security import (
@@ -429,7 +506,7 @@ async def get_price_estimate(
 
     # ── 3. Parse datetime ──────────────────────────────────────────────────
     try:
-        booking_dt = datetime.fromisoformat(date_time.replace("Z", "+00:00"))
+        booking_dt = datetime.fromisoformat(date_time.replace("Z", TIMEZONE_UTC_OFFSET))
         if booking_dt.tzinfo is None:
             booking_dt = booking_dt.replace(tzinfo=timezone.utc)
     except ValueError as exc:
@@ -506,41 +583,24 @@ async def check_availability(
     Slot availability endpoint — called by BookingScreen on every date/time/duration
     change so users see a live available / unavailable indicator before submitting.
     """
-    # ── 1. Validate Acharya ────────────────────────────────────────────────
-    if not ObjectId.is_valid(acharya_id):
-        raise InvalidInputError(message="Invalid acharya_id format", field="acharya_id")
-
-    acharya = await db.acharya_profiles.find_one({"_id": ObjectId(acharya_id)})
+    # 1. Validate Acharya
+    acharya = await _validate_acharya_id(acharya_id, db)
     if not acharya:
         raise ResourceNotFoundError(resource_type="Acharya", resource_id=acharya_id)
 
-    # ── 2. Parse requested slot ────────────────────────────────────────────
-    try:
-        requested_start = datetime.fromisoformat(date_time.replace("Z", "+00:00"))
-        if requested_start.tzinfo is None:
-            requested_start = requested_start.replace(tzinfo=timezone.utc)
-    except ValueError as exc:
-        raise InvalidInputError(
-            message=f"Invalid date_time: {exc}. Use ISO-8601, e.g. 2026-03-15T14:00:00",
-            field="date_time",
-        ) from exc
-
+    # 2. Parse requested slot
+    requested_start = _parse_requested_start(date_time)
     if requested_start < datetime.now(timezone.utc):
         raise InvalidInputError(
             message="date_time must be in the future",
             field="date_time",
         )
-
     requested_end = requested_start + timedelta(hours=duration)
 
-    # ── 3. Fetch active bookings for this acharya spanning a 2-day window ──
-    # We fetch a wider window then do Python-side overlap math because
-    # MongoDB can't easily compute end_time = start + duration_hours.
+    # 3. Fetch active bookings for this acharya spanning a 2-day window
     window_start = requested_start - timedelta(hours=12)
     window_end = requested_end + timedelta(hours=12)
-
     blocking_statuses = ["confirmed", "pending_payment", "in_progress"]
-
     candidates_cursor = db.bookings.find(
         {
             "acharya_id": str(acharya["_id"]),
@@ -551,45 +611,15 @@ async def check_availability(
     )
     candidates = await candidates_cursor.to_list(length=50)
 
-    # ── 4. Python-side overlap detection ─────────────────────────────────
-    conflicts = []
-    latest_conflict_end: Optional[datetime] = None
-
-    for booking in candidates:
-        b_start = booking.get("scheduled_datetime")
-        if b_start is None:
-            continue
-        if isinstance(b_start, str):
-            b_start = datetime.fromisoformat(b_start.replace("Z", "+00:00"))
-        if b_start.tzinfo is None:
-            b_start = b_start.replace(tzinfo=timezone.utc)
-
-        b_duration = booking.get("duration_hours", 2)
-        b_end = b_start + timedelta(hours=b_duration)
-
-        # Overlap: existing starts before our window ends AND ends after ours starts
-        if b_start < requested_end and b_end > requested_start:
-            conflicts.append(
-                {
-                    "booking_id": str(booking["_id"]),
-                    "start": b_start.isoformat(),
-                    "end": b_end.isoformat(),
-                }
-            )
-            if latest_conflict_end is None or b_end > latest_conflict_end:
-                latest_conflict_end = b_end
-
+    # 4. Python-side overlap detection
+    conflicts, latest_conflict_end = _find_conflicts(candidates, requested_start, requested_end)
     available = len(conflicts) == 0
 
-    # ── 5. Suggest next free slot (first gap after all conflicts end) ──────
+    # 5. Suggest next free slot (first gap after all conflicts end)
     next_available_slot: Optional[str] = None
     if not available and latest_conflict_end is not None:
-        # Round up to next 30-minute boundary for a cleaner suggestion
         minutes = latest_conflict_end.minute
-        if minutes > 0:
-            round_up = timedelta(minutes=(30 - minutes % 30) % 30)
-        else:
-            round_up = timedelta(0)
+        round_up = timedelta(minutes=(30 - minutes % 30) % 30) if minutes > 0 else timedelta(0)
         next_slot = latest_conflict_end + round_up
         next_available_slot = next_slot.isoformat()
 
@@ -1164,32 +1194,15 @@ async def verify_payment(
             detail="razorpay_payment_id and razorpay_signature are required",
         )
     try:
-        # Get booking
-        booking_doc = await db.bookings.find_one({"_id": ObjectId(booking_id)})
-        if not booking_doc:
-            raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
+        # Get booking and validate ownership
+        booking_doc = await _fetch_and_validate_booking(booking_id, current_user, db)
 
-        # Verify ownership
-        if str(booking_doc["grihasta_id"]) != current_user["id"]:
-            raise PermissionDeniedError(action="Verify payment")
+        # Idempotency guard
+        idempotent_response = _check_idempotency(booking_doc, booking_id)
+        if idempotent_response:
+            return idempotent_response
 
-        # ── Idempotency guard ─────────────────────────────────────────────────
-        # If payment was already verified, return success without re-processing.
-        if (
-            booking_doc.get("status") == BookingStatus.CONFIRMED.value
-            and booking_doc.get("payment_status") == PaymentStatus.COMPLETED.value
-        ):
-            return StandardResponse(
-                success=True,
-                data={
-                    "booking_id": booking_id,
-                    "status": BookingStatus.CONFIRMED.value,
-                    "start_otp": booking_doc.get("start_otp"),
-                },
-                message="Payment already verified. Booking is confirmed.",
-            )
-
-        # Validate state transition via central state machine
+        # Validate state transition
         _validate_transition(
             booking_doc.get("status", ""),
             BookingStatus.CONFIRMED.value,
@@ -1199,13 +1212,8 @@ async def verify_payment(
         # Verify Razorpay signature
         try:
             from app.services.payment_service import RazorpayService
-
             payment_service = RazorpayService()
-            is_valid = payment_service.verify_payment_signature(
-                razorpay_order_id=booking_doc["razorpay_order_id"],
-                razorpay_payment_id=razorpay_payment_id,
-                razorpay_signature=razorpay_signature,
-            )
+            _verify_razorpay_signature(payment_service, booking_doc, razorpay_payment_id, razorpay_signature)
         except Exception as e:
             logger.error(f"Payment verification failed unexpectedly: {e}")
             raise HTTPException(
@@ -1213,15 +1221,8 @@ async def verify_payment(
                 detail="Payment verification error — please contact support",
             )
 
-        if not is_valid:
-            raise PaymentFailedError(
-                order_id=booking_doc["razorpay_order_id"],
-                details={"error": "Invalid payment signature"},
-            )
-
         # Update booking status
         start_otp = generate_otp()
-
         await db.bookings.update_one(
             {"_id": ObjectId(booking_id)},
             {
@@ -1239,13 +1240,9 @@ async def verify_payment(
         try:
             from app.services.notification_service import NotificationService
             from app.services.websocket_manager import manager
-
             notification_service = NotificationService()
-
             # Notify Grihasta
-            grihasta = await db.users.find_one(
-                {"_id": ObjectId(booking_doc["grihasta_id"])}
-            )
+            grihasta = await db.users.find_one({"_id": ObjectId(booking_doc["grihasta_id"])} )
             if grihasta and grihasta.get("fcm_token"):
                 notification_service.send_notification(
                     token=grihasta["fcm_token"],
@@ -1253,15 +1250,10 @@ async def verify_payment(
                     body="Your booking is confirmed. Check the app for details.",
                     data={"type": "booking_confirmed", "booking_id": booking_id},
                 )
-
             # Notify Acharya
-            acharya_profile = await db.acharya_profiles.find_one(
-                {"_id": ObjectId(booking_doc["acharya_id"])}
-            )
+            acharya_profile = await db.acharya_profiles.find_one({"_id": ObjectId(booking_doc["acharya_id"])} )
             if acharya_profile:
-                acharya = await db.users.find_one(
-                    {"_id": acharya_profile.get("user_id")}
-                )
+                acharya = await db.users.find_one({"_id": acharya_profile.get("user_id")} )
                 if acharya and acharya.get("fcm_token"):
                     notification_service.send_notification(
                         token=acharya["fcm_token"],
@@ -1269,7 +1261,6 @@ async def verify_payment(
                         body="Booking confirmed with payment",
                         data={"type": "booking_confirmed", "booking_id": booking_id},
                     )
-            
             # Emit unified booking_update WS event via state machine helper
             await emit_booking_update(
                 db,
@@ -1278,12 +1269,10 @@ async def verify_payment(
                 BookingStatus.CONFIRMED.value,
                 extra={"payment_status": PaymentStatus.COMPLETED.value},
             )
-
         except Exception as e:
             logger.warning(f"Failed to send confirmation notifications: {e}")
 
         logger.info(f"Payment verified for booking {booking_id}")
-
         return StandardResponse(
             success=True,
             data={
@@ -1293,7 +1282,6 @@ async def verify_payment(
             },
             message="Payment verified. Booking confirmed.",
         )
-
     except (ResourceNotFoundError, PermissionDeniedError, PaymentFailedError):
         raise
     except Exception as e:
@@ -1631,7 +1619,7 @@ def _serialize_document(doc: Any) -> Any:
     each contain their own ObjectId fields.
     """
     if isinstance(doc, dict):
-        for key in list(doc.keys()):
+        for key in doc.keys():
             val = doc[key]
             if isinstance(val, ObjectId):
                 doc[key] = str(val)
@@ -1887,7 +1875,7 @@ async def mark_acharya_arrival(
             message="Arrival confirmed successfully. The Grihasta has been notified.",
         )
     
-    except (ValidationError, NotFoundError) as e:
+    except (ValidationError, ResourceNotFoundError) as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),

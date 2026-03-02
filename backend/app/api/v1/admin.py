@@ -25,6 +25,7 @@ from app.core.constants import (
     MONGO_SKIP,
     MONGO_LIMIT,
     MONGO_SUM,
+    FIELD_TOTAL_AMOUNT,
 )
 from app.core.security import get_current_admin, get_current_user
 from app.core.exceptions import ResourceNotFoundError, InvalidInputError
@@ -92,7 +93,7 @@ async def get_dashboard_analytics(
             {
                 MONGO_GROUP: {
                     "_id": None,
-                    "total_revenue": {"$sum": "$total_amount"},
+                    "total_revenue": {"$sum": FIELD_TOTAL_AMOUNT},
                     "platform_fees": {"$sum": "$platform_fee"},
                 }
             },
@@ -136,7 +137,7 @@ async def get_dashboard_analytics(
                     "_id": {
                         "$dateToString": {"format": "%Y-%m-%d", "date": "$completed_at"}
                     },
-                    "revenue": {MONGO_SUM: "$total_amount"},
+                    "revenue": {MONGO_SUM: FIELD_TOTAL_AMOUNT},
                     "bookings": {MONGO_SUM: 1},
                 }
             },
@@ -1165,7 +1166,7 @@ async def get_booking_stats(
                         "$sum": {
                             "$cond": [
                                 {"$eq": ["$status", "completed"]},
-                                {"$ifNull": ["$total_amount", 0]},
+                                {"$ifNull": [FIELD_TOTAL_AMOUNT, 0]},
                                 0,
                             ]
                         }

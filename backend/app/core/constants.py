@@ -28,10 +28,17 @@ MONGO_FIRST = "$first"
 MONGO_PUSH = "$push"
 MONGO_COUNT = "$count"
 MONGO_IF_NULL = "$ifNull"
+MONGO_EXISTS = "$exists"
 
 # ---------------------------------------------------------------------------
-# Field Names
+# Timezone Constants
 # ---------------------------------------------------------------------------
+TIMEZONE_UTC_OFFSET = "+00:00"  # UTC timezone offset for ISO datetime parsing
+
+# ---------------------------------------------------------------------------
+# Field Names (MongoDB aggregation field references)
+# ---------------------------------------------------------------------------
+FIELD_TOTAL_AMOUNT = "$total_amount"
 FIELD_POOJA_NAME = "$pooja.name"
 FIELD_SERVICE_NAME = "$service_name"
 FIELD_RATING = "$rating"

@@ -16,9 +16,16 @@
  */
 
 import { Alert } from 'react-native';
-// import RazorpayCheckout from 'react-native-razorpay';  // Requires native module
-// import { checkAvailability } from 'react-native-upi-app-launcher';  // Requires native module
 import api from './api';
+
+/* 
+ * NATIVE MODULE DEPENDENCIES (not available in Expo managed workflow):
+ * These require ejecting to bare React Native or using EAS custom dev client:
+ *   - react-native-razorpay: for native Razorpay SDK integration
+ *   - react-native-upi-app-launcher: for UPI app detection
+ * 
+ * Current implementation uses fallback approach compatible with Expo.
+ */
 
 /**
  * Error categories for user-friendly messaging
@@ -89,28 +96,23 @@ const getErrorMessage = (category) => {
 };
 
 /**
- * Check if GPay or PhonePe is installed on the device
- * @returns {Promise<Object>} Available UPI apps
+ * Check if UPI apps (GPay, PhonePe, Paytm) are installed on the device.
+ * 
+ * NOTE: Full implementation requires react-native-upi-app-launcher native module.
+ * Currently returns optimistic fallback for Expo compatibility.
+ * 
+ * @returns {Promise<Object>} Available UPI apps { gpay, phonepe, paytm }
  */
 export const checkUPIApps = async () => {
-  // Requires react-native-upi-app-launcher
-  // Commented out due to native module requirement
-  /*
-  try {
-    const apps = {
-      gpay: await checkAvailability('com.google.android.apps.nbu.paisa.user'),
-      phonepe: await checkAvailability('com.phonepe.app'),
-      paytm: await checkAvailability('net.one97.paytm'),
-    };
-    return apps;
-  } catch (err) {
-    console.warn('UPI app check failed:', err);
-    return { gpay: false, phonepe: false, paytm: false };
-  }
-  */
+  // Full implementation (requires native module):
+  // const apps = {
+  //   gpay: await checkAvailability('com.google.android.apps.nbu.paisa.user'),
+  //   phonepe: await checkAvailability('com.phonepe.app'),
+  //   paytm: await checkAvailability('net.one97.paytm'),
+  // };
   
-  // Fallback: assume UPI apps are available
-  return Promise.resolve({ gpay: true, phonepe: true, paytm: true });
+  // Fallback: assume UPI apps are available (Expo managed workflow)
+  return { gpay: true, phonepe: true, paytm: true };
 };
 
 /**
@@ -137,6 +139,7 @@ export const checkUPIApps = async () => {
  * @returns {Promise<Object>} Payment result
  */
 export const initiateUPIPayment = async (options) => {
+  // Destructure required payment options
   const {
     razorpay_order_id,
     amount,
@@ -145,8 +148,6 @@ export const initiateUPIPayment = async (options) => {
     description,
     contact,
     email,
-    onSuccess,
-    onError,
   } = options;
   
   // Validate required parameters
@@ -154,59 +155,37 @@ export const initiateUPIPayment = async (options) => {
     throw new Error('Razorpay order ID is required');
   }
   
-  // Get theme configuration (saffron theme as per requirement)
-  const themeConfig = {
-    color: '#FF6B35',  // Saffron theme
-    backdrop_color: '#FFFAF5',
-  };
+  /* 
+   * NATIVE RAZORPAY INTEGRATION (requires react-native-razorpay):
+   * 
+   * Full implementation code below - uncomment when migrating to:
+   * - EAS custom development build, OR
+   * - Bare React Native workflow (ejected from Expo)
+   * 
+   * Configuration:
+   * const razorpayOptions = {
+   *   key: process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID,
+   *   order_id: razorpay_order_id,
+   *   amount,
+   *   currency,
+   *   name,
+   *   description,
+   *   prefill: { contact, email },
+   *   method: 'upi',
+   *   theme: { color: '#FF6B35', backdrop_color: '#FFFAF5' },
+   *   external: { wallets: ['paytm'] },
+   * };
+   * 
+   * Checkout flow:
+   * const paymentResult = await RazorpayCheckout.open(razorpayOptions);
+   * const verificationResult = await handlePaymentSuccess(paymentResult);
+   * return verificationResult;
+   */
   
-  // Configure Razorpay options with UPI method preference
-  const razorpayOptions = {
-    key: process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID,  // From .env
-    order_id: razorpay_order_id,
-    amount,
-    currency,
-    name,
-    description,
-    prefill: {
-      contact,
-      email,
-    },
-    method: 'upi',  // Force UPI payment method
-    recurring: 0,   // Not a recurring payment
-    theme: themeConfig,
-    external: {
-      wallets: ['paytm'],  // Include Paytm wallet as per requirement
-    },
-    modal: {
-      ondismiss: () => {
-        console.log('Razorpay checkout dismissed');
-      },
-    },
-  };
+  // Current fallback implementation for Expo managed workflow
+  console.warn('Native Razorpay module not available. Expo managed workflow limitation.');
   
-  try {
-    // NOTE: This requires react-native-razorpay native module
-    // For Expo managed workflow, use WebBrowser fallback or eject/custom dev client
-    /*
-    const paymentResult = await RazorpayCheckout.open(razorpayOptions);
-    
-    // Payment successful - verify with backend
-    console.log('Payment successful, verifying...', paymentResult);
-    
-    const verificationResult = await handlePaymentSuccess(paymentResult);
-    
-    if (onSuccess) {
-      onSuccess(verificationResult);
-    }
-    
-    return verificationResult;
-    */
-    
-    // Fallback implementation for Expo managed workflow
-    // Opens Razorpay checkout in WebBrowser
-    console.warn('Native Razorpay module not available. Using WebBrowser fallback.');
-    
+  return new Promise((resolve, reject) => {
     Alert.alert(
       'Payment Method',
       'Native UPI integration requires ejecting from Expo managed workflow or using a custom dev client.',
@@ -214,54 +193,12 @@ export const initiateUPIPayment = async (options) => {
         {
           text: 'OK',
           onPress: () => {
-            if (onError) {
-              onError(new Error('Native UPI not available in current configuration'));
-            }
+            reject(new Error('Native UPI not available in current configuration'));
           },
         },
       ]
     );
-    
-    return null;
-    
-  } catch (error) {
-    console.error('Razorpay payment error:', error);
-    
-    // Categorize and handle error
-    const errorCategory = categorizePaymentError(error);
-    const errorMsg = getErrorMessage(errorCategory);
-    
-    // Show localized error modal with Retry/Change Method options
-    Alert.alert(
-      errorMsg.title,
-      errorMsg.message,
-      [
-        {
-          text: 'Change Method',
-          onPress: () => {
-            if (onError) {
-              onError(error, { action: 'change_method' });
-            }
-          },
-        },
-        {
-          text: 'Retry',
-          onPress: () => {
-            if (onError) {
-              onError(error, { action: 'retry' });
-            }
-          },
-          style: 'default',
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ]
-    );
-    
-    throw error;
-  }
+  });
 };
 
 /**

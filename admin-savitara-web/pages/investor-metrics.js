@@ -14,7 +14,6 @@ import {
   Select,
   MenuItem,
   Stack,
-  Divider,
   Alert,
   Snackbar,
   Button,
@@ -38,8 +37,6 @@ import { format, subDays } from 'date-fns';
 import {
   LineChart,
   Line,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -94,7 +91,8 @@ function InvestorMetrics() {
       setLtvData(ltvResponse.data);
       
     } catch (error) {
-      showSnackbar('Failed to load investor metrics', 'error');
+      console.error('Failed to load investor metrics:', error);
+      showSnackbar(error.response?.data?.message || 'Failed to load investor metrics', 'error');
     } finally {
       setLoading(false);
     }

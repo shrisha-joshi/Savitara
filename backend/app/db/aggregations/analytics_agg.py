@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import logging
 
+from app.core.constants import MONGO_MATCH, MONGO_PROJECT, MONGO_EXISTS, MONGO_IF_NULL, FIELD_TOTAL_AMOUNT
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,15 +69,15 @@ async def get_pooja_hotspots(
                 "status": "completed",
                 "completed_at": {"$gte": cutoff_date},
                 "location.city": city,
-                "location.latitude": {"$exists": True, "$ne": None},
-                "location.longitude": {"$exists": True, "$ne": None},
-                "pooja_id": {"$exists": True, "$ne": None},  # Only bookings with pooja service
+                "location.latitude": {MONGO_EXISTS: True, "$ne": None},
+                "location.longitude": {MONGO_EXISTS: True, "$ne": None},
+                "pooja_id": {MONGO_EXISTS: True, "$ne": None},  # Only bookings with pooja service
             }
         },
         
         # Stage 2: Project GeoJSON Point format for geospatial operations
         {
-            "$project": {
+            MONGO_PROJECT: {
                 "location_point": {
                     "type": "Point",
                     "coordinates": ["$location.longitude", "$location.latitude"]
@@ -116,8 +118,8 @@ async def get_pooja_hotspots(
                     "city": "$city",
                 },
                 "total_bookings": {"$sum": 1},
-                "total_revenue": {"$sum": "$total_amount"},
-                "avg_revenue": {"$avg": "$total_amount"},
+                "total_revenue": {"$sum": FIELD_TOTAL_AMOUNT},
+                "avg_revenue": {"$avg": FIELD_TOTAL_AMOUNT},
                 "booking_ids": {"$push": "$_id"},
             }
         },
@@ -150,13 +152,13 @@ async def get_pooja_hotspots(
                 },
                 "city": "$_id.city",
                 "pooja_id": "$_id.pooja_id",
-                "pooja_name": {"$ifNull": ["$pooja_info.name", "Unknown Pooja"]},
-                "pooja_category": {"$ifNull": ["$pooja_info.category", "unknown"]},
+                "pooja_name": {MONGO_IF_NULL: ["$pooja_info.name", "Unknown Pooja"]},
+                "pooja_category": {MONGO_IF_NULL: ["$pooja_info.category", "unknown"]},
                 "total_bookings": 1,
                 "total_revenue": 1,
                 "avg_revenue": 1,
                 "popularity_score": {
-                    "$multiply": ["$total_bookings", {"$ifNull": ["$avg_revenue", 0]}]
+                    "$multiply": ["$total_bookings", {MONGO_IF_NULL: ["$avg_revenue", 0]}]
                 },
             }
         },
@@ -220,9 +222,10 @@ async def get_demand_heatmap(
             }
         },
         {
-            "$project": {
+            MONGO_PROJECT: {
                 "hour_of_day": {"$hour": "$date_time"},
-                "day_of_week": {"$dayOfWeek": "$date_time"},  # 1=Sunday, 7=Saturday
+                # Day of week: 1=Sunday, 2=Monday, ..., 7=Saturday
+                "day_of_week": {"$dayOfWeek": "$date_time"},
                 "total_amount": 1,
             }
         },

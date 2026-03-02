@@ -267,19 +267,21 @@ function DisputeManagement() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {loading ? (
+              {loading && (
                 <TableRow>
                   <TableCell colSpan={7} align="center">
                     <CircularProgress />
                   </TableCell>
                 </TableRow>
-              ) : disputes.length === 0 ? (
+              )}
+              {!loading && disputes.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} align="center">
                     No disputes found
                   </TableCell>
                 </TableRow>
-              ) : (
+              )}
+              {!loading && disputes.length > 0 && (
                 disputes.map((dispute) => (
                   <TableRow key={dispute._id}>
                     <TableCell>{dispute._id.slice(-8)}</TableCell>

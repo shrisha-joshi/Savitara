@@ -14,6 +14,7 @@ from app.models.observability import (
     AcharyaChurnMetrics,
     NRRCalculation,
 )
+from app.core.constants import MONGO_MATCH, MONGO_GROUP, FIELD_TOTAL_AMOUNT
 
 
 def utcnow():
@@ -254,10 +255,10 @@ class InvestorMetricsService:
         """
         # Aggregate bookings by status
         pipeline = [
-            {"$match": {"created_at": {"$gte": period_start, "$lte": period_end}}},
-            {"$group": {
+            {MONGO_MATCH: {"created_at": {"$gte": period_start, "$lte": period_end}}},
+            {MONGO_GROUP: {
                 "_id": "$status",
-                "total_amount": {"$sum": "$total_amount"},
+                "total_amount": {"$sum": FIELD_TOTAL_AMOUNT},
                 "count": {"$sum": 1}
             }}
         ]
@@ -304,8 +305,8 @@ class InvestorMetricsService:
         # Previous period comparison
         prev_period_start = period_start - (period_end - period_start)
         prev_results = await db.bookings.aggregate([
-            {"$match": {"created_at": {"$gte": prev_period_start, "$lt": period_start}}},
-            {"$group": {"_id": None, "total": {"$sum": "$total_amount"}}}
+            {MONGO_MATCH: {"created_at": {"$gte": prev_period_start, "$lt": period_start}}},
+            {MONGO_GROUP: {"_id": None, "total": {"$sum": FIELD_TOTAL_AMOUNT}}}
         ]).to_list(1)
         
         previous_period_gmv = prev_results[0]["total"] if prev_results else 0.0
@@ -346,13 +347,13 @@ class InvestorMetricsService:
     ) -> Dict[str, float]:
         """Helper to calculate GMV by dimension"""
         pipeline = [
-            {"$match": {
+            {MONGO_MATCH: {
                 "created_at": {"$gte": period_start, "$lte": period_end},
                 "status": "completed"
             }},
-            {"$group": {
+            {MONGO_GROUP: {
                 "_id": f"${dimension_field}",
-                "total": {"$sum": "$total_amount"}
+                "total": {"$sum": FIELD_TOTAL_AMOUNT}
             }}
         ]
         

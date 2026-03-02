@@ -306,13 +306,13 @@ class TestDisputeHandling:
             "total_amount": 10000
         })
         
-        with patch("app.services.payment_service.process_refund") as mock_refund:
-            result = await TrustService.resolve_dispute(
-                mock_db,
-                dispute_id,
-                "arbitration_refund",
-                refund_percentage=50
-            )
+        # Test dispute resolution with refund processing
+        result = await TrustService.resolve_dispute(
+            mock_db,
+            dispute_id,
+            "arbitration_refund",
+            refund_percentage=50
+        )
         
         assert result["status"] == DisputeStatus.RESOLVED.value
         assert result["refund_amount"] == 5000  # 50% of 10000
@@ -325,7 +325,6 @@ class TestServiceGuarantee:
     async def test_claim_quality_guarantee(self, mock_db):
         """Test claiming quality guarantee (full refund)"""
         booking_id = str(ObjectId())
-        user_id = str(ObjectId())
         
         mock_db.bookings.find_one = AsyncMock(return_value={
             "_id": ObjectId(booking_id),

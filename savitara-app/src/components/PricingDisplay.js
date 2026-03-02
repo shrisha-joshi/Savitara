@@ -3,6 +3,7 @@
  * Displays booking pricing with gamification features (coins, coupons, vouchers)
  */
 import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import {
   View,
   Text,
@@ -480,5 +481,15 @@ const styles = StyleSheet.create({
     marginVertical: 12
   }
 });
+
+PricingDisplay.propTypes = {
+  baseAmount: PropTypes.number.isRequired,
+  serviceId: PropTypes.string.isRequired,
+  onPriceCalculated: PropTypes.func,
+};
+
+PricingDisplay.defaultProps = {
+  onPriceCalculated: null,
+};
 
 export default PricingDisplay;

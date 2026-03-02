@@ -235,7 +235,8 @@ async def get_investor_dashboard(
     try:
         ltv = await InvestorMetricsService.calculate_ltv(db, cohort_month)
         ltv_data = ltv.model_dump(by_alias=True)
-    except:
+    except Exception:
+        # LTV calculation may fail for recent cohorts with insufficient data
         ltv_data = None
     
     return {

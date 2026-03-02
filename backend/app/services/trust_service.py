@@ -18,6 +18,7 @@ from app.models.trust import (
     AuditLog,
 )
 from app.core.exceptions import ResourceNotFoundError, ValidationError
+from app.core.constants import MONGO_MATCH, MONGO_GROUP, MONGO_ADD_FIELDS
 
 
 def utcnow():
@@ -136,8 +137,6 @@ class TrustScoreService:
         - SAVITARA_VERIFIED (admin approved): 20
         - PREMIUM_VERIFIED (background check + 50+ bookings): 30
         """
-        kyc_status = acharya.get("kyc_status", "pending")
-        
         # Check existing trust score for badge
         existing = await db.acharya_trust_scores.find_one({"acharya_id": str(acharya["_id"])})
         badge = existing.get("verification_badge", "BASIC") if existing else "BASIC"
@@ -195,8 +194,8 @@ class TrustScoreService:
         - > 24 hours: 0
         """
         pipeline = [
-            {"$match": {"acharya_id": acharya_id, "status": {"$in": ["accepted", "completed"]}}},
-            {"$addFields": {
+            {MONGO_MATCH: {"acharya_id": acharya_id, "status": {"$in": ["accepted", "completed"]}}},
+            {MONGO_ADD_FIELDS: {
                 "response_time_hours": {
                     "$divide": [
                         {"$subtract": ["$accepted_at", "$created_at"]},
@@ -204,7 +203,7 @@ class TrustScoreService:
                     ]
                 }
             }},
-            {"$group": {
+            {MONGO_GROUP: {
                 "_id": None,
                 "avg_response_hours": {"$avg": "$response_time_hours"}
             }}
@@ -243,12 +242,12 @@ class TrustScoreService:
         Measures customer loyalty
         """
         pipeline = [
-            {"$match": {"acharya_id": acharya_id, "status": "completed"}},
-            {"$group": {
+            {MONGO_MATCH: {"acharya_id": acharya_id, "status": "completed"}},
+            {MONGO_GROUP: {
                 "_id": "$user_id",
                 "booking_count": {"$sum": 1}
             }},
-            {"$group": {
+            {MONGO_GROUP: {
                 "_id": None,
                 "total_grihastas": {"$sum": 1},
                 "repeat_grihastas": {
@@ -281,8 +280,8 @@ class TrustScoreService:
         Weight recent reviews more heavily (time decay)
         """
         pipeline = [
-            {"$match": {"acharya_id": acharya_id}},
-            {"$addFields": {
+            {MONGO_MATCH: {"acharya_id": acharya_id}},
+            {MONGO_ADD_FIELDS: {
                 # Time decay factor (last 90 days = weight 1.0, older = exponential decay)
                 "days_ago": {
                     "$divide": [
@@ -291,7 +290,7 @@ class TrustScoreService:
                     ]
                 }
             }},
-            {"$addFields": {
+            {MONGO_ADD_FIELDS: {
                 "time_weight": {
                     "$cond": [
                         {"$lte": ["$days_ago", 90]},
@@ -300,7 +299,7 @@ class TrustScoreService:
                     ]
                 }
             }},
-            {"$group": {
+            {MONGO_GROUP: {
                 "_id": None,
                 "weighted_sum": {"$sum": {"$multiply": ["$rating", "$time_weight"]}},
                 "total_weight": {"$sum": "$time_weight"}
@@ -337,8 +336,8 @@ class TrustScoreService:
         })
         
         avg_rating_result = await db.reviews.aggregate([
-            {"$match": {"acharya_id": str(acharya["_id"])}},
-            {"$group": {"_id": None, "avg_rating": {"$avg": "$rating"}}}
+            {MONGO_MATCH: {"acharya_id": str(acharya["_id"])}},
+            {MONGO_GROUP: {"_id": None, "avg_rating": {"$avg": "$rating"}}}
         ]).to_list(1)
         
         avg_rating = avg_rating_result[0]["avg_rating"] if avg_rating_result else 0.0

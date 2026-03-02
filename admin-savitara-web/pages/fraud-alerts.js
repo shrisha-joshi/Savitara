@@ -127,7 +127,8 @@ function FraudAlerts() {
       fetchAlerts();
       fetchStats();
     } catch (error) {
-      showSnackbar('Failed to execute action', 'error');
+      console.error('Failed to execute fraud alert action:', error);
+      showSnackbar(error.response?.data?.message || 'Failed to execute action', 'error');
     }
   };
 
@@ -277,19 +278,21 @@ function FraudAlerts() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {loading ? (
+              {loading && (
                 <TableRow>
                   <TableCell colSpan={8} align="center">
                     <CircularProgress />
                   </TableCell>
                 </TableRow>
-              ) : alerts.length === 0 ? (
+              )}
+              {!loading && alerts.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} align="center">
                     No fraud alerts found
                   </TableCell>
                 </TableRow>
-              ) : (
+              )}
+              {!loading && alerts.length > 0 && (
                 alerts.map((alert) => (
                   <TableRow key={alert._id}>
                     <TableCell>{alert._id.slice(-8)}</TableCell>

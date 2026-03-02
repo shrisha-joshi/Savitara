@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, View, StyleSheet } from 'react-native';
 import { Text, TextInput, Button } from 'react-native-paper';
+import PropTypes from 'prop-types';
 import { bookingAPI } from '../../services/api';
 
 const StartBookingScreen = ({ route, navigation }) => {
@@ -89,5 +90,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF6B35',
   },
 });
+
+StartBookingScreen.propTypes = {
+  navigation: PropTypes.shape({
+    goBack: PropTypes.func.isRequired,
+  }).isRequired,
+  route: PropTypes.shape({
+    params: PropTypes.shape({
+      booking: PropTypes.shape({
+        _id: PropTypes.string.isRequired,
+        pooja_type: PropTypes.string,
+        grihasta_name: PropTypes.string,
+        duration_hours: PropTypes.number,
+        total_amount: PropTypes.number,
+      }).isRequired,
+    }).isRequired,
+  }).isRequired,
+};
 
 export default StartBookingScreen;

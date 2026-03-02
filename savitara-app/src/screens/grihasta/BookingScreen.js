@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, ScrollView, Alert, Platform, Pressable } from 'react-native';
 import { Text, TextInput, Button, RadioButton, ActivityIndicator, Surface, Divider } from 'react-native-paper';
+import PropTypes from 'prop-types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Calendar } from 'react-native-calendars';
 import { bookingAPI } from '../../services/api';
@@ -287,13 +288,15 @@ const BookingScreen = ({ route, navigation }) => {
       {/* Slot availability indicator */}
       {(availabilityLoading || availabilityResult !== null) && (
         <View style={styles.availabilityContainer}>
-          {availabilityLoading ? (
-            <ActivityIndicator size="small" color="#FF6B35" />
-          ) : availabilityResult?.available ? (
+          {availabilityLoading && <ActivityIndicator size="small" color="#FF6B35" />}
+          
+          {!availabilityLoading && availabilityResult?.available && (
             <View style={styles.availabilityRow}>
               <Text style={styles.availabilityAvailable}>✓ Slot is available</Text>
             </View>
-          ) : (
+          )}
+          
+          {!availabilityLoading && !availabilityResult?.available && (
             <View style={styles.availabilityRow}>
               <Text style={styles.availabilityUnavailable}>✗ Slot not available</Text>
               {availabilityResult?.next_available_slot ? (
@@ -317,8 +320,8 @@ const BookingScreen = ({ route, navigation }) => {
         label="Duration (hours)"
         value={String(formData.duration_hours)}
         onChangeText={(text) => {
-          const n = parseInt(text, 10);
-          if (!isNaN(n) && n >= 1 && n <= 12) {
+          const n = Number.parseInt(text, 10);
+          if (!Number.isNaN(n) && n >= 1 && n <= 12) {
             setFormData({ ...formData, duration_hours: n });
           } else if (text === '') {
             setFormData({ ...formData, duration_hours: 1 });
@@ -580,27 +583,50 @@ const styles = StyleSheet.create({
 });
 
 /** Small helper row for the price breakdown card */
-const PriceRow = ({ label, value, highlight, discount }) => (
-  <View style={styles.priceRow}>
-    <Text
-      variant={highlight ? 'titleSmall' : 'bodySmall'}
-      style={highlight ? styles.priceRowLabelBold : styles.priceRowLabel}
-    >
-      {label}
-    </Text>
-    <Text
-      variant={highlight ? 'titleSmall' : 'bodySmall'}
-      style={
-        highlight
-          ? styles.priceHighlight
-          : discount
-          ? styles.priceDiscount
-          : styles.priceValue
-      }
-    >
-      {discount && value < 0 ? `−₹${Math.abs(value)}` : `₹${value}`}
-    </Text>
-  </View>
-);
+const PriceRow = ({ label, value, highlight, discount }) => {
+  // Determine style based on highlight and discount flags
+  let textStyle = styles.priceValue;
+  if (highlight) {
+    textStyle = styles.priceHighlight;
+  } else if (discount) {
+    textStyle = styles.priceDiscount;
+  }
+  
+  return (
+    <View style={styles.priceRow}>
+      <Text
+        variant={highlight ? 'titleSmall' : 'bodySmall'}
+        style={highlight ? styles.priceRowLabelBold : styles.priceRowLabel}
+      >
+        {label}
+      </Text>
+      <Text
+        variant={highlight ? 'titleSmall' : 'bodySmall'}
+        style={textStyle}
+      >
+        {discount && value < 0 ? `−₹${Math.abs(value)}` : `₹${value}`}
+      </Text>
+    </View>
+  );
+};
+
+PriceRow.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.number.isRequired,
+  highlight: PropTypes.bool,
+  discount: PropTypes.bool,
+};
+
+BookingScreen.propTypes = {
+  navigation: PropTypes.shape({
+    goBack: PropTypes.func.isRequired,
+    navigate: PropTypes.func.isRequired,
+  }).isRequired,
+  route: PropTypes.shape({
+    params: PropTypes.shape({
+      acharya: PropTypes.object,
+    }),
+  }).isRequired,
+};
 
 export default BookingScreen;

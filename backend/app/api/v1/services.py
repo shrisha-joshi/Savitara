@@ -152,6 +152,12 @@ async def get_my_service_bookings(
             if service:
                 booking["service_name"] = service.get("name_english")
                 booking["service_icon"] = service.get("icon")
+            # Convert ObjectIds and datetimes for JSON serialization
+            for key, val in booking.items():
+                if isinstance(val, ObjectId):
+                    booking[key] = str(val)
+                elif isinstance(val, datetime):
+                    booking[key] = val.isoformat()
 
         return StandardResponse(success=True, data={"bookings": bookings})
     except Exception as e:
@@ -181,7 +187,8 @@ async def get_service(service_id: str, db: Annotated[AsyncIOMotorDatabase, Depen
             {"_id": ObjectId(service_id)}, {"$inc": {"popularity_score": 1}}
         )
 
-        return StandardResponse(success=True, data={"service": service})
+        # Convert raw document to Pydantic model to handle _id / ObjectId serialization
+        return StandardResponse(success=True, data={"service": Service(**service)})
     except ResourceNotFoundError:
         raise
     except Exception as e:

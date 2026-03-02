@@ -82,9 +82,18 @@ class ResourceNotFoundError(SavitaraException):
     """Resource not found"""
 
     def __init__(
-        self, message: str = "Resource not found", resource_id: Optional[str] = None
+        self,
+        message: str = "Resource not found",
+        resource_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
     ):
-        details = {"resource_id": resource_id} if resource_id else {}
+        details: Dict[str, Any] = {}
+        if resource_type:
+            details["resource_type"] = resource_type
+            if not message or message == "Resource not found":
+                message = f"{resource_type} not found"
+        if resource_id:
+            details["resource_id"] = resource_id
         super().__init__(
             message=message,
             error_code="RES_001",

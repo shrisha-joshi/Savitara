@@ -73,7 +73,7 @@ function DisputeManagement() {
     try {
       const params = statusFilter === 'all' ? {} : { status: statusFilter };
       const response = await adminAPI.get('/trust/admin/disputes', { params });
-      setDisputes(response.data);
+      setDisputes(response.data.disputes || []);
     } catch (error) {
       console.error('Error loading disputes:', error);
       showSnackbar('Failed to load disputes', 'error');
@@ -111,10 +111,15 @@ function DisputeManagement() {
 
   const submitResolution = async () => {
     try {
+      // Derive a valid DisputeStatus from refund percentage
+      let resolution = 'resolved_no_refund';
+      if (refundPercentage === 100) resolution = 'resolved_refund';
+      else if (refundPercentage > 0) resolution = 'resolved_partial_refund';
+
       await adminAPI.post(`/trust/admin/disputes/${selectedDispute._id}/resolve`, {
-        resolution: 'arbitration_refund',
-        refund_percentage: refundPercentage,
-        admin_notes: adminNotes,
+        resolution,
+        compensation_amount: refundPercentage,   // backend field
+        resolution_notes: adminNotes,            // backend field
       });
       showSnackbar('Dispute resolved successfully', 'success');
       setResolveDialog(false);
@@ -128,22 +133,40 @@ function DisputeManagement() {
 
   const getStatusChip = (status) => {
     const statusConfig = {
-      mediation: { color: 'warning', label: 'Mediation' },
-      arbitration: { color: 'error', label: 'Arbitration' },
-      resolved: { color: 'success', label: 'Resolved' },
-      closed: { color: 'default', label: 'Closed' },
+      open:                    { color: 'default',  label: 'Open' },
+      under_review:            { color: 'info',     label: 'Under Review' },
+      evidence_requested:      { color: 'warning',  label: 'Evidence Requested' },
+      pending_response:        { color: 'warning',  label: 'Pending Response' },
+      mediation:               { color: 'warning',  label: 'Mediation' },
+      resolved_refund:         { color: 'success',  label: 'Resolved (Refund)' },
+      resolved_no_refund:      { color: 'success',  label: 'Resolved (No Refund)' },
+      resolved_partial_refund: { color: 'success',  label: 'Resolved (Partial)' },
+      escalated:               { color: 'error',    label: 'Escalated' },
+      closed:                  { color: 'default',  label: 'Closed' },
     };
-    const config = statusConfig[status] || statusConfig.mediation;
+    const config = statusConfig[status] || { color: 'default', label: status || 'Unknown' };
     return <Chip label={config.label} color={config.color} size="small" />;
   };
 
   const getCategoryChip = (category) => {
     const categoryConfig = {
-      service_quality: { color: 'primary', label: 'Service Quality' },
-      payment: { color: 'secondary', label: 'Payment' },
-      cancellation: { color: 'warning', label: 'Cancellation' },
-      harassment: { color: 'error', label: 'Harassment' },
-      other: { color: 'default', label: 'Other' },
+      poor_service_quality:    { color: 'primary',   label: 'Service Quality' },
+      service_not_rendered:    { color: 'secondary', label: 'Not Rendered' },
+      incomplete_service:      { color: 'secondary', label: 'Incomplete' },
+      payment_issue:           { color: 'secondary', label: 'Payment' },
+      pricing_issue:           { color: 'secondary', label: 'Pricing' },
+      late_arrival:            { color: 'warning',   label: 'Late Arrival' },
+      no_show_acharya:         { color: 'error',     label: 'No Show (Acharya)' },
+      no_show_grihasta:        { color: 'error',     label: 'No Show (Grihasta)' },
+      rude_behavior:           { color: 'error',     label: 'Harassment' },
+      offline_payment_request: { color: 'warning',   label: 'Offline Payment' },
+      policy_violation:        { color: 'error',     label: 'Policy Violation' },
+      other:                   { color: 'default',   label: 'Other' },
+      // Legacy / mapped values from older data
+      service_quality:         { color: 'primary',   label: 'Service Quality' },
+      payment:                 { color: 'secondary', label: 'Payment' },
+      cancellation:            { color: 'warning',   label: 'Cancellation' },
+      harassment:              { color: 'error',     label: 'Harassment' },
     };
     const config = categoryConfig[category] || categoryConfig.other;
     return <Chip label={config.label} color={config.color} size="small" variant="outlined" />;
@@ -236,9 +259,11 @@ function DisputeManagement() {
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <MenuItem value="all">All Disputes</MenuItem>
+                <MenuItem value="open">Open</MenuItem>
+                <MenuItem value="under_review">Under Review</MenuItem>
                 <MenuItem value="mediation">Mediation</MenuItem>
-                <MenuItem value="arbitration">Arbitration</MenuItem>
-                <MenuItem value="resolved">Resolved</MenuItem>
+                <MenuItem value="escalated">Escalated</MenuItem>
+                <MenuItem value="resolved">Resolved (all)</MenuItem>
                 <MenuItem value="closed">Closed</MenuItem>
               </Select>
             </FormControl>
@@ -286,7 +311,7 @@ function DisputeManagement() {
                   <TableRow key={dispute._id}>
                     <TableCell>{dispute._id.slice(-8)}</TableCell>
                     <TableCell>{dispute.booking_id.slice(-8)}</TableCell>
-                    <TableCell>{getCategoryChip(dispute.category)}</TableCell>
+              <TableCell>{getCategoryChip(dispute.dispute_type || dispute.category)}</TableCell>
                     <TableCell>{dispute.complainant_name || 'N/A'}</TableCell>
                     <TableCell>{getStatusChip(dispute.status)}</TableCell>
                     <TableCell>

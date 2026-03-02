@@ -42,11 +42,15 @@ import {
   FilterList,
   FileDownload,
 } from '@mui/icons-material';
+import { format } from 'date-fns';
+import Layout from '../src/components/Layout';
+import withAuth from '../src/hoc/withAuth';
+import { adminAPI } from '../src/services/api';
 
 /** Generate and trigger download of a CSV file */
 function downloadCSV(rows, filename) {
   const csvContent = rows
-    .map((r) => r.map((c) => `"${String(c ?? '').replaceAll('"', '""')}"`.join(','))
+    .map((r) => r.map((c) => `"${String(c ?? '').replaceAll('"', '""')}"`).join(','))
     .join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -56,10 +60,6 @@ function downloadCSV(rows, filename) {
   a.click();
   URL.revokeObjectURL(url);
 }
-import { format } from 'date-fns';
-import Layout from '../src/components/Layout';
-import withAuth from '../src/hoc/withAuth';
-import { adminAPI } from '../src/services/api';
 
 function Bookings() {
   const [bookings, setBookings] = useState([]);

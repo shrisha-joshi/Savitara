@@ -93,6 +93,22 @@ class CreateCouponRequest(BaseModel):
     terms_conditions: List[str] = []
 
 
+# ==================== Serialization Helper ====================
+
+
+def _sanitize(obj):
+    """Recursively convert ObjectId → str and datetime → ISO string for JSON safety."""
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize(i) for i in obj]
+    if isinstance(obj, ObjectId):
+        return str(obj)
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    return obj
+
+
 # ==================== Coins Endpoints ====================
 
 
@@ -147,7 +163,7 @@ async def get_coins_balance(
     """Get user's coin balance and transactions"""
     service = GamificationService(db)
     result = await service.get_user_coins(str(current_user["id"]))
-    return result
+    return _sanitize(result)
 
 
 @router.get("/coins/transactions")
@@ -164,7 +180,7 @@ async def get_coin_transactions(
         .to_list(limit)
     )
 
-    return {"transactions": transactions}
+    return _sanitize({"transactions": transactions})
 
 
 # ==================== Points & Loyalty Endpoints ====================
@@ -205,7 +221,7 @@ async def get_loyalty_status(
     """Get user's loyalty tier and benefits"""
     service = GamificationService(db)
     result = await service.get_user_loyalty(str(current_user["id"]))
-    return result
+    return _sanitize(result)
 
 
 @router.get("/loyalty/tiers")
@@ -298,7 +314,7 @@ async def get_my_vouchers(
     """Get all active vouchers for current user"""
     service = GamificationService(db)
     vouchers = await service.get_user_vouchers(str(current_user["id"]))
-    return {"vouchers": vouchers}
+    return _sanitize({"vouchers": vouchers})
 
 
 @router.post("/vouchers/{voucher_code}/claim")
@@ -579,40 +595,43 @@ async def get_gamification_overview(
     current_user: Annotated[dict, Depends(get_current_user)], db=Depends(get_db)
 ):
     """Get complete gamification overview for user"""
-    service = GamificationService(db)
+    try:
+        service = GamificationService(db)
 
-    # Get all data
-    coins = await service.get_user_coins(str(current_user["id"]))
-    loyalty = await service.get_user_loyalty(str(current_user["id"]))
-    vouchers = await service.get_user_vouchers(str(current_user["id"]))
+        # Get all data
+        coins = await service.get_user_coins(str(current_user["id"]))
+        loyalty = await service.get_user_loyalty(str(current_user["id"]))
+        vouchers = await service.get_user_vouchers(str(current_user["id"]))
 
-    # Get referral code
-    referral_code = current_user.get("referral_code", "")
-    if not referral_code:
-        referral_code = await service.generate_referral_code(str(current_user["id"]))
+        # Get referral code
+        referral_code = current_user.get("referral_code", "")
+        if not referral_code:
+            referral_code = await service.generate_referral_code(str(current_user["id"]))
 
-    return {
-        "coins": {
-            "balance": coins["current_balance"],
-            "rupees_value": coins["rupees_value"],
-            "total_earned": coins["total_earned"],
-        },
-        "loyalty": {
-            "tier": loyalty["current_tier"],
-            "points": loyalty["points"],
-            "discount": loyalty["discount_percentage"],
-            "next_tier": loyalty.get("next_tier"),
-            "points_to_next": loyalty.get("points_to_next_tier", 0),
-        },
-        "vouchers": {
-            "count": len(vouchers),
-            "active": len([v for v in vouchers if not v.get("is_used", False)]),
-        },
-        "referral": {
-            "code": referral_code,
-            "link": f"https://savitara.com/signup?ref={referral_code}",
-        },
-    }
+        return {
+            "coins": {
+                "balance": coins["current_balance"],
+                "rupees_value": coins.get("rupees_value", 0),
+                "total_earned": coins["total_earned"],
+            },
+            "loyalty": {
+                "tier": loyalty["current_tier"],
+                "points": loyalty["points"],
+                "discount": loyalty["discount_percentage"],
+                "next_tier": loyalty.get("next_tier"),
+                "points_to_next": loyalty.get("points_to_next_tier", 0),
+            },
+            "vouchers": {
+                "count": len(vouchers),
+                "active": len([v for v in vouchers if not v.get("is_used", False)]),
+            },
+            "referral": {
+                "code": referral_code,
+                "link": f"https://savitara.com/signup?ref={referral_code}",
+            },
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail="Failed to fetch gamification overview") from exc
 
 
 # ==================== Admin Endpoints ====================

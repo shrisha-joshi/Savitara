@@ -61,21 +61,22 @@ export default function Rewards() {
   const fetchRewardsData = async () => {
     try {
       setLoading(true)
-      const [coins, points, coinTxns, pointTxns, couponsData, vouchersData, referral, loyalty] = await Promise.all([
+      // All paths now match the actual backend routes
+      const [coins, txns, couponsData, vouchersData, referral, loyalty] = await Promise.all([
         api.get('/gamification/coins/balance'),
-        api.get('/gamification/points/balance'),
         api.get('/gamification/coins/transactions'),
-        api.get('/gamification/points/transactions'),
-        api.get('/gamification/coupons'),
-        api.get('/gamification/vouchers'),
-        api.get('/gamification/referral/stats'),
-        api.get('/gamification/loyalty/tier')
+        api.get('/gamification/coupons/available'),
+        api.get('/gamification/vouchers/my'),
+        api.get('/gamification/referral/my-code'),
+        api.get('/gamification/loyalty/status')
       ])
 
-      setCoinBalance(coins.data.balance)
-      setPointBalance(points.data.balance)
-      setCoinTransactions(coinTxns.data.transactions || [])
-      setPointTransactions(pointTxns.data.transactions || [])
+      setCoinBalance(coins.data.current_balance ?? 0)
+      // loyalty.data.points holds the user's loyalty/points balance
+      setPointBalance(loyalty.data.points ?? 0)
+      setCoinTransactions(txns.data.transactions || [])
+      // Re-use coin transactions for the point history tab (no separate points TX endpoint)
+      setPointTransactions(txns.data.transactions || [])
       setCoupons(couponsData.data.coupons || [])
       setVouchers(vouchersData.data.vouchers || [])
       setReferralStats(referral.data)
@@ -120,7 +121,9 @@ export default function Rewards() {
 
   const getTierProgress = () => {
     if (!loyaltyTier) return 0
-    return (loyaltyTier.current_points / loyaltyTier.next_tier_points) * 100
+    if (!loyaltyTier.next_tier) return 100  // At highest tier
+    const total = (loyaltyTier.points ?? 0) + (loyaltyTier.points_to_next_tier ?? 0)
+    return total > 0 ? Math.min(100, Math.round(((loyaltyTier.points ?? 0) / total) * 100)) : 0
   }
 
   if (loading) {
@@ -242,7 +245,7 @@ export default function Rewards() {
           {/* Loyalty Tier */}
           <Grid item xs={12} sm={6} md={3}>
             <Card sx={{ 
-              background: `linear-gradient(135deg, ${getTierColor(loyaltyTier?.tier)} 0%, ${alpha(getTierColor(loyaltyTier?.tier), 0.6)} 100%)`,
+              background: `linear-gradient(135deg, ${getTierColor(loyaltyTier?.current_tier)} 0%, ${alpha(getTierColor(loyaltyTier?.current_tier), 0.6)} 100%)`,
               color: '#fff',
               transition: 'transform 0.3s',
               '&:hover': { transform: 'translateY(-8px)' }
@@ -253,10 +256,10 @@ export default function Rewards() {
                   <Typography variant="h6" fontWeight={700}>Tier</Typography>
                 </Box>
                 <Typography variant="h3" fontWeight={800} sx={{ textTransform: 'uppercase' }}>
-                  {loyaltyTier?.tier || 'Bronze'}
+                  {loyaltyTier?.current_tier || 'Bronze'}
                 </Typography>
                 <Typography variant="body2" sx={{ mt: 1, opacity: 0.8 }}>
-                  {loyaltyTier?.next_tier_points - loyaltyTier?.current_points || 0} pts to next tier
+                  {loyaltyTier?.points_to_next_tier ?? 0} pts to next tier
                 </Typography>
               </CardContent>
             </Card>
@@ -273,7 +276,7 @@ export default function Rewards() {
                   <Typography variant="h6" fontWeight={600}>Loyalty Progress</Typography>
                 </Box>
                 <Typography variant="body2" color="text.secondary">
-                  {loyaltyTier.current_points.toLocaleString()} / {loyaltyTier.next_tier_points.toLocaleString()} points
+                  {(loyaltyTier.points ?? 0).toLocaleString()} / {((loyaltyTier.points ?? 0) + (loyaltyTier.points_to_next_tier ?? 0)).toLocaleString()} points
                 </Typography>
               </Box>
               <LinearProgress 
@@ -284,13 +287,13 @@ export default function Rewards() {
                   borderRadius: 6,
                   bgcolor: alpha('#000', 0.1),
                   '& .MuiLinearProgress-bar': {
-                    background: `linear-gradient(90deg, ${getTierColor(loyaltyTier.tier)} 0%, ${alpha(getTierColor(loyaltyTier.tier), 0.6)} 100%)`,
+                    background: `linear-gradient(90deg, ${getTierColor(loyaltyTier.current_tier)} 0%, ${alpha(getTierColor(loyaltyTier.current_tier), 0.6)} 100%)`,
                     borderRadius: 6
                   }
                 }}
               />
               <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                {Math.round(getTierProgress())}% complete to {loyaltyTier.next_tier} tier
+                {getTierProgress()}% complete to {loyaltyTier.next_tier ?? 'Platinum'} tier
               </Typography>
             </CardContent>
           </Card>
@@ -359,16 +362,16 @@ export default function Rewards() {
                 <Grid item xs={12} md={6}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
                     <Box>
-                      <Typography variant="h3" fontWeight={800}>{referralStats.total_referrals || 0}</Typography>
+                      <Typography variant="h3" fontWeight={800}>{referralStats.stats?.total || 0}</Typography>
                       <Typography variant="body2" sx={{ opacity: 0.8 }}>Total Referrals</Typography>
                     </Box>
                     <Box>
-                      <Typography variant="h3" fontWeight={800}>{referralStats.successful_referrals || 0}</Typography>
-                      <Typography variant="body2" sx={{ opacity: 0.8 }}>Successful</Typography>
+                      <Typography variant="h3" fontWeight={800}>{referralStats.stats?.signed_up || 0}</Typography>
+                      <Typography variant="body2" sx={{ opacity: 0.8 }}>Signed Up</Typography>
                     </Box>
                     <Box>
-                      <Typography variant="h3" fontWeight={800}>{referralStats.coins_earned || 0}</Typography>
-                      <Typography variant="body2" sx={{ opacity: 0.8 }}>Coins Earned</Typography>
+                      <Typography variant="h3" fontWeight={800}>{referralStats.stats?.completed_booking || 0}</Typography>
+                      <Typography variant="body2" sx={{ opacity: 0.8 }}>Completed Bookings</Typography>
                     </Box>
                   </Box>
                 </Grid>

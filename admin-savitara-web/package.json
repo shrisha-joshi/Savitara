@@ -24,8 +24,6 @@
     "recharts": "^2.10.3"
   },
   "devDependencies": {
-    "@babel/core": "^7.29.0",
-    "@babel/preset-react": "^7.28.5",
     "eslint": "^8",
     "eslint-config-next": "^15.1.6"
   }

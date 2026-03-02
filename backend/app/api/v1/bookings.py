@@ -1611,8 +1611,9 @@ def _build_my_bookings_pipeline(
 
 def _serialize_document(doc: Any) -> Any:
     """
-    Recursively walk *doc* and convert every ObjectId to a string.
-    Lists and nested dicts are walked in-place.  Returns the mutated object.
+    Recursively walk *doc* and convert every ObjectId to a string and every
+    datetime to an ISO-8601 string.  Lists and nested dicts are walked
+    in-place.  Returns the mutated object.
 
     This supersedes the flat _serialize_booking_ids() for the detail endpoint
     where joined sub-documents (pooja, acharya, grihasta_user, acharya_user)
@@ -1625,6 +1626,8 @@ def _serialize_document(doc: Any) -> Any:
                 doc[key] = str(val)
                 if key == "_id":
                     doc["id"] = doc[key]
+            elif isinstance(val, datetime):
+                doc[key] = val.isoformat()
             elif isinstance(val, (dict, list)):
                 doc[key] = _serialize_document(val)
         return doc
@@ -1632,6 +1635,8 @@ def _serialize_document(doc: Any) -> Any:
         return [_serialize_document(item) for item in doc]
     if isinstance(doc, ObjectId):
         return str(doc)
+    if isinstance(doc, datetime):
+        return doc.isoformat()
     return doc
 
 

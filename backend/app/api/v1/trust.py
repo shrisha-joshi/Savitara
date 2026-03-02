@@ -27,6 +27,8 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/trust", tags=["Trust & Verification"])
 
+_DISPUTE_NOT_FOUND = "Dispute not found"
+
 
 # ==================== REQUEST/RESPONSE SCHEMAS ====================
 
@@ -327,7 +329,7 @@ async def get_dispute_status(
     """
     dispute = await db.dispute_resolutions.find_one({"_id": ObjectId(dispute_id)})
     if not dispute:
-        raise HTTPException(status_code=404, detail="Dispute not found")
+        raise HTTPException(status_code=404, detail=_DISPUTE_NOT_FOUND)
     
     # Check authorization
     is_involved = (
@@ -359,7 +361,7 @@ async def submit_dispute_evidence(
     """
     dispute = await db.dispute_resolutions.find_one({"_id": ObjectId(dispute_id)})
     if not dispute:
-        raise HTTPException(status_code=404, detail="Dispute not found")
+        raise HTTPException(status_code=404, detail=_DISPUTE_NOT_FOUND)
     
     # Check authorization
     is_involved = (
@@ -458,6 +460,46 @@ async def claim_service_guarantee(
 # ==================== ADMIN ENDPOINTS ====================
 
 
+import logging as _log  # noqa: E402
+
+_logger = _log.getLogger(__name__)
+
+
+async def _trigger_dispute_refund(db, dispute: dict, dispute_id: str, compensation_pct: float) -> None:
+    """Initiate a Razorpay refund for an awarded compensation percentage."""
+    booking_id = dispute.get("booking_id")
+    if not booking_id:
+        return
+    booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+    if not (booking and booking.get("razorpay_payment_id")):
+        return
+    from app.services.payment_service import RazorpayService  # noqa: PLC0415
+    total = float(booking.get("total_amount") or booking.get("total_price") or 0)
+    refund_amt = round(total * compensation_pct / 100, 2)
+    RazorpayService().initiate_refund(
+        payment_id=booking["razorpay_payment_id"],
+        amount=refund_amt,
+        notes={"reason": "Dispute resolution", "dispute_id": dispute_id},
+    )
+
+
+async def _notify_dispute_parties(db, dispute: dict, dispute_id: str) -> None:
+    """Push a resolution notification to complainant and respondent."""
+    from app.services.notification_service import NotificationService  # noqa: PLC0415
+    ns = NotificationService()
+    for id_key in ("complainant_id", "respondent_id"):
+        uid = dispute.get(id_key, "")
+        if uid and ObjectId.is_valid(str(uid)):
+            party = await db.users.find_one({"_id": ObjectId(str(uid))})
+            if party and party.get("fcm_token"):
+                ns.send_notification(
+                    token=party["fcm_token"],
+                    title="Dispute Resolved",
+                    body="Your dispute has been reviewed and resolved by our team.",
+                    data={"type": "dispute_resolved", "dispute_id": dispute_id},
+                )
+
+
 @router.post("/admin/disputes/{dispute_id}/resolve")
 async def resolve_dispute(
     dispute_id: str,
@@ -478,7 +520,7 @@ async def resolve_dispute(
     """
     dispute = await db.dispute_resolutions.find_one({"_id": ObjectId(dispute_id)})
     if not dispute:
-        raise HTTPException(status_code=404, detail="Dispute not found")
+        raise HTTPException(status_code=404, detail=_DISPUTE_NOT_FOUND)
     
     # Update dispute
     await db.dispute_resolutions.update_one(
@@ -507,9 +549,19 @@ async def resolve_dispute(
         }
     )
     
-    # TODO: Trigger refund if compensation awarded
-    # TODO: Notify both parties
-    
+    # Trigger Razorpay refund if compensation percentage awarded
+    if request.compensation_amount and request.compensation_amount > 0:
+        try:
+            await _trigger_dispute_refund(db, dispute, dispute_id, request.compensation_amount)
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("Dispute refund failed for %s: %s", dispute_id, exc)
+
+    # Notify both parties about the resolution
+    try:
+        await _notify_dispute_parties(db, dispute, dispute_id)
+    except Exception:  # noqa: BLE001
+        pass
+
     return {
         "message": "Dispute resolved successfully",
         "dispute_id": dispute_id,
@@ -547,8 +599,31 @@ async def approve_service_guarantee(
         }
     )
     
-    # TODO: Trigger Razorpay refund
-    
+    # Trigger Razorpay refund for the approved guarantee claim
+    try:
+        _guar_booking = await db.bookings.find_one({"_id": ObjectId(guarantee["booking_id"])})
+        if _guar_booking and _guar_booking.get("razorpay_payment_id"):
+            from app.services.payment_service import RazorpayService  # noqa: PLC0415
+            _total = float(
+                _guar_booking.get("total_amount") or _guar_booking.get("total_price") or 0
+            )
+            _refund_pct = float(guarantee.get("refund_percentage", 100))
+            _refund_amt = round(_total * _refund_pct / 100, 2)
+            RazorpayService().initiate_refund(
+                payment_id=_guar_booking["razorpay_payment_id"],
+                amount=_refund_amt,
+                notes={"reason": "Service guarantee claim", "guarantee_id": guarantee_id},
+            )
+            await db.service_guarantees.update_one(
+                {"_id": ObjectId(guarantee_id)},
+                {"$set": {"razorpay_refund_initiated": True}},
+            )
+    except Exception as _g_exc:  # noqa: BLE001
+        import logging as _logging  # noqa: PLC0415
+        _logging.getLogger(__name__).warning(
+            "Guarantee refund failed for %s: %s", guarantee_id, _g_exc
+        )
+
     # Audit log
     audit = AuditService(db)
     await audit.log_action(
@@ -569,6 +644,51 @@ async def approve_service_guarantee(
     }
 
 
+@router.get("/admin/disputes/stats")
+async def get_disputes_stats(
+    current_user: User = Depends(get_current_admin),
+    db=Depends(get_database),
+):
+    """
+    Admin: Get dispute statistics summary
+
+    Available to: Admin only
+    """
+    total = await db.dispute_resolutions.count_documents({})
+    mediation = await db.dispute_resolutions.count_documents({"status": "mediation"})
+    under_review = await db.dispute_resolutions.count_documents({"status": "under_review"})
+    resolved = await db.dispute_resolutions.count_documents({
+        "status": {"$in": ["resolved_refund", "resolved_no_refund", "resolved_partial_refund"]}
+    })
+    closed = await db.dispute_resolutions.count_documents({"status": "closed"})
+
+    # Average resolution time in days (for resolved disputes)
+    pipeline = [
+        {"$match": {"resolved_at": {"$exists": True, "$ne": None}}},
+        {"$project": {
+            "resolution_days": {
+                "$divide": [
+                    {"$subtract": ["$resolved_at", "$created_at"]},
+                    86400000,
+                ]
+            }
+        }},
+        {"$group": {"_id": None, "avg_days": {"$avg": "$resolution_days"}}},
+    ]
+    result = await db.dispute_resolutions.aggregate(pipeline).to_list(1)
+    avg_resolution_days = round(result[0]["avg_days"], 1) if result else 0
+
+    return {
+        "total": total,
+        "mediation": mediation,
+        "under_review": under_review,
+        "arbitration": under_review,  # alias used by some admin views
+        "resolved": resolved,
+        "closed": closed,
+        "avg_resolution_days": avg_resolution_days,
+    }
+
+
 @router.get("/admin/disputes")
 async def get_all_disputes(
     status: Optional[str] = None,
@@ -586,12 +706,16 @@ async def get_all_disputes(
     query = {}
     
     if status:
-        query["status"] = status
-    
+        # 'resolved' is a logical grouping — expand to all resolved variants
+        if status == "resolved":
+            query["status"] = {"$in": ["resolved_refund", "resolved_no_refund", "resolved_partial_refund"]}
+        else:
+            query["status"] = status
+
     if category:
-        query["dispute_category"] = category
-    
-    cursor = db.dispute_resolutions.find(query).sort("filed_at", -1).skip(skip).limit(limit)
+        query["dispute_type"] = category
+
+    cursor = db.dispute_resolutions.find(query).sort("created_at", -1).skip(skip).limit(limit)
     disputes = await cursor.to_list(length=limit)
     
     # Convert ObjectId to string

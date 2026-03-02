@@ -13,7 +13,10 @@ from app.models.trust import (
     AcharyaTrustScore,
     VerificationLevel,
     Dispute,
+    DisputeType,
+    DisputeStatus,
     RefundRequest,
+    RefundReason,
     AttendanceCheckpoint,
     AuditLog,
 )
@@ -388,43 +391,69 @@ class TrustScoreService:
         if existing:
             raise ValidationError("Service guarantee already claimed for this booking")
         
-        # Determine eligibility
-        eligibility_criteria = {
-            "booking_status": booking["status"],
-            "booking_completed_at": booking.get("completed_at"),
-            "claim_within_hours": 48,  # Must claim within 48h of completion
-        }
-        
         # Time check
         if booking.get("completed_at"):
             hours_since = (utcnow() - booking["completed_at"]).total_seconds() / 3600
             if hours_since > 48:
                 raise ValidationError("Guarantee claim window expired (48 hours)")
         
-        # Determine refund percentage
+        # Determine refund percentage and reason
         refund_percentage = 100 if guarantee_type == "TIME_GUARANTEE" else 50
-        
-        # Create guarantee
+
+        _reason_map = {
+            "TIME_GUARANTEE": RefundReason.ACHARYA_NO_SHOW,
+            "QUALITY_GUARANTEE": RefundReason.QUALITY_ISSUE,
+            "CANCELLATION_PROTECTION": RefundReason.ACHARYA_CANCELLED_EARLY,
+        }
+        refund_reason = _reason_map.get(guarantee_type, RefundReason.ADMIN_OVERRIDE)
+
+        original_amount = float(booking.get("total_price") or booking.get("amount") or 0)
+        refund_amount = round(original_amount * refund_percentage / 100, 2)
+
+        # Create guarantee using the correct RefundRequest model fields
         guarantee = RefundRequest(
             booking_id=booking_id,
-            grihasta_id=str(booking["user_id"]),
-            acharya_id=str(booking["acharya_id"]),
-            guarantee_type=guarantee_type,
-            claim_reason=claim_reason,
-            eligibility_criteria=eligibility_criteria,
+            refund_reason=refund_reason,
+            original_amount=original_amount,
+            refund_amount=refund_amount,
             refund_percentage=refund_percentage,
-            status="PENDING",
-            claimed_at=utcnow()
+            reason_code=guarantee_type.lower(),
+            customer_note=claim_reason,
+            is_auto_refund=False,
+            requires_approval=True,
+            status="pending",
         )
         
         result = await db.service_guarantees.insert_one(
             guarantee.model_dump(by_alias=True, exclude={"id"})
         )
         guarantee.id = str(result.inserted_id)
-        
-        # TODO: Trigger admin notification
-        # await notification_service.notify_admin_guarantee_claim(guarantee.id)
-        
+
+        # Notify admin(s) about the new guarantee claim requiring review
+        try:
+            from app.services.notification_service import NotificationService  # noqa: PLC0415
+            _ns = NotificationService()
+            _admins = await db.users.find(
+                {"role": "admin", "fcm_token": {"$ne": None}}
+            ).to_list(5)
+            for _admin in _admins:
+                if _admin.get("fcm_token"):
+                    _ns.send_notification(
+                        token=_admin["fcm_token"],
+                        title="New Guarantee Claim",
+                        body=(
+                            f"Service guarantee ({guarantee_type}) filed for "
+                            f"booking …{booking_id[-8:]}"
+                        ),
+                        data={
+                            "type": "guarantee_claim",
+                            "guarantee_id": guarantee.id,
+                            "booking_id": booking_id,
+                        },
+                    )
+        except Exception:  # noqa: BLE001
+            pass
+
         return guarantee
     
     @staticmethod
@@ -458,25 +487,57 @@ class TrustScoreService:
             else str(booking["user_id"])
         )
         
-        # Create dispute
+        # Map category string to DisputeType enum
+        _category_map: Dict[str, str] = {
+            "SERVICE_QUALITY": DisputeType.POOR_SERVICE_QUALITY.value,
+            "PAYMENT": DisputeType.PAYMENT_ISSUE.value,
+            "CANCELLATION": DisputeType.SERVICE_NOT_RENDERED.value,
+            "HARASSMENT": DisputeType.RUDE_BEHAVIOR.value,
+            "OTHER": DisputeType.OTHER.value,
+        }
+        dispute_type_value = _category_map.get(category.upper(), DisputeType.OTHER.value)
+        subject = category.replace("_", " ").title() + f" – Booking …{booking_id[-8:]}"
+
+        # Create dispute using correct Dispute model fields
         dispute = Dispute(
             booking_id=booking_id,
-            filed_by_id=filed_by_id,
-            filed_by_role=filed_by_role,
+            raised_by=filed_by_role,
+            complainant_id=filed_by_id,
             respondent_id=respondent_id,
-            dispute_category=category,
+            dispute_type=dispute_type_value,
+            subject=subject,
             description=description,
-            status="FILED",
-            filed_at=utcnow()
+            # status defaults to DisputeStatus.OPEN
         )
         
         result = await db.dispute_resolutions.insert_one(
             dispute.model_dump(by_alias=True, exclude={"id"})
         )
         dispute.id = str(result.inserted_id)
-        
-        # TODO: Notify respondent
-        
+
+        # Notify the respondent that a dispute has been filed against them
+        try:
+            from app.services.notification_service import NotificationService  # noqa: PLC0415
+            _ns = NotificationService()
+            if ObjectId.is_valid(str(respondent_id)):
+                _respondent = await db.users.find_one({"_id": ObjectId(str(respondent_id))})
+                if _respondent and _respondent.get("fcm_token"):
+                    _ns.send_notification(
+                        token=_respondent["fcm_token"],
+                        title="Dispute Filed Against You",
+                        body=(
+                            f"A dispute has been raised for booking …{booking_id[-8:]}. "
+                            "Please check the app and respond."
+                        ),
+                        data={
+                            "type": "dispute_filed",
+                            "dispute_id": dispute.id,
+                            "booking_id": booking_id,
+                        },
+                    )
+        except Exception:  # noqa: BLE001
+            pass
+
         return dispute
     
     @staticmethod
@@ -510,10 +571,30 @@ class TrustScoreService:
             checkpoint.model_dump(by_alias=True, exclude={"id"})
         )
         checkpoint.id = str(result.inserted_id)
-        
-        # TODO: Send OTP via SMS
-        # await sms_service.send_otp(grihasta_phone, otp_code)
-        
+
+        # Deliver OTP to the Grihasta via push notification (SMS integration pending)
+        try:
+            from app.services.notification_service import NotificationService  # noqa: PLC0415
+            _ns = NotificationService()
+            _bk = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+            if _bk:
+                _grihasta_id = _bk.get("user_id") or _bk.get("grihasta_id")
+                if _grihasta_id and ObjectId.is_valid(str(_grihasta_id)):
+                    _grihasta = await db.users.find_one({"_id": ObjectId(str(_grihasta_id))})
+                    if _grihasta and _grihasta.get("fcm_token"):
+                        _ns.send_notification(
+                            token=_grihasta["fcm_token"],
+                            title="Booking Check-in OTP",
+                            body=f"Your check-in OTP is: {otp_code}. Valid for 5 minutes.",
+                            data={
+                                "type": "checkpoint_otp",
+                                "booking_id": booking_id,
+                                "otp": otp_code,
+                            },
+                        )
+        except Exception:  # noqa: BLE001
+            pass
+
         return checkpoint
     
     @staticmethod

@@ -74,10 +74,13 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - APP_ENV=development
+      - DEBUG=True
       - MONGODB_URL=mongodb://${MONGO_ADMIN_USERNAME:-admin}:${MONGO_ADMIN_PASSWORD:?Set MONGO_ADMIN_PASSWORD in .env}@mongodb:27017/savitara?authSource=admin
       - REDIS_URL=redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}@redis:6379/0
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
+      - SECRET_KEY=${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}

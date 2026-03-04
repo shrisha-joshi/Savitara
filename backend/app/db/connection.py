@@ -41,8 +41,9 @@ class DatabaseManager(IConnectionManager, IIndexManager):
                 settings.MONGODB_URL,
                 minPoolSize=settings.MONGODB_MIN_POOL_SIZE,
                 maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
-                serverSelectionTimeoutMS=5000,
-                connectTimeoutMS=10000,
+                serverSelectionTimeoutMS=30000,  # 30 seconds for Atlas
+                connectTimeoutMS=20000,  # 20 seconds
+                socketTimeoutMS=60000,  # 60 seconds
             )
 
             # Get database

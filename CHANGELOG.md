@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed - savitara-web dependencies
+- **`@mui/x-date-pickers` pinned to `^6.20.2`** (intentional downgrade from `^8.x`)
+  - **Reason**: `savitara-web` uses MUI v5 (`@mui/material@^5.15`). Starting from
+    `@mui/x-date-pickers@7.0`, the package requires MUI v6 (`@mui/material@^6`).
+    Upgrading MUI to v6 would require a full theme-system migration (breaking changes
+    in `@mui/system`, `sx` prop, and emotion integration) — out of scope for this
+    release cycle.
+  - **API impact**: The v6 `DatePicker`/`DateTimePicker` `onChange` callback receives
+    a value or `null` (same semantics as v8 for our usage). No component-level code
+    changes were required.
+  - **Upgrade path**: When the team migrates to MUI v6, pin `@mui/x-date-pickers`
+    back to `^8.x` (or latest) and retest all date-picker screens
+    (`BookingScreen`, `AvailabilityScreen`).
+
 ## [1.0.0] - 2026-01-02
 
 ### Added - Backend

@@ -1,13 +1,17 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Button, Text, TextInput, SegmentedButtons, HelperText } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { Button, HelperText, SegmentedButtons, Text, TextInput } from 'react-native-paper';
 import { useAuth } from '../../context/AuthContext';
 import { getErrorMessage } from '../../utils/errorHandler';
 
 const LoginScreen = () => {
-  const { login, loginWithEmail, registerWithEmail, loading, error } = useAuth();
-  const [mode, setMode] = useState('login'); // 'login' or 'register'
+  const { login, loginWithEmail, registerWithEmail, sendEmailOtp, verifyEmailOtp, loading, error } = useAuth();
+  const [mode, setMode] = useState('login'); // 'login' | 'register' | 'verify-email'
+  const [pendingEmail, setPendingEmail] = useState(null);
+  const [otp, setOtp] = useState('');
+  const [otpError, setOtpError] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -30,20 +34,20 @@ const LoginScreen = () => {
 
     // Password validation
     if (!password) {
-      tempErrors.password = 'Password is required';
+      tempErrors.inputMsg = 'Password is required';
       isValid = false;
     } else if (mode === 'register') {
       if (password.length < 8) {
-        tempErrors.password = 'Password must be at least 8 characters';
+        tempErrors.inputMsg = 'Password must be at least 8 characters';
         isValid = false;
       } else if (!/(?=.*[a-z])/.test(password)) {
-        tempErrors.password = 'Password must contain at least one lowercase letter';
+        tempErrors.inputMsg = 'Password must contain at least one lowercase letter';
         isValid = false;
       } else if (!/(?=.*[A-Z])/.test(password)) {
-        tempErrors.password = 'Password must contain at least one uppercase letter';
+        tempErrors.inputMsg = 'Password must contain at least one uppercase letter';
         isValid = false;
-      } else if (!/(?=.*[0-9])/.test(password)) {
-        tempErrors.password = 'Password must contain at least one number';
+      } else if (!/(?=.*\d)/.test(password)) {
+        tempErrors.inputMsg = 'Password must contain at least one number';
         isValid = false;
       }
     }
@@ -64,7 +68,43 @@ const LoginScreen = () => {
     if (mode === 'login') {
       await loginWithEmail(email, password);
     } else {
-      await registerWithEmail({ email, password, name, role });
+      const result = await registerWithEmail({ email, password, name, role });
+      if (result?.requiresVerification) {
+        setPendingEmail(result.email);
+        setResendCooldown(60);
+        setMode('verify-email');
+      }
+    }
+  };
+
+  // Countdown timer for resend button
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  const handleVerifyOtp = async () => {
+    setOtpError('');
+    if (otp.length !== 6) {
+      setOtpError('Please enter the 6-digit code from your email.');
+      return;
+    }
+    try {
+      await verifyEmailOtp(pendingEmail, otp);
+      // AuthContext sets user → AppNavigator redirects automatically
+    } catch {
+      setOtpError('Invalid or expired code. Please try again.');
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0) return;
+    try {
+      await sendEmailOtp(pendingEmail);
+      setResendCooldown(60);
+    } catch {
+      // error shown via AuthContext error state
     }
   };
 
@@ -73,7 +113,57 @@ const LoginScreen = () => {
       <View style={styles.logoContainer}>
         <MaterialCommunityIcons name="om" size={100} color="#FF6B35" />
       </View>
-      
+
+      {/* ── Email OTP verification step ── */}
+      {mode === 'verify-email' ? (
+        <View style={styles.form}>
+          <Text variant="headlineMedium" style={styles.title}>Verify Your Email</Text>
+          <Text variant="bodyMedium" style={styles.subtitle}>
+            We sent a 6-digit code to {'\n'}<Text style={{ fontWeight: 'bold' }}>{pendingEmail}</Text>
+          </Text>
+          {otpError ? (
+            <View style={styles.errorContainer}>
+              <MaterialCommunityIcons name="alert-circle-outline" size={20} color="#B00020" style={styles.errorIcon} />
+              <Text style={styles.errorText} variant="bodySmall">{otpError}</Text>
+            </View>
+          ) : null}
+          <TextInput
+            label="Verification Code"
+            value={otp}
+            onChangeText={(text) => { setOtp(text.replaceAll(/\D/g, '').slice(0, 6)); setOtpError(''); }}
+            mode="outlined"
+            keyboardType="number-pad"
+            maxLength={6}
+            style={styles.input}
+            autoFocus
+          />
+          <Button
+            mode="contained"
+            onPress={handleVerifyOtp}
+            loading={loading}
+            disabled={loading || otp.length !== 6}
+            style={styles.button}
+          >
+            Verify & Continue
+          </Button>
+          <Button
+            mode="text"
+            onPress={handleResendOtp}
+            disabled={resendCooldown > 0}
+            style={styles.switchButton}
+          >
+            {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend code'}
+          </Button>
+          <Button
+            mode="text"
+            onPress={() => { setMode('register'); setOtp(''); setOtpError(''); }}
+            style={styles.switchButton}
+          >
+            Back to Sign Up
+          </Button>
+        </View>
+      ) : (
+        <>
       <Text variant="headlineMedium" style={styles.title}>
         {mode === 'login' ? 'Welcome Back' : 'Create Account'}
       </Text>
@@ -139,16 +229,16 @@ const LoginScreen = () => {
           value={password}
           onChangeText={(text) => {
              setPassword(text);
-             if (errors.password) setErrors({...errors, password: null});
+          if (errors.inputMsg) setErrors({...errors, inputMsg: null});
           }}
           mode="outlined"
           secureTextEntry={!showPassword}
           right={<TextInput.Icon icon={showPassword ? "eye-off" : "eye"} onPress={() => setShowPassword(!showPassword)} />}
           style={styles.input}
-          error={!!errors.password}
+          error={!!errors.inputMsg}
         />
-        {errors.password && <HelperText type="error" visible={true}>{errors.password}</HelperText>}
-        {mode === 'register' && !errors.password && (
+        {errors.inputMsg && <HelperText type="error" visible={true}>{errors.inputMsg}</HelperText>}
+        {mode === 'register' && !errors.inputMsg && (
             <HelperText type="info" visible={true}>
               Min. 8 characters with uppercase, lowercase & number
             </HelperText>
@@ -187,6 +277,8 @@ const LoginScreen = () => {
           {mode === 'login' ? "Don't have an account? Sign Up" : "Already have an account? Sign In"}
         </Button>
       </View>
+      </>
+      )}
     </ScrollView>
   );
 };

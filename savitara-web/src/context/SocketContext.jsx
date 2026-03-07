@@ -1,7 +1,7 @@
-import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import PropTypes from 'prop-types';
-import { useAuth } from './AuthContext';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../services/api';
+import { useAuth } from './AuthContext';
 
 const SocketContext = createContext(null);
 
@@ -153,8 +153,11 @@ export const SocketProvider = ({ children }) => {
         connectingRef.current = false;
         return;
       }
-      console.error('[WS] Failed to get WS ticket, falling back to token (non-prod):', err);
-      wsAuthParam = `token=${token}`; // server blocks in prod
+      // In development, if ticket fails (e.g., Redis unavailable), skip WebSocket
+      console.warn('[WS] WebSocket ticket unavailable (Redis not running). Skipping WebSocket connection in development.');
+      setIsConnecting(false);
+      connectingRef.current = false;
+      return;
     }
     
     const wsUrl = `${protocol}//${wsHost}/ws/${user.id}?${wsAuthParam}`;

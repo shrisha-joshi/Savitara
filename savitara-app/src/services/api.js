@@ -27,6 +27,8 @@ export const authAPI = {
   register: (data) => api.post('/auth/register', data),
   logout: () => api.post('/auth/logout'),
   refreshToken: (refreshToken) => api.post('/auth/refresh', { refresh_token: refreshToken }),
+  sendEmailOtp: (email) => api.post('/auth/email/send-otp', { email }),
+  verifyEmailOtp: (email, otp) => api.post('/auth/email/verify-otp', { email, otp }),
 };
 
 // User APIs

@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Vite build output
+dist/
+dist-ssr/
+
+# Cache
+.vite/
+*.local
+
+# Environment files (never commit real secrets)
+.env
+.env.local
+.env.*.local
+
+# Editor directories
+.DS_Store
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage
+coverage/
+
+# Temporary build artifacts
+*.tgz
+install_out.txt
+audit_out.txt
+build_output.txt

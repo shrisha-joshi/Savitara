@@ -15,6 +15,48 @@ export const useAuth = () => {
   return context
 }
 
+/**
+ * Pure module-level helper — extracts error categorization from registerWithEmail
+ * to keep the useCallback's cognitive complexity within the allowed limit.
+ */
+function categorizeRegistrationError(error, backendMessage) {
+  let errorMessage = 'We could not create your account. Please try again.'
+  let errorDetails = ''
+
+  if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+    errorMessage = 'Unable to connect to the server'
+    errorDetails = 'Please check your internet connection and try again. If the problem persists, the service may be temporarily unavailable.'
+  } else if (error.response?.status === 409) {
+    errorMessage = 'An account with this email already exists'
+    errorDetails = 'If this is your email, please sign in instead. If you forgot your password, use the "Forgot Password" option on the sign-in page.'
+  } else if (error.response?.status === 400) {
+    const msg = backendMessage.toLowerCase()
+    if (msg.includes('already registered') || msg.includes('already exists')) {
+      errorMessage = 'An account with this email already exists'
+      errorDetails = 'Please sign in with this email. If you forgot your password, use the password reset option.'
+    } else if (msg.includes('password')) {
+      errorMessage = 'Password does not meet requirements'
+      errorDetails = 'Your password must be at least 8 characters long and include uppercase letters, lowercase letters, and numbers.'
+    } else if (msg.includes('email')) {
+      errorMessage = 'Invalid email address'
+      errorDetails = 'Please enter a valid email address in the format: name@domain.com'
+    } else {
+      errorMessage = 'Invalid registration information'
+      errorDetails = backendMessage || 'Please check your information and try again.'
+    }
+  } else if (error.response?.status === 429) {
+    errorMessage = 'Too many registration attempts'
+    errorDetails = 'Please wait a few minutes before trying again. This is for security purposes.'
+  } else if (error.response?.status >= 500) {
+    errorMessage = 'Server error occurred'
+    errorDetails = 'Our servers are experiencing technical difficulties. Please try again in a few minutes.'
+  } else if (backendMessage) {
+    errorMessage = backendMessage
+  }
+
+  return { errorMessage, errorDetails }
+}
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -40,12 +82,16 @@ export const AuthProvider = ({ children }) => {
     initAuth()
   }, [])
 
+  /**
+   * WCAG Compliant: Handle Google OAuth redirect result
+   * Provides clear feedback during OAuth flow
+   */
   const handleRedirectResult = async () => {
     try {
       const result = await checkRedirectResult()
       if (result?.idToken) {
         console.log('Processing Google redirect result...')
-        toast.info('Completing Google sign-in...')
+        toast.info('Completing your Google sign-in...')
         
         // Send token to backend
         const response = await api.post('/auth/google', {
@@ -69,22 +115,38 @@ export const AuthProvider = ({ children }) => {
           navigate('/onboarding')
         }
 
-        toast.success('Login successful!')
+        toast.success('Successfully signed in with Google!')
       }
     } catch (error) {
       console.error('Redirect result error:', error)
       
-      let errorMessage = 'Google login failed'
+      // WCAG: Provide specific, actionable error messages
+      let errorMessage = 'Google sign-in failed'
+      let errorDetails = ''
       
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        errorMessage = 'Cannot connect to server. Please check if the backend is running.'
+        errorMessage = 'Unable to connect to the server'
+        errorDetails = 'Please check your internet connection and try again. If the problem persists, the service may be temporarily unavailable.'
       } else if (error.response?.status === 401) {
-        errorMessage = 'Invalid credentials. Please try again.'
+        errorMessage = 'Google authentication failed'
+        errorDetails = 'We could not verify your Google account. Please try signing in again or use email sign-in instead.'
+      } else if (error.response?.status === 403) {
+        errorMessage = 'Your account has been suspended'
+        errorDetails = 'Please contact support at support@savitara.com for assistance.'
       } else if (error.response?.status >= 500) {
-        errorMessage = 'Server error. Please try again later.'
+        errorMessage = 'Server error occurred'
+        errorDetails = 'Our servers are experiencing technical difficulties. Please try again in a few minutes or use email sign-in instead.'
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message
       }
       
-      toast.error(errorMessage)
+      toast.error(
+        <div>
+          <strong>{errorMessage}</strong>
+          {errorDetails && <div style={{ marginTop: '8px', fontSize: '0.9em' }}>{errorDetails}</div>}
+        </div>,
+        { autoClose: 8000 }
+      )
     }
   }
 
@@ -117,6 +179,13 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  /**
+   * WCAG Compliant: Login with Email
+   * Provides clear, actionable error messages that explain:
+   * - What went wrong
+   * - Why it happened
+   * - What the user can do next
+   */
   const loginWithEmail = useCallback(async (email, password) => {
     try {
       const response = await api.post('/auth/login', { email, password })
@@ -138,58 +207,142 @@ export const AuthProvider = ({ children }) => {
         navigate('/onboarding', { replace: true })
       }
 
-      toast.success('Login successful!')
+      toast.success('Welcome back! You have successfully signed in.')
     } catch (error) {
       console.error('Login failed:', error)
-      // Show specific error message from backend or network error
-      let errorMessage = 'Login failed'
+      
+      // WCAG: Provide specific, actionable error messages
+      let errorMessage = 'We could not sign you in. Please try again.'
+      let errorDetails = ''
       
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        errorMessage = 'Cannot connect to server. Please check if the backend is running.'
+        errorMessage = 'Unable to connect to the server'
+        errorDetails = 'Please check your internet connection and try again. If the problem persists, the service may be temporarily unavailable.'
       } else if (error.response?.status === 401) {
-        errorMessage = 'Invalid email or password.'
+        errorMessage = 'Incorrect email or password'
+        errorDetails = 'Please check your credentials and try again. If you forgot your password, use the "Forgot Password" option.'
+      } else if (error.response?.status === 403) {
+        errorMessage = 'Your account has been suspended'
+        errorDetails = 'Please contact support at support@savitara.com for assistance.'
+      } else if (error.response?.status === 429) {
+        errorMessage = 'Too many login attempts'
+        errorDetails = 'Please wait a few minutes before trying again. This is for your account security.'
       } else if (error.response?.status >= 500) {
-        errorMessage = 'Server error. Please try again later.'
+        errorMessage = 'Server error occurred'
+        errorDetails = 'Our servers are experiencing technical difficulties. Please try again in a few minutes.'
+      } else if (error.response?.data?.message) {
+        // Use backend message if available
+        errorMessage = error.response.data.message
       }
       
-      toast.error(errorMessage)
+      // WCAG: Display both main error and details if available
+      toast.error(
+        <div>
+          <strong>{errorMessage}</strong>
+          {errorDetails && <div style={{ marginTop: '8px', fontSize: '0.9em' }}>{errorDetails}</div>}
+        </div>,
+        { autoClose: 8000 } // Longer display time for detailed errors
+      )
       throw error
     }
   }, [navigate, location])
 
+  /**
+   * WCAG Compliant: Register with Email
+   * Now returns { requiresVerification: true, userId, email } instead of logging in directly.
+   * The caller must show an OTP input and call verifyEmailOtp to complete signup.
+   */
   const registerWithEmail = useCallback(async (data) => {
     try {
       const response = await api.post('/auth/register', data)
-      // Backend returns StandardResponse: { success, data: {...}, message }
-      const { access_token, refresh_token, user: userData } = response.data.data || response.data
+      const responseData = response.data.data || response.data
 
+      // New flow: backend sends OTP and returns user_id. No tokens yet.
+      if (responseData.requires_email_verification) {
+        toast.info('A verification code has been sent to your email address.')
+        return {
+          requiresVerification: true,
+          userId: responseData.user_id,
+          email: responseData.email,
+        }
+      }
+
+      // Fallback for backwards-compat if backend returns tokens directly (should not happen)
+      const { access_token, refresh_token, user: userData } = responseData
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)
       setToken(access_token)
-      
       setUser(userData)
-      // New users always go to onboarding
       navigate('/onboarding')
-      toast.success('Registration successful! Please complete your profile.')
+      toast.success('Account created successfully! Please complete your profile to get started.')
+      return { requiresVerification: false }
     } catch (error) {
       console.error('Registration failed:', error)
+
+      const responseData = error.response?.data
+      const backendMessage =
+        (typeof responseData?.message === 'string' && responseData.message) ||
+        (typeof responseData?.detail === 'string' && responseData.detail) ||
+        (Array.isArray(responseData?.detail)
+          ? responseData.detail
+              .map((item) => item?.msg || item?.message || '')
+              .filter(Boolean)
+              .join(', ')
+          : '')
       
-      let errorMessage = 'Registration failed'
+      const { errorMessage, errorDetails } = categorizeRegistrationError(error, backendMessage)
       
-      if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        errorMessage = 'Cannot connect to server. Please check if the backend is running.'
-      } else if (error.response?.status === 409) {
-        errorMessage = 'An account with this email already exists.'
-      } else if (error.response?.status >= 500) {
-        errorMessage = 'Server error. Please try again later.'
-      }
-      
-      toast.error(errorMessage)
+      toast.error(
+        <div>
+          <strong>{errorMessage}</strong>
+          {errorDetails && <div style={{ marginTop: '8px', fontSize: '0.9em' }}>{errorDetails}</div>}
+        </div>,
+        { autoClose: 8000 }
+      )
       throw error
     }
   }, [navigate])
 
-  // Updated to use Firebase Google Sign-In with Popup
+  /**
+   * Resend email verification OTP (for use on the verification step screen)
+   */
+  const sendEmailOtp = useCallback(async (email) => {
+    try {
+      await api.post('/auth/email/send-otp', { email })
+      toast.info('A new verification code has been sent to your email.')
+    } catch (error) {
+      const msg = error.response?.data?.detail || 'Failed to resend verification code.'
+      toast.error(msg)
+      throw error
+    }
+  }, [])
+
+  /**
+   * Verify email OTP — on success the backend returns tokens and we log the user in.
+   */
+  const verifyEmailOtp = useCallback(async (email, otp) => {
+    try {
+      const response = await api.post('/auth/email/verify-otp', { email, otp })
+      const { access_token, refresh_token, user: userData } = response.data.data
+
+      localStorage.setItem('accessToken', access_token)
+      localStorage.setItem('refreshToken', refresh_token)
+      setToken(access_token)
+      setUser(userData)
+
+      toast.success('Email verified! Welcome to Savitara.')
+      navigate('/onboarding', { replace: true })
+    } catch (error) {
+      const msg = error.response?.data?.detail || 'Invalid or expired verification code.'
+      toast.error(msg)
+      throw error
+    }
+  }, [navigate])
+
+  /**
+   * WCAG Compliant: Google Sign-In with Popup
+   * Provides clear, actionable feedback throughout the authentication process
+   */
   const loginWithGoogle = useCallback(async (legacyCredential = null) => {
     try {
       let idToken = null;
@@ -199,21 +352,26 @@ export const AuthProvider = ({ children }) => {
         const result = await firebaseGoogleSignIn();
         idToken = result?.idToken;
       }
+      
       if (!idToken) {
-        toast.error('No ID token received from Google.');
+        toast.error('Google sign-in was cancelled or failed. Please try again or use email sign-in.');
         setLoading(false);
         return;
       }
+      
       const response = await api.post('/auth/google', {
         id_token: idToken,
         role: 'grihasta'
       });
+      
       const { data } = response.data;
       const { access_token, refresh_token, user: userData } = data;
+      
       localStorage.setItem('accessToken', access_token);
       localStorage.setItem('refreshToken', refresh_token);
       setToken(access_token);
       setUser(userData);
+      
       if (userData.onboarded || userData.onboarding_completed) {
         const from = location.state?.from?.pathname || '/';
         const search = location.state?.from?.search || '';
@@ -221,18 +379,47 @@ export const AuthProvider = ({ children }) => {
       } else {
         navigate('/onboarding', { replace: true });
       }
-      toast.success('Login successful!');
+      
+      toast.success('Successfully signed in with Google!');
     } catch (error) {
       console.error('Google login failed:', error);
-      let errorMessage = 'Google login failed';
+      
+      // WCAG: Provide specific, actionable error messages
+      let errorMessage = 'Google sign-in failed';
+      let errorDetails = '';
+      
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        errorMessage = 'Cannot connect to server. Please check if the backend is running.';
+        errorMessage = 'Unable to connect to the server';
+        errorDetails = 'Please check your internet connection and try again. If the problem persists, try using email sign-in instead.';
       } else if (error.code === 'auth/popup-closed-by-user') {
-        errorMessage = 'Sign-in cancelled.';
+        errorMessage = 'Sign-in cancelled';
+        errorDetails = 'You closed the Google sign-in window. Please try again if you wish to continue.';
+      } else if (error.code === 'auth/popup-blocked') {
+        errorMessage = 'Pop-up blocked by browser';
+        errorDetails = 'Please allow pop-ups for this site in your browser settings and try again, or use email sign-in instead.';
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        errorMessage = 'Sign-in cancelled';
+        errorDetails = 'Only one sign-in window can be open at a time. Please close any other sign-in windows and try again.';
+      } else if (error.response?.status === 401) {
+        errorMessage = 'Google authentication failed';
+        errorDetails = 'We could not verify your Google account. Please try again or use email sign-in instead.';
+      } else if (error.response?.status === 403) {
+        errorMessage = 'Your account has been suspended';
+        errorDetails = 'Please contact support at support@savitara.com for assistance.';
       } else if (error.response?.status >= 500) {
-        errorMessage = 'Server error. Please try again later.';
+        errorMessage = 'Server error occurred';
+        errorDetails = 'Our servers are experiencing technical difficulties. Please try again in a few minutes or use email sign-in instead.';
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
       }
-      toast.error(errorMessage);
+      
+      toast.error(
+        <div>
+          <strong>{errorMessage}</strong>
+          {errorDetails && <div style={{ marginTop: '8px', fontSize: '0.9em' }}>{errorDetails}</div>}
+        </div>,
+        { autoClose: 8000 }
+      );
       throw error;
     }
   }, [navigate, location])
@@ -281,10 +468,12 @@ export const AuthProvider = ({ children }) => {
     loginWithGoogle,
     loginWithEmail,
     registerWithEmail,
+    sendEmailOtp,
+    verifyEmailOtp,
     logout,
     updateUser,
     refreshUserData,
-  }), [user, token, loading, loginWithGoogle, loginWithEmail, registerWithEmail, logout, updateUser, refreshUserData])
+  }), [user, token, loading, loginWithGoogle, loginWithEmail, registerWithEmail, sendEmailOtp, verifyEmailOtp, logout, updateUser, refreshUserData])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

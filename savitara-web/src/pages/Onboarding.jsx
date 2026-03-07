@@ -1,15 +1,14 @@
+import AddIcon from '@mui/icons-material/Add'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import CloudUploadIcon from '@mui/icons-material/CloudUpload'
+import { Alert, Box, Button, Checkbox, Chip, CircularProgress, Container, FormControl, FormControlLabel, FormLabel, IconButton, LinearProgress, Link, MenuItem, Paper, Radio, RadioGroup, Select, Step, StepLabel, Stepper, TextField, Typography } from '@mui/material'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Box, Container, Typography, TextField, Button, Radio, RadioGroup, FormControlLabel, FormControl, FormLabel, Paper, Chip, IconButton, CircularProgress, Alert, Checkbox, Link, Stepper, Step, StepLabel, Select, MenuItem, LinearProgress } from '@mui/material'
-import AddIcon from '@mui/icons-material/Add'
-import CloudUploadIcon from '@mui/icons-material/CloudUpload'
-import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'react-toastify'
 import CascadingLocationSelect from '../components/CascadingLocationSelect'
+import ConfettiCelebration from '../components/ConfettiCelebration'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
-import { toast } from 'react-toastify'
-import ConfettiCelebration from '../components/ConfettiCelebration'
 
 const LANGUAGES = [
   { code: 'en', name: 'English', nativeName: 'English' },
@@ -22,6 +21,15 @@ const LANGUAGES = [
 ]
 
 const steps = ['Language & Role', 'Terms & Conditions', 'Profile Information']
+
+// Custom StepIcon to avoid React DOM prop warnings
+function CustomStepIcon({ completed, active, error, ...props }) {
+  // Consume the boolean props so they don't get passed to DOM
+  if (completed) {
+    return <CheckCircleIcon sx={{ color: '#34C759' }} />
+  }
+  return <CheckCircleIcon sx={{ color: active ? '#FF6B35' : '#E5E5E5' }} />
+}
 
 export default function Onboarding() {
   const navigate = useNavigate()
@@ -172,7 +180,6 @@ export default function Onboarding() {
       if (role === 'grihasta') {
         requestBody = {
           name: formData.name,
-          verification_documents: kycDocuments,
           phone: formData.phone || null,
           location: {
             city: formData.city,
@@ -278,15 +285,7 @@ export default function Onboarding() {
           {steps.map((label, index) => (
             <Step key={label} completed={activeStep > index}>
               <StepLabel 
-                StepIconComponent={activeStep > index ? CheckCircleIcon : undefined}
-                sx={{
-                  '& .MuiStepIcon-root': {
-                    color: activeStep >= index ? '#FF6B35' : '#E5E5E5',
-                  },
-                  '& .Mui-completed': {
-                    color: '#34C759 !important',
-                  }
-                }}
+                StepIconComponent={CustomStepIcon}
               >
                 {label}
               </StepLabel>

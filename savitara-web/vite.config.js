@@ -8,6 +8,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // date-fns@3 does not export _lib/* in its package.json exports map.
+      // Vite 6 enforces strict exports, so we alias the internal path to a
+      // local shim that re-exports the named export as `default`.
+      'date-fns/_lib/format/longFormatters': path.resolve(__dirname, 'src/_shims/date-fns-longFormatters.mjs'),
     },
   },
   server: {
@@ -29,11 +33,30 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000, // M64 fix: flag bundles > 1MB to encourage code-splitting
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Split vendor chunks for better caching
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'mui-vendor': ['@mui/material', '@mui/icons-material'],
-          'chart-vendor': ['recharts'],
+        manualChunks: (id) => {
+          // Each major vendor gets its own cache-friendly chunk.
+          // No catch-all — Rollup handles the remaining node_modules automatically.
+          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/') || id.includes('node_modules/react-router')) {
+            return 'react-vendor'
+          }
+          if (id.includes('node_modules/@mui/x-date-pickers') || id.includes('node_modules/@mui/x-charts')) {
+            return 'mui-x-vendor'
+          }
+          if (id.includes('node_modules/@mui/icons-material')) {
+            return 'mui-icons-vendor'
+          }
+          if (id.includes('node_modules/@mui/')) {
+            return 'mui-vendor'
+          }
+          if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-') || id.includes('node_modules/victory')) {
+            return 'chart-vendor'
+          }
+          if (id.includes('node_modules/date-fns') || id.includes('node_modules/dayjs') || id.includes('node_modules/moment')) {
+            return 'date-vendor'
+          }
+          if (id.includes('node_modules/axios') || id.includes('node_modules/socket.io')) {
+            return 'network-vendor'
+          }
         },
       },
     },

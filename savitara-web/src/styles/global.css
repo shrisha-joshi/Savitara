@@ -6,10 +6,19 @@
 */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
 
-/* Sanskrit-style font for Savitara branding */
+/* Sanskrit-style font for Savitara branding
+   Self-hosting instructions:
+     1. Obtain a licensed copy of Samarkan (.woff2 / .woff).
+     2. Place the files at:  savitara-web/public/fonts/Samarkan.woff2
+                              savitara-web/public/fonts/Samarkan.woff
+     3. The @font-face below will serve them from /fonts/ automatically.
+   Licensing: Samarkan is a proprietary typeface — confirm your licence
+   allows web embedding before distributing the font files. */
 @font-face {
   font-family: 'Samarkan';
-  src: local('Samarkan'), local('Times New Roman');
+  src: url('/fonts/Samarkan.woff2') format('woff2'),
+       url('/fonts/Samarkan.woff') format('woff'),
+       local('Samarkan'), local('Times New Roman');
   font-weight: normal;
   font-style: normal;
   font-display: swap;

@@ -11,7 +11,8 @@
     "lint": "echo 'No linting configured yet' && exit 0"
   },
   "overrides": {
-    "react-native-worklets": "0.5.1"
+    "react-native-worklets": "0.5.1",
+    "@tootallnate/once": "^3.0.1"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
@@ -67,6 +68,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
+    "@tootallnate/once": "^3.0.1",
     "@types/react": "~18.3.12",
     "babel-preset-expo": "~54.0.9",
     "expo-module-scripts": "^5.0.8",

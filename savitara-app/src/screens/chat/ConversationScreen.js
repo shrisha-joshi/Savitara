@@ -1,4 +1,6 @@
+import { useIsFocused } from '@react-navigation/native';
 import { Audio } from 'expo-av';
+import { BlurView } from 'expo-blur';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -6,23 +8,21 @@ import * as ScreenCapture from 'expo-screen-capture';
 import PropTypes from 'prop-types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  AppState,
-  Image,
-  Linking,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    AppState,
+    Image,
+    Linking,
+    Modal,
+    Platform,
+    Pressable,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { Bubble, GiftedChat, Send } from 'react-native-gifted-chat';
-import { useIsFocused } from '@react-navigation/native';
-import { BlurView } from 'expo-blur';
 import Toast from 'react-native-toast-message';
 import EmojiPicker from '../../components/EmojiPicker';
 import MessageReactions from '../../components/MessageReactions';
@@ -61,9 +61,10 @@ function VoiceMessageBubble({ message, isMine }) {
             if (status.isLoaded) {
               setProgress(status.durationMillis ? status.positionMillis / status.durationMillis : 0);
               if (status.didJustFinish) {
+                soundRef.current?.unloadAsync().catch((e) => console.warn('Audio unload error:', e));
+                soundRef.current = null;
                 setIsPlaying(false);
                 setProgress(0);
-                soundRef.current = null;
               }
             }
           }
@@ -168,9 +169,12 @@ const fileStyles = StyleSheet.create({
   downloadIcon: { fontSize: 20, marginLeft: 8 },
 });
 
-// Delivery status icon — single tick (sent), double tick (delivered), blue double tick (read)
+// Delivery status icon — spinner (sending), single tick (sent), double tick (delivered), blue double tick (read)
 function DeliveryStatus({ status }) {
   if (!status) return null;
+  if (status === 'sending') {
+    return <ActivityIndicator size="small" color="#999" style={styles.sendingIndicator} />;
+  }
   if (status === 'read') {
     return <Text style={styles.tickRead}>✓✓</Text>;
   }
@@ -181,7 +185,7 @@ function DeliveryStatus({ status }) {
   return <Text style={styles.tickSent}>✓</Text>;
 }
 DeliveryStatus.propTypes = {
-  status: PropTypes.oneOf(['sent', 'delivered', 'read']),
+  status: PropTypes.oneOf(['sending', 'sent', 'delivered', 'read']),
 };
 DeliveryStatus.defaultProps = { status: null };
 
@@ -502,18 +506,17 @@ const ConversationScreen = ({ route }) => {
 
   const onSend = useCallback(async (newMessages = []) => {
     const message = newMessages[0];
-    // Optimistically add with 'sent' status
     const tempId = message._id;
-    setMessageStatuses(prev => ({ ...prev, [tempId]: 'sent' }));
+    // True optimistic update: append to UI immediately with 'sending' status
+    setMessages((previousMessages) => GiftedChat.append(previousMessages, newMessages));
+    setMessageStatuses(prev => ({ ...prev, [tempId]: 'sending' }));
     try {
       const res = await chatAPI.sendMessage({ receiver_id: receiverId, content: message.text });
       const saved = res.data?.data || res.data;
       const savedId = saved?.message_id || saved?.id || saved?._id;
-      setMessages((previousMessages) =>
-        GiftedChat.append(previousMessages, newMessages)
-      );
-      // Remap temp ID to server ID, mark as delivered
+      // Remap temp ID to server ID and mark as delivered
       if (savedId && savedId !== tempId) {
+        setMessages(prev => prev.map(m => m._id === tempId ? { ...m, _id: savedId } : m));
         setMessageStatuses(prev => {
           const next = { ...prev };
           delete next[tempId];
@@ -521,8 +524,11 @@ const ConversationScreen = ({ route }) => {
           return next;
         });
       } else if (savedId) {
+        // savedId === tempId: server echoed same ID, mark delivered in-place
         setMessageStatuses(prev => ({ ...prev, [savedId]: 'delivered' }));
       }
+      // else: savedId is falsy — leave tempId entry at 'sending';
+      // the WebSocket reconciliation path will remap tempId → real ID when it arrives.
       // Stop typing indicator on send
       if (typingDebounceRef.current) {
         clearTimeout(typingDebounceRef.current);
@@ -535,6 +541,9 @@ const ConversationScreen = ({ route }) => {
       });
     } catch (error) {
       console.error('Failed to send message:', error);
+      // Rollback optimistic message on failure
+      setMessages(prev => prev.filter(m => m._id !== tempId));
+      setMessageStatuses(prev => { const next = { ...prev }; delete next[tempId]; return next; });
       Alert.alert('Error', 'Failed to send message');
     }
   }, [conversationId, receiverId, sendWsMessage]);
@@ -657,7 +666,7 @@ const ConversationScreen = ({ route }) => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') { Alert.alert('Permission needed', 'Media library access is required.'); return; }
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.8 }); // eslint-disable-line
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.8 }); // eslint-disable-line deprecation/deprecation
       if (!result.canceled && result.assets?.[0]) {
         const asset = result.assets[0];
         setAttachmentPreview({ uri: asset.uri, type: 'image', name: asset.fileName || `image_${Date.now()}.jpg`, size: asset.fileSize || 0, mimeType: asset.mimeType || 'image/jpeg' });
@@ -762,9 +771,9 @@ const ConversationScreen = ({ route }) => {
       const previewImg = attachmentPreview.type === 'image'
         ? <Image source={{ uri: attachmentPreview.uri }} style={styles.attachThumb} />
         : null;
-      const previewEmoji = attachmentPreview.type !== 'image'
-        ? <Text style={styles.attachFileEmoji}>{attachmentPreview.type === 'voice' ? '🎤' : '📎'}</Text>
-        : null;
+      const previewEmoji = attachmentPreview.type === 'image'
+        ? null
+        : <Text style={styles.attachFileEmoji}>{attachmentPreview.type === 'voice' ? '🎤' : '📎'}</Text>;
       const sendBtn = isSendingMedia
         ? <ActivityIndicator size="small" color="#fff" />
         : <Text style={styles.attachSendText}>Send</Text>;
@@ -797,14 +806,14 @@ const ConversationScreen = ({ route }) => {
     ) : null
   , [isOtherUserTyping, otherUserName, typingDotAnim]);
 
-  const renderBubble = useCallback((props) => {
-    const { currentMessage } = props;
+  const renderBubble = useCallback((bubbleProps) => {
+    const { currentMessage } = bubbleProps;
     const reactions = messageReactions[currentMessage._id] || [];
     const status = messageStatuses[currentMessage._id];
     const isMine = currentMessage.user._id === currentUserId;
     return (
       <BubbleRenderer
-        {...props}
+        {...bubbleProps}
         reactions={reactions}
         currentUserId={currentUserId}
         onAddReaction={handleAddReaction}
@@ -966,6 +975,11 @@ const styles = StyleSheet.create({
   tickRead: {
     fontSize: 11,
     color: '#4FC3F7', // blue — matches WhatsApp/web DoneAll style
+  },
+  // 'sending' spinner: size='small' is ~20pt on iOS; scale it down to match tick size
+  sendingIndicator: {
+    marginLeft: 2,
+    transform: [{ scale: 0.5 }],
   },
   // Loading overlay
   loadingOverlay: {

@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, Alert, Platform, Pressable } from 'react-native';
-import { Text, TextInput, Button, RadioButton, ActivityIndicator, Surface, Divider } from 'react-native-paper';
-import PropTypes from 'prop-types';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import PropTypes from 'prop-types';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Calendar } from 'react-native-calendars';
+import { ActivityIndicator, Button, Divider, RadioButton, Surface, Text, TextInput } from 'react-native-paper';
 import { bookingAPI } from '../../services/api';
 
 const BookingScreen = ({ route, navigation }) => {
@@ -40,7 +40,7 @@ const BookingScreen = ({ route, navigation }) => {
 
   // Validate acharya data on mount — sets validationError, does NOT return early
   useEffect(() => {
-    if (!acharya || !acharya._id || acharya._id === 'undefined' || acharya._id === 'null') {
+    if (!acharya?._id || acharya._id === 'undefined' || acharya._id === 'null') {
       setValidationError('Invalid Acharya ID. Please try again from the Acharya profile.');
       Alert.alert('Error', 'Invalid Acharya selection. Returning to search.', [
         { text: 'OK', onPress: () => navigation.goBack() }
@@ -166,7 +166,7 @@ const BookingScreen = ({ route, navigation }) => {
       };
       
       const response = await bookingAPI.create(bookingData);
-      const booking = response.data;
+      const booking = response.data?.data || response.data;
       
       // For request mode, navigate to bookings list
       if (formData.booking_mode === 'request') {

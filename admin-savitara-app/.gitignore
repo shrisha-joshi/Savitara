@@ -1,0 +1,27 @@
+node_modules/
+.expo/
+dist/
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+
+# Environment files (never commit real secrets)
+.env
+.env.local
+
+# Firebase credentials
+google-services.json
+GoogleService-Info.plist
+
+# Logs
+*.log
+
+# Temp build artifacts
+install_out.txt
+audit.json
+audit_out.txt

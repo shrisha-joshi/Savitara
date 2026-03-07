@@ -26,7 +26,7 @@ from app.core.constants import PHONE_REGEX
 from app.db.connection import get_db
 from app.db.redis import get_redis, blacklist_token
 from app.models.database import User, UserRole, UserStatus
-from app.services.otp_service import OTPService
+from app.services.otp_service import OTPService, EmailOTPService
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, Field, field_validator
 from redis.asyncio import Redis
@@ -41,6 +41,7 @@ settings = get_settings()
 # Error message constants
 ADMIN_ROLE_ERROR = "Admin role cannot be self-assigned"
 ACCOUNT_SUSPENDED_ERROR = "Account suspended"
+SUPPORT_EMAIL = "support@savitara.com"
 
 
 def verify_google_token(token: str) -> Dict[str, Any]:
@@ -136,6 +137,7 @@ async def google_login(
                 google_id=google_info["google_id"],
                 role=auth_request.role,
                 status=UserStatus.PENDING,  # Always PENDING for new users until onboarding
+                email_verified=True,  # Google verifies email as part of OAuth
                 profile_picture=google_info.get("picture"),
                 credits=100,  # Welcome bonus
             )
@@ -149,7 +151,7 @@ async def google_login(
         # Check user status
         if user.status == UserStatus.SUSPENDED:
             raise AuthenticationError(
-                message=ACCOUNT_SUSPENDED_ERROR, details={"contact": "support@savitara.com"}
+                message=ACCOUNT_SUSPENDED_ERROR, details={"contact": SUPPORT_EMAIL}
             )
 
         if user.status == UserStatus.DELETED:
@@ -237,6 +239,7 @@ async def register(
             name=request.name,
             role=request.role,
             status=UserStatus.PENDING,  # Always PENDING for new users until onboarding
+            email_verified=False,  # Must verify email before tokens are issued
             credits=100,  # Welcome bonus
         )
 
@@ -245,32 +248,24 @@ async def register(
         )
         user_id = str(result.inserted_id)
 
-        # Generate tokens
-        access_token = security_manager.create_access_token(
-            user_id=user_id, role=user.role.value
-        )
+        # Send email OTP — user must verify before they can log in
+        otp_result = await EmailOTPService.send_otp(db, request.email)
+        if not otp_result["sent"]:
+            # Clean up the user we just created if OTP send failed
+            await db.users.delete_one({"_id": result.inserted_id})
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not send verification email. Please try again.",
+            )
 
-        refresh_token = security_manager.create_refresh_token(user_id=user_id)
-
-        # New user always needs onboarding
         return StandardResponse(
             success=True,
-            message="Registration successful",
+            message="Account created! Please check your email for the verification code.",
             data={
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "token_type": "bearer",
-                "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-                "user": {
-                    "id": user_id,
-                    "email": user.email,
-                    "role": user.role.value,
-                    "status": user.status.value,
-                    "credits": user.credits,
-                    "is_new_user": True,
-                    "onboarded": False,
-                    "onboarding_completed": False,
-                },
+                "user_id": user_id,
+                "email": user.email,
+                "requires_email_verification": True,
+                "expires_in": otp_result["expires_in"],
             },
         )
     except HTTPException:
@@ -318,6 +313,15 @@ async def login(request: LoginRequest, db: Annotated[AsyncIOMotorDatabase, Depen
         if user.status == UserStatus.SUSPENDED:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail=ACCOUNT_SUSPENDED_ERROR
+            )
+
+        # Block login for unverified email accounts (Google OAuth users are always verified)
+        if not getattr(user, 'email_verified', False) and not user.google_id:
+            # Resend OTP so user can complete verification without extra friction
+            await EmailOTPService.send_otp(db, request.email)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Email not verified. A new verification code has been sent to your email.",
             )
 
         # Update last login
@@ -686,7 +690,7 @@ async def phone_verify_otp(
         if user.status == UserStatus.SUSPENDED:
             raise AuthenticationError(
                 message=ACCOUNT_SUSPENDED_ERROR,
-                details={"contact": "support@savitara.com"},
+                details={"contact": SUPPORT_EMAIL},
             )
         if user.status == UserStatus.DELETED:
             raise AuthenticationError(message="Account deleted")
@@ -748,4 +752,142 @@ async def phone_verify_otp(
             },
         },
         message="Phone authentication successful",
+    )
+
+
+# ============= Email OTP Verification =============
+
+
+class EmailSendOTPRequest(BaseModel):
+    """Request to resend email verification OTP"""
+    email: str = Field(..., description="Email address to send OTP to")
+
+
+class EmailVerifyOTPRequest(BaseModel):
+    """Request to verify email with OTP"""
+    email: str = Field(..., description="Email address that was registered")
+    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$", description="6-digit code from email")
+
+
+@router.post(
+    "/email/send-otp",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Send Email Verification OTP",
+    description="Send or resend a 6-digit OTP to the provided email address for verification",
+)
+async def email_send_otp(
+    request: EmailSendOTPRequest,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """
+    Send or resend email verification OTP.
+    Rate-limited: 60-second cooldown between sends.
+    """
+    # Verify email belongs to a registered, unverified user
+    user_doc = await db.users.find_one({"email": request.email.strip().lower()})
+    if not user_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this email address.",
+        )
+
+    user = User(**user_doc)
+    if getattr(user, 'email_verified', False):
+        return StandardResponse(
+            success=True,
+            data={},
+            message="Email is already verified. Please sign in.",
+        )
+
+    result = await EmailOTPService.send_otp(db, request.email)
+
+    if not result["sent"]:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=result["message"],
+        )
+
+    return StandardResponse(
+        success=True,
+        data={"expires_in": result["expires_in"]},
+        message=result["message"],
+    )
+
+
+@router.post(
+    "/email/verify-otp",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Verify Email OTP and Complete Registration",
+    description="Verify the 6-digit email OTP. On success, marks email as verified and returns JWT tokens.",
+)
+async def email_verify_otp(
+    request: EmailVerifyOTPRequest,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """
+    Verify email OTP. On success:
+    - marks the user's email as verified
+    - returns JWT access + refresh tokens so the user is logged in immediately
+    """
+    # Verify OTP
+    verification = await EmailOTPService.verify_otp(db, request.email, request.otp)
+    if not verification["verified"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=verification["error"],
+        )
+
+    email = verification["email"]
+
+    # Fetch user
+    user_doc = await db.users.find_one({"email": email})
+    if not user_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account not found.",
+        )
+
+    user = User(**user_doc)
+
+    if user.status == UserStatus.SUSPENDED:
+        raise AuthenticationError(
+            message=ACCOUNT_SUSPENDED_ERROR, details={"contact": SUPPORT_EMAIL}
+        )
+
+    # Mark email as verified
+    await db.users.update_one(
+        {"_id": user_doc["_id"]},
+        {"$set": {"email_verified": True, "last_login": datetime.now(timezone.utc)}},
+    )
+
+    # Generate tokens — user is now fully authenticated
+    user_id = str(user.id)
+    access_token = security_manager.create_access_token(
+        user_id=user_id, role=user.role.value
+    )
+    refresh_token = security_manager.create_refresh_token(user_id=user_id)
+
+    logger.info(f"Email verified for user {user_id}")
+
+    return StandardResponse(
+        success=True,
+        message="Email verified successfully! Welcome to Savitara.",
+        data={
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            "user": {
+                "id": user_id,
+                "email": user.email,
+                "role": user.role.value,
+                "status": user.status.value,
+                "credits": user.credits,
+                "is_new_user": True,
+                "onboarded": False,
+                "onboarding_completed": False,
+            },
+        },
     )

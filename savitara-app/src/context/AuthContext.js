@@ -25,7 +25,7 @@ export const AuthProvider = ({ children }) => {
     webClientId: useGoogleAuth ? GOOGLE_CLIENT_ID : 'dummy-client-id.apps.googleusercontent.com',
   };
   
-  const [request, response, promptAsync] = Google.useAuthRequest(googleConfig);
+  const [, response, promptAsync] = Google.useAuthRequest(googleConfig);
 
   useEffect(() => {
     loadUser();
@@ -58,7 +58,7 @@ export const AuthProvider = ({ children }) => {
       setError(null);
       
       const response = await authAPI.googleLogin(idToken);
-      const { access_token, refresh_token, user: userData } = response.data;
+      const { access_token, refresh_token, user: userData } = response.data.data;
       
       await AsyncStorage.multiSet([
         ['accessToken', access_token],
@@ -121,18 +121,62 @@ export const AuthProvider = ({ children }) => {
       setError(null);
       
       const response = await authAPI.register(data);
-      const { access_token, refresh_token, user: userData } = response.data.data;
-      
+      const responseData = response.data.data || response.data;
+
+      // New flow: backend sends OTP — user must verify before receiving tokens
+      if (responseData.requires_email_verification) {
+        return {
+          requiresVerification: true,
+          userId: responseData.user_id,
+          email: responseData.email,
+        };
+      }
+
+      // Fallback: backwards-compat if tokens are returned directly
+      const { access_token, refresh_token, user: userData } = responseData;
       await AsyncStorage.multiSet([
         ['accessToken', access_token],
         ['refreshToken', refresh_token],
         ['user', JSON.stringify(userData)],
       ]);
-      
       setUser(userData);
-      return userData; // Return user data for navigation decision
+      return { requiresVerification: false, user: userData };
     } catch (err) {
       const errorMessage = err.response?.data?.detail || 'Registration failed';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendEmailOtp = async (email) => {
+    try {
+      await authAPI.sendEmailOtp(email);
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || 'Failed to resend verification code';
+      setError(errorMessage);
+      throw err;
+    }
+  };
+
+  const verifyEmailOtp = async (email, otp) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await authAPI.verifyEmailOtp(email, otp);
+      const { access_token, refresh_token, user: userData } = response.data.data;
+
+      await AsyncStorage.multiSet([
+        ['accessToken', access_token],
+        ['refreshToken', refresh_token],
+        ['user', JSON.stringify(userData)],
+      ]);
+      setUser(userData);
+      return userData;
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || 'Invalid or expired verification code';
       setError(errorMessage);
       throw err;
     } finally {
@@ -173,6 +217,8 @@ export const AuthProvider = ({ children }) => {
     login,
     loginWithEmail,
     registerWithEmail,
+    sendEmailOtp,
+    verifyEmailOtp,
     logout,
     refreshUser,
     isAuthenticated: !!user,

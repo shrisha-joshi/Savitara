@@ -109,6 +109,7 @@ class User(BaseModel):
     role: UserRole
     status: UserStatus = UserStatus.PENDING
     onboarded: bool = False  # Track if user completed onboarding
+    email_verified: bool = False  # True after OTP verification (Google OAuth sets this to True automatically)
     profile_picture: Optional[str] = None  # User's profile photo URL
     referral_code: Optional[str] = None  # Unique referral code for user
     preferred_language: Optional[str] = "en"  # User's preferred language

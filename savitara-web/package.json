@@ -16,7 +16,8 @@
     "@fontsource/poppins": "^5.2.7",
     "@mui/icons-material": "^5.15.0",
     "@mui/material": "^5.15.0",
-    "@mui/x-date-pickers": "^8.26.0",
+    "@mui/system": "^5.18.0",
+    "@mui/x-date-pickers": "^6.20.2",
     "@react-oauth/google": "^0.13.4",
     "axios": "^1.6.2",
     "canvas-confetti": "^1.9.4",
@@ -46,7 +47,7 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
     "eslint-plugin-unused-imports": "^4.4.1",
-    "vite": "^5.0.8",
-    "vitest": "^1.0.4"
+    "vite": "^6.4.1",
+    "vitest": "^4.0.18"
   }
 }

@@ -460,11 +460,11 @@ def _parse_grihasta_id(user_id_str: str) -> Any:
     ),
 )
 async def get_price_estimate(
-    acharya_id: str = Query(..., description="Acharya profile ID"),
-    date_time: str = Query(..., description="ISO-8601 datetime e.g. 2026-03-15T14:00:00"),
-    duration_hours: int = Query(2, ge=1, le=12, description="Booking duration in hours"),
-    booking_type: str = Query("only", description="'only' or 'with_samagri'"),
-    pooja_id: Optional[str] = Query(None, description="Optional pooja/service ID for base price"),
+    acharya_id: Annotated[str, Query(..., description="Acharya profile ID")],
+    date_time: Annotated[str, Query(..., description="ISO-8601 datetime e.g. 2026-03-15T14:00:00")],
+    duration_hours: Annotated[int, Query(2, ge=1, le=12, description="Booking duration in hours")],
+    booking_type: Annotated[str, Query("only", description="'only' or 'with_samagri'")],
+    pooja_id: Annotated[Optional[str], Query(None, description="Optional pooja/service ID for base price")],
     current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
@@ -573,9 +573,9 @@ async def get_price_estimate(
     ),
 )
 async def check_availability(
-    acharya_id: str = Query(..., description="Acharya profile ID"),
-    date_time: str = Query(..., description="ISO-8601 datetime e.g. 2026-03-15T14:00:00"),
-    duration: int = Query(2, ge=1, le=12, description="Booking duration in hours"),
+    acharya_id: Annotated[str, Query(..., description="Acharya profile ID")],
+    date_time: Annotated[str, Query(..., description="ISO-8601 datetime e.g. 2026-03-15T14:00:00")],
+    duration: Annotated[int, Query(2, ge=1, le=12, description="Booking duration in hours")],
     current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
@@ -1830,7 +1830,7 @@ async def get_booking_details(
 )
 async def mark_acharya_arrival(
     booking_id: str,
-    location_data: Dict[str, float] = Body(..., example={"lat": 12.9716, "lng": 77.5946}),
+    location_data: Annotated[Dict[str, float], Body(..., example={"lat": 12.9716, "lng": 77.5946})],
     current_user: Annotated[Dict[str, Any], Depends(get_current_acharya)] = None,
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):

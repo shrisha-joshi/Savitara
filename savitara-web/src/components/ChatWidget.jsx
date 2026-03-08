@@ -1,14 +1,24 @@
-import { useState, useEffect, useRef } from 'react';
 import {
-  Box, Paper, TextField, Button, Typography, Avatar,
-  List, ListItem, ListItemAvatar,
-  IconButton, Badge, CircularProgress
-} from '@mui/material';
-import {
-  Send, Close,
-  Check, DoneAll, AccessTime
+    AccessTime,
+    Check,
+    Close,
+    DoneAll,
+    Send
 } from '@mui/icons-material';
+import {
+    Avatar,
+    Badge,
+    Box,
+    Button,
+    CircularProgress,
+    IconButton,
+    List, ListItem, ListItemAvatar,
+    Paper, TextField,
+    Typography
+} from '@mui/material';
 import { format, isToday, isYesterday } from 'date-fns';
+import PropTypes from 'prop-types';
+import { useEffect, useRef, useState } from 'react';
 import api from '../services/api';
 
 const ChatWidget = ({ 
@@ -44,7 +54,7 @@ const ChatWidget = ({
   }, [isOpen, conversationId]);
 
   const initializeWebSocket = () => {
-    const isSecure = window.location.protocol === 'https:';
+    const isSecure = globalThis.location.protocol === 'https:';
     const protocol = isSecure ? 'wss:' : 'ws:';
     const backendHost = import.meta.env.VITE_BACKEND_WS_HOST || import.meta.env.VITE_BACKEND_HOST || 'localhost:8000';
     const websocket = new WebSocket(
@@ -171,16 +181,6 @@ const ChatWidget = ({
     }
   };
 
-  const _markAsRead = (messageId) => {
-    if (ws && isConnected) {
-      ws.send(JSON.stringify({
-        type: 'mark_read',
-        conversation_id: conversationId,
-        message_id: messageId
-      }));
-    }
-  };
-
   const scrollToBottom = () => {
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -256,7 +256,7 @@ const ChatWidget = ({
               {recipientUser?.name || 'Chat'}
             </Typography>
             <Typography variant="caption">
-              {isTyping ? 'typing...' : (isConnected ? 'Online' : 'Connecting...')}
+              {isTyping ? 'typing...' : isConnected ? 'Online' : 'Connecting...'}
             </Typography>
           </Box>
         </Box>
@@ -276,16 +276,18 @@ const ChatWidget = ({
           flexDirection: 'column'
         }}
       >
-        {isLoading ? (
+        {isLoading && (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
             <CircularProgress />
           </Box>
-        ) : messages.length === 0 ? (
+        )}
+        {!isLoading && messages.length === 0 && (
           <Box sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
             <Typography>No messages yet</Typography>
             <Typography variant="body2">Start the conversation!</Typography>
           </Box>
-        ) : (
+        )}
+        {!isLoading && messages.length > 0 && (
           <List sx={{ py: 0 }}>
             {messages.map((message, index) => {
               const isOwn = message.sender_id === currentUser.id;
@@ -377,7 +379,7 @@ const ChatWidget = ({
             setNewMessage(e.target.value);
             sendTypingIndicator();
           }}
-          onKeyPress={(e) => {
+          onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               sendMessage();
@@ -406,6 +408,19 @@ const ChatWidget = ({
       </Box>
     </Paper>
   );
+};
+
+ChatWidget.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  conversationId: PropTypes.string.isRequired,
+  currentUser: PropTypes.shape({
+    id: PropTypes.string.isRequired,
+  }).isRequired,
+  recipientUser: PropTypes.shape({
+    avatar: PropTypes.string,
+    name: PropTypes.string,
+  }).isRequired,
 };
 
 export default ChatWidget;

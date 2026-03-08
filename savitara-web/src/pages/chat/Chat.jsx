@@ -45,6 +45,7 @@ import VoiceRecorder from '../../components/VoiceRecorder';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import api from '../../services/api';
+import { formatLocalTime } from '../../utils/timeFormat';
 
 // ── Module-level message state updaters (avoid deep nesting in component) ──
 function applyAddReaction(messages, messageId, reaction) {
@@ -817,7 +818,7 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => { // 
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5, gap: 0.5 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                    {msgTime ? new Date(msgTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                    {msgTime ? formatLocalTime(msgTime, user?.location?.timezone) : ''}
                   </Typography>
                   {isMe && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>

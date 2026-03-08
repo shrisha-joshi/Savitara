@@ -1,11 +1,16 @@
+import PropTypes from 'prop-types';
 import { useEffect, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Avatar, Button, Card, Chip, Dialog, Divider, Provider as PaperProvider, Portal, Searchbar, Text, TextInput } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import { bookingAPI } from '../../services/api';
+import { formatLocalDate, formatLocalTime } from '../../utils/dateTime';
 
 const BookingRequestsScreen = ({ navigation }) => {
+  const { user } = useAuth();
+  const userTimezone = user?.location?.timezone;
   const socketContext = useSocket();
   const { bookingUpdates = [] } = socketContext || {};
   const [bookings, setBookings] = useState([]);
@@ -104,7 +109,7 @@ const BookingRequestsScreen = ({ navigation }) => {
       const bookingId = acceptDialog.booking._id || acceptDialog.booking.id;
       await bookingAPI.updateBookingStatus(bookingId, {
         status: 'confirmed',
-        amount: acceptAmount ? parseFloat(acceptAmount) : undefined,
+        amount: acceptAmount ? Number.parseFloat(acceptAmount) : undefined,
         notes: 'Request approved by Acharya',
       });
       Alert.alert('Success', 'Booking request accepted! Grihasta will be notified to pay.');
@@ -129,21 +134,23 @@ const BookingRequestsScreen = ({ navigation }) => {
         {
           text: 'Decline',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              setActionLoading(true);
-              await bookingAPI.updateBookingStatus(bookingId, {
-                status: 'rejected',
-                notes: 'Request declined by Acharya',
-              });
-              Alert.alert('Done', 'Booking request declined.');
-              await loadBookings();
-            } catch (error) {
-              console.error('Reject failed:', error);
-              Alert.alert('Error', error.response?.data?.detail || 'Failed to decline booking');
-            } finally {
-              setActionLoading(false);
-            }
+          onPress: () => {
+            void (async () => {
+              try {
+                setActionLoading(true);
+                await bookingAPI.updateBookingStatus(bookingId, {
+                  status: 'rejected',
+                  notes: 'Request declined by Acharya',
+                });
+                Alert.alert('Done', 'Booking request declined.');
+                await loadBookings();
+              } catch (error) {
+                console.error('Reject failed:', error);
+                Alert.alert('Error', error.response?.data?.detail || 'Failed to decline booking');
+              } finally {
+                setActionLoading(false);
+              }
+            })();
           },
         },
       ]
@@ -179,17 +186,19 @@ const BookingRequestsScreen = ({ navigation }) => {
         {
           text: 'Yes, Cancel',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              await bookingAPI.updateBookingStatus(bookingId, {
-                status: 'cancelled',
-                notes: 'Cancelled by Acharya',
-              });
-              Alert.alert('Done', 'Booking cancelled.');
-              await loadBookings();
-            } catch (error) {
-              Alert.alert('Error', error.response?.data?.detail || 'Failed to cancel');
-            }
+          onPress: () => {
+            void (async () => {
+              try {
+                await bookingAPI.updateBookingStatus(bookingId, {
+                  status: 'cancelled',
+                  notes: 'Cancelled by Acharya',
+                });
+                Alert.alert('Done', 'Booking cancelled.');
+                await loadBookings();
+              } catch (error) {
+                Alert.alert('Error', error.response?.data?.detail || 'Failed to cancel');
+              }
+            })();
           },
         },
       ]
@@ -262,7 +271,7 @@ const BookingRequestsScreen = ({ navigation }) => {
           onChangeText={setSearchQuery}
           value={searchQuery}
           style={styles.searchBar}
-          icon={() => <Icon name="magnify" size={24} color="#666" />}
+          icon="magnify"
         />
 
         {/* Filter Chips */}
@@ -330,7 +339,7 @@ const BookingRequestsScreen = ({ navigation }) => {
                 No bookings found
               </Text>
               <Text variant="bodySmall" style={styles.emptySubtext}>
-                {selectedFilter !== 'all' ? `No ${selectedFilter} bookings` : 'You don\'t have any bookings yet'}
+                {selectedFilter === 'all' ? 'You don\'t have any bookings yet' : `No ${selectedFilter} bookings`}
               </Text>
             </View>
           ) : (
@@ -344,7 +353,7 @@ const BookingRequestsScreen = ({ navigation }) => {
                         {booking.pooja_name || booking.pooja_type || 'Consultation'}
                       </Text>
                       <Chip
-                        icon={() => <Icon name={getStatusIcon(booking.status)} size={16} color="#fff" />}
+                        icon={getStatusIcon(booking.status)}
                         style={{ backgroundColor: getStatusColor(booking.status) }}
                         textStyle={{ color: '#fff', fontSize: 11 }}
                       >
@@ -373,18 +382,14 @@ const BookingRequestsScreen = ({ navigation }) => {
                   <View style={styles.infoRow}>
                     <Icon name="calendar" size={20} color="#666" />
                     <Text variant="bodyMedium" style={styles.infoTextOnly}>
-                      {new Date(booking.scheduled_datetime || booking.date_time).toLocaleDateString('en-IN', {
-                        weekday: 'short', year: 'numeric', month: 'short', day: 'numeric'
-                      })}
+                      {formatLocalDate(booking.scheduled_datetime || booking.date_time, userTimezone)}
                     </Text>
                   </View>
 
                   <View style={styles.infoRow}>
                     <Icon name="clock-outline" size={20} color="#666" />
                     <Text variant="bodyMedium" style={styles.infoTextOnly}>
-                      {new Date(booking.scheduled_datetime || booking.date_time).toLocaleTimeString('en-IN', {
-                        hour: '2-digit', minute: '2-digit'
-                      })} • {booking.duration_hours || 1} hours
+                      {formatLocalTime(booking.scheduled_datetime || booking.date_time, userTimezone)} • {booking.duration_hours || 1} hours
                     </Text>
                   </View>
 
@@ -757,5 +762,11 @@ const styles = StyleSheet.create({
     color: '#999',
   },
 });
+
+BookingRequestsScreen.propTypes = {
+  navigation: PropTypes.shape({
+    navigate: PropTypes.func.isRequired,
+  }).isRequired,
+};
 
 export default BookingRequestsScreen;

@@ -34,6 +34,58 @@ from app.db.connection import get_db
 from app.models.database import GrihastaProfile, AcharyaProfile, UserRole, UserStatus
 from app.models.moderation import BlockedUser
 
+# Optional: timezone resolution from coordinates
+try:
+    from timezonefinder import TimezoneFinder
+    _TF = TimezoneFinder()
+    _HAS_TF = True
+except ImportError:
+    _TF = None
+    _HAS_TF = False
+
+
+def _resolve_location_timezone(location: dict) -> dict:
+    """
+    If location contains latitude/longitude and location_approved is True,
+    resolve and inject the IANA timezone string.
+    """
+    if not isinstance(location, dict):
+        return location
+    lat = location.get("latitude")
+    lon = location.get("longitude")
+    if lat is not None and lon is not None and _HAS_TF and _TF is not None:
+        tz = _TF.timezone_at(lat=float(lat), lng=float(lon))
+        if tz:
+            location["timezone"] = tz
+    return location
+
+
+async def _send_acharya_verification_notification(
+    db: AsyncIOMotorDatabase, user_id: str, verification_status: str
+) -> None:
+    """Send admin notification for new Acharya verification request."""
+    try:
+        from app.services.notification_service import NotificationService  # noqa: PLC0415
+
+        notification_service = NotificationService()
+        admin_users = await db.users.find({"role": UserRole.ADMIN.value}).to_list(None)
+        admin_tokens = [u.get("fcm_token") for u in admin_users if u.get("fcm_token")]
+        if admin_tokens:
+            priority_tag = " [PRIORITY]" if verification_status == "priority_pending" else ""
+            notification_service.send_multicast(
+                tokens=admin_tokens,
+                title=f"New Acharya Verification Request{priority_tag}",
+                body="User submitted profile for verification",
+                data={
+                    "type": "acharya_verification",
+                    "acharya_id": str(user_id),
+                    "priority": str(verification_status == "priority_pending"),
+                },
+            )
+    except Exception as e:
+        logger.warning(f"Failed to send admin notification: {e}")
+
+
 # Error message constants
 NO_FIELDS_TO_UPDATE = "No fields to update"
 
@@ -322,30 +374,7 @@ async def acharya_onboarding(
             )
 
         # Send notification to admin for verification
-        try:
-            from app.services.notification_service import NotificationService
-
-            notification_service = NotificationService()
-            admin_users = await db.users.find({"role": UserRole.ADMIN.value}).to_list(
-                None
-            )
-            admin_tokens = [
-                u.get("fcm_token") for u in admin_users if u.get("fcm_token")
-            ]
-            if admin_tokens:
-                priority_tag = " [PRIORITY]" if verification_status == "priority_pending" else ""
-                notification_service.send_multicast(
-                    tokens=admin_tokens,
-                    title=f"New Acharya Verification Request{priority_tag}",
-                    body="User submitted profile for verification",
-                    data={
-                        "type": "acharya_verification",
-                        "acharya_id": str(user_id),
-                        "priority": str(verification_status == "priority_pending"),
-                    },
-                )
-        except Exception as e:
-            logger.warning(f"Failed to send admin notification: {e}")
+        await _send_acharya_verification_notification(db, user_id, verification_status)
 
         logger.info(
             f"Acharya onboarding completed for user {user_id}, status: {verification_status}"
@@ -503,6 +532,10 @@ async def update_profile(
         if not update_fields:
             raise InvalidInputError(message=NO_FIELDS_TO_UPDATE, field="body")
 
+        # Resolve timezone when caller approves the location
+        if update_fields.get("location_approved") and isinstance(update_fields.get("location"), dict):
+            update_fields["location"] = _resolve_location_timezone(update_fields["location"])
+
         update_fields["updated_at"] = datetime.now(timezone.utc)
 
         # Update appropriate profile collection
@@ -557,6 +590,10 @@ async def update_grihasta_profile(
 
         if not update_fields:
             raise InvalidInputError(message=NO_FIELDS_TO_UPDATE, field="body")
+
+        # Resolve timezone when caller approves the location
+        if update_fields.get("location_approved") and isinstance(update_fields.get("location"), dict):
+            update_fields["location"] = _resolve_location_timezone(update_fields["location"])
 
         update_fields["updated_at"] = datetime.now(timezone.utc)
 
@@ -797,6 +834,10 @@ async def update_acharya_profile(
 
         if not update_fields:
             raise InvalidInputError(message=NO_FIELDS_TO_UPDATE, field="body")
+
+        # Resolve timezone when caller approves the location
+        if update_fields.get("location_approved") and isinstance(update_fields.get("location"), dict):
+            update_fields["location"] = _resolve_location_timezone(update_fields["location"])
 
         update_fields["updated_at"] = datetime.now(timezone.utc)
 

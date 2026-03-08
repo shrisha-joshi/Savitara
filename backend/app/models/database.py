@@ -97,6 +97,7 @@ class Location(BaseModel):
     country: str = "India"
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    timezone: Optional[str] = None
 
 
 class User(BaseModel):
@@ -139,6 +140,8 @@ class GrihastaProfile(BaseModel):
     location: Location
     parampara: str  # Spiritual tradition
     preferences: Dict[str, Any] = {}
+    panchanga_type: Optional[str] = "lunar"  # "lunar" (Chandramana) or "solar" (Souramana)
+    location_approved: Optional[bool] = False  # True only after user explicit confirmation
     referred_by: Optional[str] = None  # Changed to str
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
@@ -179,6 +182,8 @@ class AcharyaProfile(BaseModel):
     ratings: Dict[str, float] = {"average": 0.0, "count": 0}
     bio: Optional[str] = None
     profile_picture: Optional[str] = None
+    panchanga_type: Optional[str] = "lunar"  # \"lunar\" (Chandramana) or \"solar\" (Souramana)
+    location_approved: Optional[bool] = False  # True only after user explicit confirmation
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 

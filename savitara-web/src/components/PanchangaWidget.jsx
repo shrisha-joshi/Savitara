@@ -17,9 +17,11 @@ import {
     Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
 export default function PanchangaWidget() {
+  const { user } = useAuth();
   const [panchanga, setPanchanga] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
@@ -27,12 +29,21 @@ export default function PanchangaWidget() {
 
   useEffect(() => {
     loadPanchanga();
-  }, []);
+  // Re-fetch when user location or panchanga type changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.location?.latitude, user?.location?.longitude, user?.panchanga_type]);
 
   const loadPanchanga = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/panchanga/today', { _skipErrorToast: true });
+      const params = new URLSearchParams();
+      const lat = user?.location?.latitude;
+      const lon = user?.location?.longitude;
+      const type = user?.panchanga_type || 'lunar';
+      if (lat != null) params.set('latitude', lat);
+      if (lon != null) params.set('longitude', lon);
+      params.set('panchanga_type', type);
+      const response = await api.get(`/panchanga/today?${params.toString()}`, { _skipErrorToast: true });
       const data = response.data?.data || response.data;
       setPanchanga(data);
       setError(null);
@@ -93,9 +104,18 @@ export default function PanchangaWidget() {
           </IconButton>
         </Box>
 
-        <Typography variant="body2" sx={{ opacity: 0.9, mb: 2 }}>
+        <Typography variant="body2" sx={{ opacity: 0.9, mb: 1 }}>
           {today}
         </Typography>
+
+        {panchanga?.panchanga_type_name && (
+          <Chip
+            label={panchanga.panchanga_type_name}
+            size="small"
+            icon={<CalendarIcon sx={{ color: 'white !important', fontSize: 14 }} />}
+            sx={{ bgcolor: 'rgba(255,255,255,0.3)', color: 'white', mb: 2, fontSize: 11, letterSpacing: 0.5 }}
+          />
+        )}
 
         <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>
           <Chip
@@ -142,7 +162,7 @@ export default function PanchangaWidget() {
                   Paksha
                 </Typography>
                 <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                  {panchanga.paksha}
+                  {panchanga.paksha} ({panchanga.tithi?.paksha_english || ''})
                 </Typography>
               </Box>
             )}
@@ -166,9 +186,9 @@ export default function PanchangaWidget() {
                   Festivals
                 </Typography>
                 <Stack spacing={0.5}>
-                  {panchanga.festivals.map((festival, idx) => (
+                  {panchanga.festivals.map((festival) => (
                     <Chip
-                      key={idx}
+                      key={festival}
                       label={festival}
                       size="small"
                       sx={{ 

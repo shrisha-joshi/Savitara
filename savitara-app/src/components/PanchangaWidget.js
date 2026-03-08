@@ -1,17 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
-import {
-  Card,
-  Text,
-  Chip,
-  ActivityIndicator,
-  IconButton,
-  Divider,
-} from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import {
+    ActivityIndicator,
+    Card,
+    Chip,
+    Divider,
+    IconButton,
+    Text,
+} from 'react-native-paper';
+import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
 export default function PanchangaWidget() {
+  const { user } = useAuth();
   const [panchanga, setPanchanga] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
@@ -19,12 +21,21 @@ export default function PanchangaWidget() {
 
   useEffect(() => {
     loadPanchanga();
-  }, []);
+  // Re-fetch when user location or panchanga type changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.location?.latitude, user?.location?.longitude, user?.panchanga_type]);
 
   const loadPanchanga = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/panchanga/today');
+      const params = new URLSearchParams();
+      const lat = user?.location?.latitude;
+      const lon = user?.location?.longitude;
+      const type = user?.panchanga_type || 'lunar';
+      if (lat != null) params.set('latitude', lat);
+      if (lon != null) params.set('longitude', lon);
+      params.set('panchanga_type', type);
+      const response = await api.get(`/panchanga/today?${params.toString()}`);
       const data = response.data?.data || response.data;
       setPanchanga(data);
       setError(null);
@@ -76,6 +87,17 @@ export default function PanchangaWidget() {
 
         <Text style={styles.date}>{today}</Text>
 
+        {panchanga.panchanga_type_name && (
+          <Chip
+            mode="flat"
+            style={[styles.chip, styles.typeChip]}
+            textStyle={[styles.chipText, styles.typeChipText]}
+            icon="calendar-clock"
+          >
+            {panchanga.panchanga_type_name}
+          </Chip>
+        )}
+
         <View style={styles.chipsRow}>
           <Chip
             mode="flat"
@@ -114,7 +136,7 @@ export default function PanchangaWidget() {
             {panchanga.paksha && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Paksha</Text>
-                <Text style={styles.sectionText}>{panchanga.paksha}</Text>
+                <Text style={styles.sectionText}>{panchanga.paksha} ({panchanga.tithi?.paksha_english || ''})</Text>
               </View>
             )}
 
@@ -199,6 +221,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '500',
+  },
+  typeChip: {
+    backgroundColor: 'rgba(255,255,255,0.35)',
+    marginBottom: 10,
+    alignSelf: 'flex-start',
+  },
+  typeChipText: {
+    fontSize: 11,
+    letterSpacing: 0.5,
   },
   divider: {
     marginVertical: 12,

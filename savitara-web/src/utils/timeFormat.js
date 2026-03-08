@@ -1,4 +1,16 @@
-import { formatDistanceToNow, format, isToday, isYesterday, isThisWeek, isThisYear } from 'date-fns';
+import { format, formatDistanceToNow, isThisWeek, isThisYear, isToday, isYesterday } from 'date-fns';
+
+const _DEFAULT_TIME_OPTS = { hour: '2-digit', minute: '2-digit' };
+
+/**
+ * Format a UTC ISO timestamp as a time string in the given IANA timezone.
+ * Falls back to the device timezone when none is supplied.
+ */
+export function formatLocalTime(isoString, userTimezone, opts = _DEFAULT_TIME_OPTS) {
+  if (!isoString) return '';
+  const tz = userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return new Intl.DateTimeFormat('en-IN', { ...opts, timeZone: tz }).format(new Date(isoString));
+}
 
 /**
  * Format message timestamp with smart relative/absolute formatting

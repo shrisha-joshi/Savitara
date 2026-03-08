@@ -205,6 +205,8 @@ class ProfileUpdateRequest(BaseModel):
     bio: Optional[str] = Field(None, max_length=500)
     specializations: Optional[List[str]] = None
     languages: Optional[List[str]] = None
+    panchanga_type: Optional[str] = Field(None, pattern="^(lunar|solar)$")
+    location_approved: Optional[bool] = None
 
 
 # ============= Booking Schemas =============

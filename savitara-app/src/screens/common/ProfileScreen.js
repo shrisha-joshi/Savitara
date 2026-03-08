@@ -1,13 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert, Linking } from 'react-native';
-import { 
-  List, Avatar, Button, Divider, TextInput,
-  Text, Card, Chip, ActivityIndicator 
-} from 'react-native-paper';
 import * as Location from 'expo-location';
+import React, { useEffect, useState } from 'react';
+import { Alert, Linking, ScrollView, StyleSheet, View } from 'react-native';
+import {
+    ActivityIndicator,
+    Avatar, Button,
+    Card, Chip,
+    Divider,
+    List,
+    Text,
+    TextInput
+} from 'react-native-paper';
+import CascadingLocationSelect from '../../components/CascadingLocationSelect';
 import { useAuth } from '../../context/AuthContext';
 import { userAPI } from '../../services/api';
-import CascadingLocationSelect from '../../components/CascadingLocationSelect';
 
 const ProfileScreen = () => {
   const { user, logout, refreshUser } = useAuth();
@@ -25,7 +30,9 @@ const ProfileScreen = () => {
     experience_years: '',
     study_place: '',
     bio: '',
-    preferences: {}
+    preferences: {},
+    panchanga_type: 'lunar',
+    location_approved: false,
   });
 
   // Load user data when component mounts or user changes
@@ -58,7 +65,9 @@ const ProfileScreen = () => {
         experience_years: profileData.experience_years?.toString() || '',
         study_place: profileData.study_place || '',
         bio: profileData.bio || '',
-        preferences: profileData.preferences || {}
+        preferences: profileData.preferences || {},
+        panchanga_type: profileData.panchanga_type || 'lunar',
+        location_approved: Object.prototype.hasOwnProperty.call(profileData, 'location_approved') ? profileData.location_approved : false,
       });
     } catch (error) {
       console.error('Failed to load profile:', error);
@@ -78,7 +87,9 @@ const ProfileScreen = () => {
         experience_years: user?.experience_years?.toString() || '',
         study_place: user?.study_place || '',
         bio: user?.bio || '',
-        preferences: user?.preferences || {}
+        preferences: user?.preferences || {},
+        panchanga_type: user?.panchanga_type || 'lunar',
+        location_approved: Object.prototype.hasOwnProperty.call(user || {}, 'location_approved') ? user.location_approved : false,
       });
     } finally {
       setLoading(false);
@@ -116,20 +127,35 @@ const ProfileScreen = () => {
       });
 
       if (address) {
-        setEditData(prev => ({
-          ...prev,
-          location: {
-            city: address.city || prev.location.city,
-            state: address.region || prev.location.state,
-            country: address.country || 'India',
-            coordinates: {
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude
-            }
-          }
-        }));
-        
-        Alert.alert('Success', 'Location updated successfully!');
+        const newLat = location.coords.latitude;
+        const newLon = location.coords.longitude;
+        const city = address.city || address.district || '';
+        const state = address.region || '';
+        const country = address.country || 'India';
+
+        Alert.alert(
+          'Confirm Location',
+          `Use location: ${city}, ${state}, ${country}?\n\nThis will update your Panchanga to use accurate local timings.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Use This Location',
+              onPress: () => {
+                setEditData(prev => ({
+                  ...prev,
+                  location: {
+                    city,
+                    state,
+                    country,
+                    latitude: newLat,
+                    longitude: newLon,
+                  },
+                  location_approved: true,
+                }));
+              },
+            },
+          ]
+        );
       }
     } catch (error) {
       console.error('Location error:', error);
@@ -149,7 +175,9 @@ const ProfileScreen = () => {
           phone: editData.phone,
           location: editData.location,
           parampara: editData.parampara,
-          preferences: editData.preferences
+          preferences: editData.preferences,
+          panchanga_type: editData.panchanga_type,
+          location_approved: editData.location_approved,
         });
       } else {
         await userAPI.updateAcharyaProfile({
@@ -162,7 +190,9 @@ const ProfileScreen = () => {
           study_place: editData.study_place,
           specializations: editData.specializations,
           languages: editData.languages,
-          bio: editData.bio
+          bio: editData.bio,
+          panchanga_type: editData.panchanga_type,
+          location_approved: editData.location_approved,
         });
       }
       
@@ -229,6 +259,28 @@ const ProfileScreen = () => {
             >
               {locationLoading ? 'Getting Location...' : 'Use Current Location'}
             </Button>
+            {editData.location_approved && editData.location?.latitude && (
+              <Text style={styles.coordsText}>
+                📍 {editData.location.latitude?.toFixed(4)}, {editData.location.longitude?.toFixed(4)}
+              </Text>
+            )}
+          </View>
+
+          <View style={styles.panchangaTypeRow}>
+            <Text style={styles.panchangaTypeLabel}>Panchanga Type:</Text>
+            <View style={styles.panchangaTypeButtons}>
+              {['lunar', 'solar'].map(type => (
+                <Button
+                  key={type}
+                  mode={editData.panchanga_type === type ? 'contained' : 'outlined'}
+                  onPress={() => setEditData(prev => ({ ...prev, panchanga_type: type }))}
+                  style={styles.panchangaTypeBtn}
+                  compact
+                >
+                  {type === 'lunar' ? 'Chandramana (Lunar)' : 'Souramana (Solar)'}
+                </Button>
+              ))}
+            </View>
           </View>
 
           <CascadingLocationSelect
@@ -513,6 +565,28 @@ const styles = StyleSheet.create({
   },
   locationButton: {
     backgroundColor: '#4CAF50',
+  },
+  coordsText: {
+    fontSize: 11,
+    color: '#4CAF50',
+    marginTop: 4,
+  },
+  panchangaTypeRow: {
+    marginBottom: 16,
+  },
+  panchangaTypeLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#333',
+  },
+  panchangaTypeButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  panchangaTypeBtn: {
+    marginRight: 4,
   },
   buttonRow: {
     flexDirection: 'row',

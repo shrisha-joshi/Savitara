@@ -47,6 +47,7 @@ pillow>=10.3.0
 
 # --- Panchanga & Hindu Calendar ---------------------------------------------
 ephem>=4.1.5
+timezonefinder>=6.2.0
 
 # --- Validation & Serialization ---------------------------------------------
 email-validator>=2.3.0

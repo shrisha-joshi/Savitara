@@ -2,32 +2,134 @@ import * as Haptics from 'expo-haptics';
 import PropTypes from 'prop-types';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
-import { Avatar, ActivityIndicator, Badge, Button, Divider, IconButton, List, Menu, Portal, Searchbar, Text } from 'react-native-paper';
-import { chatAPI } from '../../services/api';
-import { getInitials, getAvatarColor } from '../../constants/avatars';
+import { ActivityIndicator, Avatar, Badge, Button, Divider, IconButton, List, Menu, Portal, Searchbar, Text } from 'react-native-paper';
+import { getAvatarColor, getInitials } from '../../constants/avatars';
 import { BRAND } from '../../constants/theme';
+import { useAuth } from '../../context/AuthContext';
+import { chatAPI } from '../../services/api';
+import { getRelativeTime } from '../../utils/dateTime';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Module-level sub-components (avoids S6478 nested component definitions)
 
-const getRelativeTime = (dateStr) => {
-  if (!dateStr) return '';
-  const now = new Date();
-  const date = new Date(dateStr);
-  const diffMs = now - date;
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-  if (diffMins < 1) return 'just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return date.toLocaleDateString('en-US', { weekday: 'short' });
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+function ConversationItem({
+  item,
+  userTimezone,
+  onNavigate,
+  openMenu,
+  menuVisible,
+  menuAnchor,
+  closeMenu,
+  handlePin,
+  handleArchive,
+  handleMute,
+  handleDelete,
+}) {
+  const otherUser = item.other_user || {};
+  const lastMsg = item.last_message || {};
+  const convId = item.id || item._id;
+  return (
+    <View>
+      <List.Item
+        title={otherUser.name || 'Unknown User'}
+        description={lastMsg.content || 'No messages yet'}
+        left={() => (
+          otherUser.profile_picture || otherUser.profile_image ? (
+            <Avatar.Image
+              size={50}
+              source={{ uri: otherUser.profile_picture || otherUser.profile_image }}
+            />
+          ) : (
+            <Avatar.Text
+              size={50}
+              label={getInitials(otherUser.name || 'U')}
+              style={{ backgroundColor: getAvatarColor(otherUser.id || otherUser._id) }}
+            />
+          )
+        )}
+        right={() => (
+          <View style={styles.rightContainer}>
+            <Text style={styles.timestamp}>
+              {getRelativeTime(item.updated_at || lastMsg.created_at, userTimezone)}
+            </Text>
+            <View style={styles.rightBottom}>
+              {item.unread_count > 0 && (
+                <Badge style={styles.badge} size={24}>{item.unread_count}</Badge>
+              )}
+              <IconButton
+                icon="dots-vertical"
+                size={20}
+                onPress={(e) => openMenu(item, e)}
+              />
+            </View>
+          </View>
+        )}
+        titleStyle={item.unread_count > 0 ? styles.unreadTitle : undefined}
+        descriptionStyle={item.unread_count > 0 ? styles.unreadDescription : undefined}
+        onPress={() => onNavigate(convId, otherUser)}
+        onLongPress={(e) => openMenu(item, e)}
+      />
+      {menuVisible === convId && (
+        <Portal>
+          <Menu
+            visible={menuVisible === convId}
+            onDismiss={closeMenu}
+            anchor={menuAnchor}
+          >
+            <Menu.Item
+              onPress={handlePin}
+              leadingIcon={item.is_pinned ? 'pin-off' : 'pin'}
+              title={item.is_pinned ? 'Unpin' : 'Pin'}
+            />
+            <Menu.Item
+              onPress={handleArchive}
+              leadingIcon={item.is_archived ? 'package-up' : 'package-down'}
+              title={item.is_archived ? 'Unarchive' : 'Archive'}
+            />
+            <Menu.Item
+              onPress={handleMute}
+              leadingIcon={item.is_muted ? 'bell' : 'bell-off'}
+              title={item.is_muted ? 'Unmute' : 'Mute'}
+            />
+            <Divider />
+            <Menu.Item
+              onPress={handleDelete}
+              leadingIcon="delete"
+              title="Delete"
+              titleStyle={{ color: '#d32f2f' }}
+            />
+          </Menu>
+        </Portal>
+      )}
+    </View>
+  );
+}
+
+ConversationItem.propTypes = {
+  item: PropTypes.object.isRequired,
+  userTimezone: PropTypes.string,
+  onNavigate: PropTypes.func.isRequired,
+  openMenu: PropTypes.func.isRequired,
+  menuVisible: PropTypes.oneOfType([PropTypes.string, PropTypes.bool]),
+  menuAnchor: PropTypes.object,
+  closeMenu: PropTypes.func.isRequired,
+  handlePin: PropTypes.func.isRequired,
+  handleArchive: PropTypes.func.isRequired,
+  handleMute: PropTypes.func.isRequired,
+  handleDelete: PropTypes.func.isRequired,
+};
+
+ConversationItem.defaultProps = {
+  userTimezone: undefined,
+  menuVisible: null,
+  menuAnchor: undefined,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ChatListScreen = ({ navigation }) => {
+  const { user } = useAuth();
+  const userTimezone = user?.location?.timezone;
   const [conversations, setConversations] = useState([]);
   const [filteredConversations, setFilteredConversations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -156,154 +258,85 @@ const ChatListScreen = ({ navigation }) => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              await chatAPI.deleteConversation(selectedConv.id || selectedConv._id);
-              loadConversations();
-            } catch (deleteError) {
-              console.error('Failed to delete conversation:', deleteError);
-              Alert.alert('Error', 'Failed to delete conversation');
-            }
+          onPress: () => {
+            void (async () => {
+              try {
+                await chatAPI.deleteConversation(selectedConv.id || selectedConv._id);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                loadConversations();
+              } catch (deleteError) {
+                console.error('Failed to delete conversation:', deleteError);
+                Alert.alert('Error', 'Failed to delete conversation');
+              }
+            })();
           }
         }
       ]
     );
   };
 
-  const renderConversation = ({ item }) => {
-    // Use new backend fields for user and message
-    const otherUser = item.other_user || {};
-    const lastMsg = item.last_message || {};
-    const convId = item.id || item._id;
-    
-    return (
-      <View>
-        <List.Item
-          title={() => (
-            <View style={styles.titleRow}>
-              {item.is_pinned && <Text style={styles.pinIcon}>📌</Text>}
-              <Text style={[styles.title, item.unread_count > 0 && styles.unreadTitle]}>
-                {otherUser.name || 'Unknown User'}
-              </Text>
-              {item.is_muted && <Text style={styles.muteIcon}>🔕</Text>}
-            </View>
-          )}
-          description={() => (
-            <View style={styles.descriptionRow}>
-              <Text style={[styles.description, item.unread_count > 0 && styles.unreadDescription]} numberOfLines={1}>
-                {lastMsg.content || 'No messages yet'}
-              </Text>
-            </View>
-          )}
-          left={() => (
-            otherUser.profile_picture || otherUser.profile_image ? (
-              <Avatar.Image
-                size={50}
-                source={{ uri: otherUser.profile_picture || otherUser.profile_image }}
-              />
-            ) : (
-              <Avatar.Text
-                size={50}
-                label={getInitials(otherUser.name || 'U')}
-                style={{ backgroundColor: getAvatarColor(otherUser.id || otherUser._id) }}
-              />
-            )
-          )}
-          right={() => (
-            <View style={styles.rightContainer}>
-              <Text style={styles.timestamp}>
-                {getRelativeTime(item.updated_at || lastMsg.created_at)}
-              </Text>
-              <View style={styles.rightBottom}>
-                {item.unread_count > 0 && (
-                  <Badge style={styles.badge} size={24}>{item.unread_count}</Badge>
-                )}
-                <IconButton
-                  icon="dots-vertical"
-                  size={20}
-                  onPress={(e) => openMenu(item, e)}
-                />
-              </View>
-            </View>
-          )}
-          onPress={() => navigation.navigate('Conversation', {
-            conversationId: convId,
-            otherUserName: otherUser.name || 'Unknown User',
-            otherUserId: otherUser.id || otherUser._id,
-          })}
-          onLongPress={(e) => openMenu(item, e)}
-        />
-        
-        {menuVisible === convId && (
-          <Portal>
-            <Menu
-              visible={menuVisible === convId}
-              onDismiss={closeMenu}
-              anchor={menuAnchor}
+  const handleConversationNavigate = useCallback((convId, otherUser) => {
+    navigation.navigate('Conversation', {
+      conversationId: convId,
+      otherUserName: otherUser.name || 'Unknown User',
+      otherUserId: otherUser.id || otherUser._id,
+    });
+  }, [navigation]);
+
+  const renderConversationItem = useCallback(({ item }) => (
+    <ConversationItem
+      item={item}
+      userTimezone={userTimezone}
+      onNavigate={handleConversationNavigate}
+      openMenu={openMenu}
+      menuVisible={menuVisible}
+      menuAnchor={menuAnchor}
+      closeMenu={closeMenu}
+      handlePin={handlePin}
+      handleArchive={handleArchive}
+      handleMute={handleMute}
+      handleDelete={handleDelete}
+    />
+  ), [userTimezone, handleConversationNavigate, openMenu, menuVisible, menuAnchor, closeMenu, handlePin, handleArchive, handleMute, handleDelete]);
+
+  let listContent;
+  if (loading) {
+    listContent = <ActivityIndicator animating size="large" color={BRAND.primary} style={styles.loadingIndicator} />;
+  } else if (filteredConversations.length === 0) {
+    listContent = (
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyIcon}>💬</Text>
+        <Text style={styles.emptyTitle}>
+          {searchQuery ? 'No conversations found' : 'No conversations yet'}
+        </Text>
+        {!searchQuery && (
+          <>
+            <Text style={styles.emptySubtitle}>Find an Acharya and start a conversation</Text>
+            <Button
+              mode="contained"
+              icon="magnify"
+              onPress={() => navigation.navigate('Home')}
+              style={styles.emptyButton}
+              buttonColor={BRAND.primary}
             >
-              <Menu.Item
-                onPress={handlePin}
-                leadingIcon={item.is_pinned ? "pin-off" : "pin"}
-                title={item.is_pinned ? "Unpin" : "Pin"}
-              />
-              <Menu.Item
-                onPress={handleArchive}
-                leadingIcon={item.is_archived ? "package-up" : "package-down"}
-                title={item.is_archived ? "Unarchive" : "Archive"}
-              />
-              <Menu.Item
-                onPress={handleMute}
-                leadingIcon={item.is_muted ? "bell" : "bell-off"}
-                title={item.is_muted ? "Unmute" : "Mute"}
-              />
-              <Divider />
-              <Menu.Item
-                onPress={handleDelete}
-                leadingIcon="delete"
-                title="Delete"
-                titleStyle={{ color: '#d32f2f' }}
-              />
-            </Menu>
-          </Portal>
+              Find an Acharya
+            </Button>
+          </>
         )}
       </View>
     );
-  };
-
-  const listContent = loading ? (
-    <ActivityIndicator animating size="large" color={BRAND.primary} style={styles.loadingIndicator} />
-  ) : filteredConversations.length === 0 ? (
-    <View style={styles.emptyContainer}>
-      <Text style={styles.emptyIcon}>💬</Text>
-      <Text style={styles.emptyTitle}>
-        {searchQuery ? 'No conversations found' : 'No conversations yet'}
-      </Text>
-      {!searchQuery && (
-        <>
-          <Text style={styles.emptySubtitle}>Find an Acharya and start a conversation</Text>
-          <Button
-            mode="contained"
-            icon="magnify"
-            onPress={() => navigation.navigate('Home')}
-            style={styles.emptyButton}
-            buttonColor={BRAND.primary}
-          >
-            Find an Acharya
-          </Button>
-        </>
-      )}
-    </View>
-  ) : (
-    <FlatList
-      data={filteredConversations}
-      renderItem={renderConversation}
-      keyExtractor={(item) => item.id || item._id}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    />
-  );
+  } else {
+    listContent = (
+      <FlatList
+        data={filteredConversations}
+        renderItem={renderConversationItem}
+        keyExtractor={(item) => item.id || item._id}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      />
+    );
+  }
 
   return (
     <View style={styles.container}>

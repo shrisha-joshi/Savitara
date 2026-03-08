@@ -133,7 +133,11 @@ export default function Profile() {
       city: profile.location?.city || '',
       state: profile.location?.state || '',
       country: profile.location?.country || '',
-      parampara: profile.parampara || ''
+      parampara: profile.parampara || '',
+      latitude: profile.location?.latitude ?? null,
+      longitude: profile.location?.longitude ?? null,
+      panchanga_type: profile.panchanga_type || 'lunar',
+      location_approved: false,
     }
     
     // Add role-specific fields
@@ -161,11 +165,24 @@ export default function Profile() {
   const handleSaveProfile = async () => {
     setSaving(true)
     try {
+      // Build location object from flat editedData fields
+      const location = {
+        city: editedData.city || '',
+        state: editedData.state || '',
+        country: editedData.country || '',
+        ...(editedData.latitude == null ? {} : { latitude: editedData.latitude }),
+        ...(editedData.longitude == null ? {} : { longitude: editedData.longitude }),
+      }
+
+      // Construct API payload — exclude flat coord helpers
+      const { city, state, country, latitude, longitude, ...rest } = editedData
+      const payload = { ...rest, location }
+
       // Use role-specific endpoints
       if (user?.role === 'acharya' || profileData?.role === 'acharya') {
-        await api.put('/users/acharya/profile', editedData)
+        await api.put('/users/acharya/profile', payload)
       } else {
-        await api.put('/users/grihasta/profile', editedData)
+        await api.put('/users/grihasta/profile', payload)
       }
       
       // Reload profile data
@@ -198,23 +215,30 @@ export default function Profile() {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           try {
-            // Use reverse geocoding API (you can use any geocoding service)
             const response = await fetch(
               `https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}`
             )
+            if (!response.ok) {
+              toast.error('Failed to fetch location details')
+              setSaving(false)
+              return
+            }
             const data = await response.json()
-            
-            setEditedData({
-              ...editedData,
-              city: data.address?.city || data.address?.town || data.address?.village || '',
-              state: data.address?.state || '',
-              country: data.address?.country || '',
-              coordinates: {
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude
-              }
-            })
-            toast.success('Location fetched successfully!')
+            const city = data.address?.city || data.address?.town || data.address?.village || ''
+            const state = data.address?.state || ''
+            const country = data.address?.country || ''
+            const displayLocation = city || state || country || 'your location'
+
+            setEditedData(prev => ({
+              ...prev,
+              city,
+              state,
+              country,
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              location_approved: true,
+            }))
+            toast.success(`Location set to ${displayLocation} — Panchanga will use accurate local timings.`)
           } catch (error) {
             console.error('Failed to fetch location details:', error)
             toast.error('Failed to fetch location details')
@@ -395,6 +419,78 @@ export default function Profile() {
                         </Stack>
                       </RadioGroup>
                     </FormControl>
+                  </CardContent>
+                </Card>
+              </Box>
+
+              {/* Panchanga Preferences Section */}
+              <Box sx={{ mt: 3, mb: 3 }}>
+                <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom fontWeight={600}>
+                      Panchanga Preferences
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Choose your Panchanga calendar system. Lunar (Chandramana) is traditional;
+                      Solar (Souramana) follows the sun's position.
+                    </Typography>
+
+                    {isEditing ? (
+                      <FormControl component="fieldset">
+                        <RadioGroup
+                          value={editedData.panchanga_type || 'lunar'}
+                          onChange={(e) =>
+                            setEditedData(prev => ({ ...prev, panchanga_type: e.target.value }))
+                          }
+                        >
+                          <Stack spacing={1.5}>
+                            <FormControlLabel
+                              value="lunar"
+                              control={<Radio />}
+                              label={
+                                <Box>
+                                  <Typography variant="body1" fontWeight={500}>Chandramana (Lunar)</Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Based on moon cycles — used across most of India
+                                  </Typography>
+                                </Box>
+                              }
+                            />
+                            <FormControlLabel
+                              value="solar"
+                              control={<Radio />}
+                              label={
+                                <Box>
+                                  <Typography variant="body1" fontWeight={500}>Souramana (Solar)</Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Based on sun's zodiac position — used in Tamil Nadu, Kerala, Bengal
+                                  </Typography>
+                                </Box>
+                              }
+                            />
+                          </Stack>
+                        </RadioGroup>
+
+                        {editedData.location_approved && editedData.latitude && (
+                          <Typography variant="caption" color="success.main" sx={{ mt: 1, display: 'block' }}>
+                            📍 Location approved: {editedData.latitude?.toFixed(4)}, {editedData.longitude?.toFixed(4)} — accurate timings will be used.
+                          </Typography>
+                        )}
+                      </FormControl>
+                    ) : (
+                      <Typography variant="body2">
+                        Current: <strong>
+                          {profileData?.panchanga_type === 'solar'
+                            ? 'Souramana (Solar)'
+                            : 'Chandramana (Lunar)'}
+                        </strong>
+                        {profileData?.location?.latitude && (
+                          <span style={{ marginLeft: 12, color: '#4caf50' }}>
+                            📍 {profileData.location.city || 'Location saved'}
+                          </span>
+                        )}
+                      </Typography>
+                    )}
                   </CardContent>
                 </Card>
               </Box>

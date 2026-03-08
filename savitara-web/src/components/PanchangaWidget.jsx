@@ -1,22 +1,22 @@
-import { useState, useEffect } from 'react';
 import {
-  Card,
-  CardContent,
-  Typography,
-  Box,
-  Chip,
-  CircularProgress,
-  Divider,
-  Stack,
-  IconButton,
-  Collapse,
-} from '@mui/material';
-import {
-  CalendarMonth as CalendarIcon,
-  ExpandMore as ExpandMoreIcon,
-  Star as StarIcon,
-  Brightness5 as SunIcon,
+    CalendarMonth as CalendarIcon,
+    ExpandMore as ExpandMoreIcon,
+    Star as StarIcon,
+    Brightness5 as SunIcon,
 } from '@mui/icons-material';
+import {
+    Box,
+    Card,
+    CardContent,
+    Chip,
+    CircularProgress,
+    Collapse,
+    Divider,
+    IconButton,
+    Stack,
+    Typography,
+} from '@mui/material';
+import { useEffect, useState } from 'react';
 import api from '../services/api';
 
 export default function PanchangaWidget() {
@@ -32,7 +32,7 @@ export default function PanchangaWidget() {
   const loadPanchanga = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/panchanga/today');
+      const response = await api.get('/panchanga/today', { _skipErrorToast: true });
       const data = response.data?.data || response.data;
       setPanchanga(data);
       setError(null);

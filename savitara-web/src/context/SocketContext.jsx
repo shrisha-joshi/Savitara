@@ -141,7 +141,7 @@ export const SocketProvider = ({ children }) => {
     // Fetch a short-lived WS ticket to avoid exposing the JWT in the URL
     let wsAuthParam;
     try {
-      const ticketRes = await api.post('/auth/ws-ticket');
+      const ticketRes = await api.post('/auth/ws-ticket', {}, { _skipErrorToast: true });
       const ticket = ticketRes.data?.data?.ticket;
       if (!ticket) throw new Error('No ticket in response');
       wsAuthParam = `ticket=${ticket}`;

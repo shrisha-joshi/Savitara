@@ -1,6 +1,7 @@
 import { Visibility, VisibilityOff } from '@mui/icons-material'
 import GoogleIcon from '@mui/icons-material/Google'
 import { Alert, Backdrop, Box, Button, Card, CardContent, CircularProgress, Container, Divider, FormControl, FormLabel, IconButton, InputAdornment, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material'
+import PropTypes from 'prop-types'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -186,7 +187,12 @@ async function doGoogleSignIn({ loginWithGoogle, setGoogleLoading, setBackdropMe
 
 async function doLoginOrRegister({ mode, email, password, name, role, loginWithEmail, registerWithEmail, setPendingEmail, setResendCooldown }) {
   if (mode === 'login') {
-    await loginWithEmail(email, password)
+    const result = await loginWithEmail(email, password)
+    // Unverified account: backend sent a fresh OTP — show the OTP screen
+    if (result?.requiresVerification) {
+      setPendingEmail(result.email)
+      setResendCooldown(60)
+    }
   } else {
     const result = await registerWithEmail({ email, password, name, role })
     if (result?.requiresVerification) {
@@ -320,6 +326,197 @@ RegisterOnlyFields.propTypes = {
   nameRef: PropTypes.object.isRequired,
 }
 
+// ── ForgotPasswordFlow ─ 3-step wizard: email → OTP → new password
+// Kept as a single component (3 inline steps) to minimise prop-drilling while staying WCAG compliant.
+
+const PW_HINT = 'At least 8 characters with uppercase, lowercase, and a number'
+
+function ForgotPasswordFlow({
+  step, email, setEmail, otp, setOtp, newPwd, setNewPwd, confirmPwd, setConfirmPwd,
+  showPwd, setShowPwd, loading, error, setError, cooldown, debugOtp,
+  onSendOtp, onResendOtp, onVerifyOtp, onResetPwd, onBack,
+}) {
+  const ORANGE_BTN = { bgcolor: 'var(--saffron-500)', '&:hover': { bgcolor: 'var(--saffron-600)' } }
+  const FOCUS_RING = { '&:focus-visible': { outline: '3px solid', outlineColor: 'primary.main', outlineOffset: '2px' } }
+
+  return (
+    <Box>
+      <Typography variant="h5" component="h2" gutterBottom>
+        Reset Your Password
+      </Typography>
+
+      {/* DEV-ONLY hint: shown when backend is in DEBUG mode and SMTP delivery failed */}
+      {debugOtp && (
+        <Alert severity="warning" sx={{ mb: 2, textAlign: 'left' }} role="status">
+          <strong>Dev mode (SMTP not delivered):</strong> Your reset code is:{' '}
+          <strong style={{ letterSpacing: '4px', fontSize: '1.1em' }}>{debugOtp}</strong>
+        </Alert>
+      )}
+
+      {step === 'email' && (
+        <>
+          <Typography variant="body1" color="text.secondary" paragraph>
+            Enter your account email and we&apos;ll send a reset code.
+          </Typography>
+          {error && <Alert severity="error" sx={{ mb: 2 }} role="alert">{error}</Alert>}
+          <Box component="form" onSubmit={onSendOtp} noValidate aria-label="Forgot password form">
+            <TextField
+              fullWidth
+              id="forgot-email-input"
+              label="Email Address"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setError('') }}
+              margin="normal"
+              required
+              inputProps={{ 'aria-label': 'Email Address for password reset' }}
+              sx={{ '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderWidth: '2px' } }}
+              autoFocus
+            />
+            <Button
+              fullWidth variant="contained" type="submit" size="large"
+              disabled={loading}
+              aria-label="Send password reset code"
+              sx={{ mt: 3, py: 1.5, minHeight: '44px', ...ORANGE_BTN, ...FOCUS_RING }}
+            >
+              {loading ? <CircularProgress size={22} color="inherit" /> : 'Send Reset Code'}
+            </Button>
+          </Box>
+        </>
+      )}
+
+      {step === 'otp' && (
+        <>
+          <Typography variant="body1" color="text.secondary" paragraph>
+            We sent a 6-digit code to <strong>{email}</strong>. Enter it below.
+          </Typography>
+          {error && <Alert severity="error" sx={{ mb: 2 }} role="alert">{error}</Alert>}
+          <Box component="form" onSubmit={onVerifyOtp} noValidate>
+            <TextField
+              fullWidth
+              label="Reset Code"
+              value={otp}
+              onChange={(e) => { setOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); setError('') }}
+              inputProps={{ maxLength: 6, inputMode: 'numeric', 'aria-label': '6-digit reset code' }}
+              margin="normal"
+              autoFocus
+            />
+            <Button
+              fullWidth variant="contained" type="submit" size="large"
+              disabled={otp.length !== 6}
+              aria-label="Verify reset code"
+              sx={{ mt: 2, py: 1.5, minHeight: '44px', ...ORANGE_BTN, ...FOCUS_RING }}
+            >
+              Verify Code
+            </Button>
+          </Box>
+          <Button
+            variant="text" onClick={onResendOtp} disabled={cooldown > 0}
+            sx={{ mt: 1, ...FOCUS_RING }}
+          >
+            {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
+          </Button>
+        </>
+      )}
+
+      {step === 'newpwd' && (
+        <>
+          <Typography variant="body1" color="text.secondary" paragraph>
+            Choose a new password for your account.
+          </Typography>
+          {error && <Alert severity="error" sx={{ mb: 2 }} role="alert">{error}</Alert>}
+          <Box component="form" onSubmit={onResetPwd} noValidate>
+            <TextField
+              fullWidth
+              label="New Password"
+              type={showPwd ? 'text' : 'password'}
+              autoComplete="new-password"
+              value={newPwd}
+              onChange={(e) => { setNewPwd(e.target.value); setError('') }}
+              margin="normal"
+              required
+              helperText={PW_HINT}
+              inputProps={{ maxLength: 128, 'aria-label': 'New password' }}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      aria-label={showPwd ? 'Hide password' : 'Show password'}
+                      aria-pressed={showPwd}
+                      onClick={() => setShowPwd(!showPwd)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      edge="end" size="large"
+                      sx={{ minWidth: '44px', minHeight: '44px', ...FOCUS_RING }}
+                    >
+                      {showPwd ? <VisibilityOff /> : <Visibility />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderWidth: '2px' } }}
+              autoFocus
+            />
+            <TextField
+              fullWidth
+              label="Confirm New Password"
+              type={showPwd ? 'text' : 'password'}
+              autoComplete="new-password"
+              value={confirmPwd}
+              onChange={(e) => { setConfirmPwd(e.target.value); setError('') }}
+              margin="normal"
+              required
+              inputProps={{ maxLength: 128, 'aria-label': 'Confirm new password' }}
+              sx={{ '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderWidth: '2px' } }}
+            />
+            <Button
+              fullWidth variant="contained" type="submit" size="large"
+              disabled={loading || !newPwd || !confirmPwd}
+              aria-label="Set new password"
+              sx={{ mt: 3, py: 1.5, minHeight: '44px', ...ORANGE_BTN, ...FOCUS_RING }}
+            >
+              {loading ? <CircularProgress size={22} color="inherit" /> : 'Set New Password'}
+            </Button>
+          </Box>
+        </>
+      )}
+
+      <Button
+        variant="text" size="small"
+        onClick={onBack}
+        sx={{ mt: 1.5, ...FOCUS_RING }}
+        aria-label="Cancel password reset and return to sign in"
+      >
+        Back to Sign In
+      </Button>
+    </Box>
+  )
+}
+
+ForgotPasswordFlow.propTypes = {
+  step: PropTypes.oneOf(['email', 'otp', 'newpwd']).isRequired,
+  email: PropTypes.string.isRequired,
+  setEmail: PropTypes.func.isRequired,
+  otp: PropTypes.string.isRequired,
+  setOtp: PropTypes.func.isRequired,
+  newPwd: PropTypes.string.isRequired,
+  setNewPwd: PropTypes.func.isRequired,
+  confirmPwd: PropTypes.string.isRequired,
+  setConfirmPwd: PropTypes.func.isRequired,
+  showPwd: PropTypes.bool.isRequired,
+  setShowPwd: PropTypes.func.isRequired,
+  loading: PropTypes.bool.isRequired,
+  error: PropTypes.string.isRequired,
+  setError: PropTypes.func.isRequired,
+  cooldown: PropTypes.number.isRequired,
+  debugOtp: PropTypes.string,
+  onSendOtp: PropTypes.func.isRequired,
+  onResendOtp: PropTypes.func.isRequired,
+  onVerifyOtp: PropTypes.func.isRequired,
+  onResetPwd: PropTypes.func.isRequired,
+  onBack: PropTypes.func.isRequired,
+}
+
 // ── LoginFormContent ─ login/register form UI extracted to reduce Login() cognitive complexity
 
 function LoginFormContent({
@@ -328,6 +525,7 @@ function LoginFormContent({
   name, setName, role, setRole,
   nameRef, emailRef, passwordRef,
   colors, handleGoogleSignIn, handleSubmit, handleModeSwitch, navigate, setErrors,
+  onForgotPassword,
 }) {
   const isBusy = googleLoading || loading
   return (
@@ -455,6 +653,19 @@ function LoginFormContent({
         >
           {getSubmitButtonContent(loading, mode)}
         </Button>
+
+        {mode === 'login' && (
+          <Box sx={{ textAlign: 'right', mt: 1 }}>
+            <Button
+              size="small"
+              onClick={onForgotPassword}
+              aria-label="Forgot your password? Click to reset it"
+              sx={{ minHeight: '36px', '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: '2px' } }}
+            >
+              Forgot password?
+            </Button>
+          </Box>
+        )}
       </Box>
 
       <Box
@@ -522,6 +733,7 @@ LoginFormContent.propTypes = {
   handleModeSwitch: PropTypes.func.isRequired,
   navigate: PropTypes.func.isRequired,
   setErrors: PropTypes.func.isRequired,
+  onForgotPassword: PropTypes.func.isRequired,
 }
 
 /**
@@ -539,7 +751,8 @@ LoginFormContent.propTypes = {
  * - Touch targets >= 44x44px
  */
 export default function Login() {
-  const { loginWithGoogle, loginWithEmail, registerWithEmail, sendEmailOtp, verifyEmailOtp } = useAuth()
+  const { loginWithGoogle, loginWithEmail, registerWithEmail, sendEmailOtp, verifyEmailOtp,
+    forgotPasswordSendOtp, forgotPasswordResetPassword } = useAuth()
   const { colors, isDark } = useTheme()
   const navigate = useNavigate()
   const [mode, setMode] = useState('login')
@@ -558,6 +771,18 @@ export default function Login() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [backdropMessage, setBackdropMessage] = useState('')
   const [errors, setErrors] = useState({})
+
+  // ── Forgot Password state ──────────────────────────────────────────────
+  const [forgotStep, setForgotStep] = useState(null) // null | 'email' | 'otp' | 'newpwd'
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotOtp, setForgotOtp] = useState('')
+  const [forgotNewPwd, setForgotNewPwd] = useState('')
+  const [forgotConfirmPwd, setForgotConfirmPwd] = useState('')
+  const [forgotShowPwd, setForgotShowPwd] = useState(false)
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotError, setForgotError] = useState('')
+  const [forgotCooldown, setForgotCooldown] = useState(0)
+  const [forgotDebugOtp, setForgotDebugOtp] = useState(null) // shown in dev when SMTP fails
   
   // WCAG: Focus management - focus first error field when validation fails
   const nameRef = useRef(null)
@@ -566,12 +791,103 @@ export default function Login() {
 
   useEffect(() => { focusFirstErrorField(errors, nameRef, emailRef, passwordRef) }, [errors])
 
-  // Countdown timer for resend cooldown
+  // Countdown for existing OTP resend
   useEffect(() => {
     if (resendCooldown <= 0) return undefined
     const timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000)
     return () => clearTimeout(timer)
   }, [resendCooldown])
+
+  // Countdown for forgot-password OTP resend
+  useEffect(() => {
+    if (forgotCooldown <= 0) return undefined
+    const timer = setTimeout(() => setForgotCooldown((c) => c - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [forgotCooldown])
+
+  // ── Forgot Password handlers ───────────────────────────────────────────
+  const handleForgotSendOtp = async (e) => {
+    e.preventDefault()
+    if (!forgotEmail || !/\S+@\S+\.\S+/.test(forgotEmail)) {
+      setForgotError('Please enter a valid email address.')
+      return
+    }
+    setForgotError('')
+    setForgotLoading(true)
+    try {
+      const result = await forgotPasswordSendOtp(forgotEmail)
+      if (result?.debug_otp) setForgotDebugOtp(result.debug_otp)
+      setForgotStep('otp')
+      setForgotCooldown(60)
+    } catch {
+      // Always move forward — backend never reveals if email exists
+      setForgotStep('otp')
+      setForgotCooldown(60)
+    } finally {
+      setForgotLoading(false)
+    }
+  }
+
+  const handleForgotResendOtp = async () => {
+    if (forgotCooldown > 0) return
+    try {
+      const result = await forgotPasswordSendOtp(forgotEmail)
+      if (result?.debug_otp) setForgotDebugOtp(result.debug_otp)
+      setForgotCooldown(60)
+    } catch { /* silent */ }
+  }
+
+  const handleForgotVerifyOtp = (e) => {
+    e.preventDefault()
+    if (forgotOtp.length !== 6) {
+      setForgotError('Please enter the 6-digit code from your email.')
+      return
+    }
+    setForgotError('')
+    setForgotStep('newpwd')
+  }
+
+  const handleForgotResetPwd = async (e) => {
+    e.preventDefault()
+    setForgotError('')
+
+    // Validate new password
+    if (forgotNewPwd.length < 8) { setForgotError('Password must be at least 8 characters.'); return }
+    if (!/[a-z]/.test(forgotNewPwd)) { setForgotError('Password must include a lowercase letter.'); return }
+    if (!/[A-Z]/.test(forgotNewPwd)) { setForgotError('Password must include an uppercase letter.'); return }
+    if (!/\d/.test(forgotNewPwd)) { setForgotError('Password must include a number.'); return }
+    if (forgotNewPwd !== forgotConfirmPwd) { setForgotError('Passwords do not match.'); return }
+
+    setForgotLoading(true)
+    try {
+      await forgotPasswordResetPassword(forgotEmail, forgotOtp, forgotNewPwd)
+      // Reset all forgot-password state
+      setForgotStep(null); setForgotEmail(''); setForgotOtp('')
+      setForgotNewPwd(''); setForgotConfirmPwd(''); setForgotError('')
+      setForgotDebugOtp(null)
+    } catch (err) {
+      // Backend wraps errors as { error: { message: '...' } } via custom exception handler
+      const detail = err?.response?.data?.error?.message || err?.response?.data?.detail
+      if (typeof detail === 'string') {
+        setForgotError(detail)
+      } else {
+        setForgotError('Reset failed. Please try again.')
+      }
+      // Send user back to OTP step for any OTP-related error so they can request a fresh code
+      if (detail?.toLowerCase().includes('code') || detail?.toLowerCase().includes('expired') || detail?.toLowerCase().includes('attempt')) {
+        setForgotStep('otp')
+        setForgotOtp('') // clear so user doesn't retry same consumed/invalid code
+      }
+    } finally {
+      setForgotLoading(false)
+    }
+  }
+
+  const handleForgotBack = () => {
+    setForgotStep(null); setForgotEmail(''); setForgotOtp('')
+    setForgotNewPwd(''); setForgotConfirmPwd(''); setForgotError(''); setForgotLoading(false)
+    setForgotDebugOtp(null)
+  }
 
   const handleGoogleSignIn = () => doGoogleSignIn({ loginWithGoogle, setGoogleLoading, setBackdropMessage })
   const handleModeSwitch = () => doModeSwitch({ mode, setMode, setErrors, setName, setRole })
@@ -642,6 +958,30 @@ export default function Login() {
                 handleResendOtp={handleResendOtp}
                 onBack={handleBackFromOtp}
               />
+            ) : forgotStep ? (
+              <ForgotPasswordFlow
+                step={forgotStep}
+                email={forgotEmail}
+                setEmail={setForgotEmail}
+                otp={forgotOtp}
+                setOtp={setForgotOtp}
+                newPwd={forgotNewPwd}
+                setNewPwd={setForgotNewPwd}
+                confirmPwd={forgotConfirmPwd}
+                setConfirmPwd={setForgotConfirmPwd}
+                showPwd={forgotShowPwd}
+                setShowPwd={setForgotShowPwd}
+                loading={forgotLoading}
+                error={forgotError}
+                setError={setForgotError}
+                cooldown={forgotCooldown}
+                debugOtp={forgotDebugOtp}
+                onSendOtp={handleForgotSendOtp}
+                onResendOtp={handleForgotResendOtp}
+                onVerifyOtp={handleForgotVerifyOtp}
+                onResetPwd={handleForgotResetPwd}
+                onBack={handleForgotBack}
+              />
             ) : (
               <LoginFormContent
                 mode={mode}
@@ -667,6 +1007,7 @@ export default function Login() {
                 handleModeSwitch={handleModeSwitch}
                 navigate={navigate}
                 setErrors={setErrors}
+                onForgotPassword={() => { setForgotStep('email'); setForgotEmail(email) }}
               />
             )}
           </CardContent>

@@ -25,6 +25,7 @@
     "date-fns": "^3.0.6",
     "firebase": "^12.8.0",
     "framer-motion": "^12.29.2",
+    "prop-types": "^15.8.1",
     "react": "^18.2.0",
     "react-calendar": "^4.7.0",
     "react-confetti": "^6.4.0",

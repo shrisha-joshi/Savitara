@@ -1,21 +1,24 @@
-import { useState, useEffect, useCallback } from 'react';
-import { 
-  Container, 
-  Typography, 
-  Grid, 
-  Box, 
-  Alert,
-  Pagination,
-  CircularProgress,
+import {
+    Alert,
+    Box,
+    CircularProgress,
+    Container,
+    Grid,
+    Pagination,
+    Typography,
 } from '@mui/material';
+import { useTheme as useMuiTheme } from '@mui/material/styles';
+import { useCallback, useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import SearchFilters from '../../components/SearchFilters';
 import AcharyaCard from '../../components/cards/AcharyaCard';
 import api from '../../services/api';
-import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function SearchAcharyas() {
   const navigate = useNavigate();
+  const muiTheme = useMuiTheme();
+  const isDark = muiTheme.palette.mode === 'dark';
   const [loading, setLoading] = useState(false);
   const [acharyas, setAcharyas] = useState([]);
   const [pagination, setPagination] = useState({
@@ -125,7 +128,7 @@ export default function SearchAcharyas() {
   return (
     <Layout>
       <Box sx={{ 
-        background: 'linear-gradient(to bottom, #FFF3E0, #FFFFFF)',
+        bgcolor: 'background.default',
         minHeight: '100vh',
         pb: 8
       }}>
@@ -134,13 +137,13 @@ export default function SearchAcharyas() {
           pt: 4, 
           pb: 6, 
           textAlign: 'center',
-          background: 'rgba(255, 152, 0, 0.05)',
+          bgcolor: isDark ? 'rgba(249, 115, 22, 0.06)' : 'rgba(255, 152, 0, 0.05)',
           mb: 4
         }}>
           <Container maxWidth="lg">
             <Typography variant="h3" component="h1" gutterBottom sx={{ 
               fontWeight: 700,
-              color: 'var(--saffron-dark)'
+              color: 'text.primary'
             }}>
               Find Your Spiritual Guide
             </Typography>

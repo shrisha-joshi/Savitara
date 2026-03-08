@@ -1,14 +1,14 @@
-import { useMemo, useState, useEffect } from 'react'
-import { Container, Typography, Grid, Paper, CircularProgress, Box, Button, Chip, Alert } from '@mui/material'
+import { Alert, Box, Button, Chip, CircularProgress, Container, Grid, Paper, Typography } from '@mui/material'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import ConfettiCelebration from '../../components/ConfettiCelebration'
 import Layout from '../../components/Layout'
 import PanchangaWidget from '../../components/PanchangaWidget'
+import StreakDisplay from '../../components/StreakDisplay'
 import { useAuth } from '../../context/AuthContext'
 import useSWRApi from '../../hooks/useSWRApi'
-import { getTimeBasedGreeting, getContextualGreeting, getMilestoneMessage } from '../../utils/personalization'
-import ConfettiCelebration from '../../components/ConfettiCelebration'
-import StreakDisplay from '../../components/StreakDisplay'
 import api from '../../services/api'
+import { getContextualGreeting, getMilestoneMessage, getTimeBasedGreeting } from '../../utils/personalization'
 
 export default function GrihastaDashboard() {
   const { user } = useAuth()
@@ -22,7 +22,7 @@ export default function GrihastaDashboard() {
   useEffect(() => {
     const fetchStreak = async () => {
       try {
-        const response = await api.get('/gamification/streak')
+        const response = await api.get('/gamification/streak', { _skipErrorToast: true })
         setStreakDays(response.data?.streak_days || 0)
       } catch (error) {
         console.error('Failed to fetch streak:', error)

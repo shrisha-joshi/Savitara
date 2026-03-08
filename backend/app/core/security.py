@@ -18,6 +18,8 @@ warnings.filterwarnings("ignore", message=".*error reading bcrypt.*")
 # Suppress passlib logger output for bcrypt version detection issues
 logging.getLogger("passlib").setLevel(logging.ERROR)
 
+logger = logging.getLogger(__name__)
+
 # --- MONKEYPATCH FOR PASSLIB + BCRYPT 4.0+ ---
 # passlib tries to detect a bug by hashing a 255-byte password during initialization,
 # which crashes bcrypt 4.0+ because it strictly enforces a 72-byte limit.

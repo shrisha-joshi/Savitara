@@ -1,32 +1,33 @@
-import { useState, useEffect } from 'react';
-import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import {
-  Container,
-  Paper,
-  Typography,
-  Grid,
-  Box,
-  TextField,
-  Button,
-  Stepper,
-  Step,
-  StepLabel,
-  CircularProgress,
-  Alert,
-  FormControl,
-  FormLabel,
-  RadioGroup,
-  FormControlLabel,
-  Radio,
-  Autocomplete
+    Alert,
+    Autocomplete,
+    Box,
+    Button,
+    CircularProgress,
+    Container,
+    FormControl,
+    FormControlLabel,
+    FormLabel,
+    Grid,
+    Paper,
+    Radio,
+    RadioGroup,
+    Step,
+    StepLabel,
+    Stepper,
+    TextField,
+    Typography
 } from '@mui/material';
-import { DatePicker, TimePicker, LocalizationProvider } from '@mui/x-date-pickers';
+import { useTheme as useMuiTheme } from '@mui/material/styles';
+import { DatePicker, LocalizationProvider, TimePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format } from 'date-fns';
-import Layout from '../../components/Layout';
-import api from '../../services/api';
+import { useEffect, useState } from 'react';
 import { FaCheckCircle } from 'react-icons/fa';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import Layout from '../../components/Layout';
 import PricingDisplay from '../../components/PricingDisplay';
+import api from '../../services/api';
 
 const steps = ['Service Details', 'Schedule', 'Confirm'];
 
@@ -34,6 +35,7 @@ export default function CreateBooking() {
   const { acharyaId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const bookingTheme = useMuiTheme();
   const preSelectedPoojaId = searchParams.get('poojaId');
   const mode = searchParams.get('mode') || 'instant';
 
@@ -288,7 +290,7 @@ export default function CreateBooking() {
 
   return (
     <Layout>
-      <Box sx={{ background: '#f5f5f5', minHeight: 'calc(100vh - 64px)', py: 4 }}>
+      <Box sx={{ bgcolor: bookingTheme.palette.mode === 'dark' ? 'background.default' : '#f5f5f5', minHeight: 'calc(100vh - 64px)', py: 4 }}>
         <Container maxWidth="md">
           <Paper sx={{ p: 4, borderRadius: 2 }}>
             <Typography variant="h4" gutterBottom align="center" sx={{ mb: 4, color: 'var(--saffron-dark)' }}>

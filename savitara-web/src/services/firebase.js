@@ -9,13 +9,16 @@ import {
 import { getMessaging, getToken, onMessage } from 'firebase/messaging'
 
 // Validate required Firebase environment variables — M28 fix: graceful degradation instead of crashing
+const PLACEHOLDER_PATTERNS = ['test-', 'your-', 'placeholder', 'example']
+const isPlaceholder = (val) => !val || PLACEHOLDER_PATTERNS.some(p => val.toLowerCase().startsWith(p))
+
 let firebaseAvailable = true
-if (!import.meta.env.VITE_FIREBASE_API_KEY) {
-  console.warn('Missing VITE_FIREBASE_API_KEY – Firebase features will be disabled')
+if (isPlaceholder(import.meta.env.VITE_FIREBASE_API_KEY)) {
+  console.warn('Missing or placeholder VITE_FIREBASE_API_KEY – Firebase/Google Auth will be disabled')
   firebaseAvailable = false
 }
-if (!import.meta.env.VITE_FIREBASE_PROJECT_ID) {
-  console.warn('Missing VITE_FIREBASE_PROJECT_ID – Firebase features will be disabled')
+if (isPlaceholder(import.meta.env.VITE_FIREBASE_PROJECT_ID)) {
+  console.warn('Missing or placeholder VITE_FIREBASE_PROJECT_ID – Firebase/Google Auth will be disabled')
   firebaseAvailable = false
 }
 
@@ -116,10 +119,12 @@ export const onAuthChange = (callback) => {
 
 // Initialize Firebase Cloud Messaging
 let messaging = null
-try {
-  messaging = getMessaging(app)
-} catch (error) {
-  console.error('Firebase messaging initialization failed:', error)
+if (app) {
+  try {
+    messaging = getMessaging(app)
+  } catch (error) {
+    console.warn('Firebase messaging initialization failed:', error)
+  }
 }
 
 // Request notification permission and get FCM token

@@ -230,9 +230,9 @@ export default function Onboarding() {
       setShowSuccess(true)
       toast.success('🎉 Profile completed successfully!')
       
-      // Navigate after showing confetti
+      // Navigate after showing confetti — go to home page
       setTimeout(() => {
-        navigate('/dashboard')
+        navigate('/')
       }, 3000)
     } catch (error) {
       console.error('Onboarding error:', error.response?.data || error)

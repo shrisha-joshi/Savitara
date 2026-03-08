@@ -26,7 +26,7 @@ from app.core.constants import PHONE_REGEX
 from app.db.connection import get_db
 from app.db.redis import get_redis, blacklist_token
 from app.models.database import User, UserRole, UserStatus
-from app.services.otp_service import OTPService, EmailOTPService
+from app.services.otp_service import OTPService, EmailOTPService, PasswordResetOTPService
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, Field, field_validator
 from redis.asyncio import Redis
@@ -42,6 +42,46 @@ settings = get_settings()
 ADMIN_ROLE_ERROR = "Admin role cannot be self-assigned"
 ACCOUNT_SUSPENDED_ERROR = "Account suspended"
 SUPPORT_EMAIL = "support@savitara.com"
+
+# ── Password-reset request models ────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., max_length=320, description="Registered email address")
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not v or "@" not in v:
+            raise ValueError("Enter a valid email address")
+        return v
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str = Field(..., max_length=320)
+    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        errors = []
+        if len(v) < 8:
+            errors.append("at least 8 characters")
+        if not any(c.islower() for c in v):
+            errors.append("a lowercase letter")
+        if not any(c.isupper() for c in v):
+            errors.append("an uppercase letter")
+        if not any(c.isdigit() for c in v):
+            errors.append("a number")
+        if errors:
+            raise ValueError(f"Password must contain: {', '.join(errors)}")
+        return v
 
 
 def verify_google_token(token: str) -> Dict[str, Any]:
@@ -74,6 +114,44 @@ def verify_google_token(token: str) -> Dict[str, Any]:
         )
 
 
+async def verify_google_access_token(access_token: str) -> Dict[str, Any]:
+    """
+    Verify a Google OAuth2 access token via Google's tokeninfo endpoint.
+    Used when the frontend sends an access_token (from @react-oauth/google useGoogleLogin).
+    SonarQube: S4502 - Validates audience to prevent token substitution attacks.
+    """
+    import httpx
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"access_token": access_token},
+        )
+    if resp.status_code != 200:
+        raise AuthenticationError(
+            message="Invalid Google access token",
+            details={"error": resp.text[:200]},
+        )
+    info = resp.json()
+    # Validate audience — ensures token was issued for this application
+    if settings.GOOGLE_CLIENT_ID and info.get("aud") != settings.GOOGLE_CLIENT_ID:
+        logger.warning(
+            f"[GOOGLE_AUTH] Token audience mismatch: got '{info.get('aud')}', "
+            f"expected '{settings.GOOGLE_CLIENT_ID}'"
+        )
+        raise AuthenticationError(
+            message="Google token not issued for this application"
+        )
+    if not info.get("email"):
+        raise AuthenticationError(message="Could not retrieve email from Google token")
+    return {
+        "email": info["email"],
+        "google_id": info.get("sub", ""),
+        "name": info.get("name"),
+        "picture": info.get("picture"),
+        "email_verified": str(info.get("email_verified", "")).lower() == "true",
+    }
+
+
 @router.post(
     "/google",
     response_model=StandardResponse,
@@ -97,7 +175,10 @@ async def google_login(
     """
     try:
         # Verify Google token (run in thread pool to avoid blocking event loop)
-        google_info = await asyncio.to_thread(verify_google_token, auth_request.id_token)
+        if auth_request.id_token:
+            google_info = await asyncio.to_thread(verify_google_token, auth_request.id_token)
+        else:
+            google_info = await verify_google_access_token(auth_request.access_token)
 
         # Prevent admin role self-assignment via OAuth
         if auth_request.role == UserRole.ADMIN:
@@ -317,11 +398,16 @@ async def login(request: LoginRequest, db: Annotated[AsyncIOMotorDatabase, Depen
 
         # Block login for unverified email accounts (Google OAuth users are always verified)
         if not getattr(user, 'email_verified', False) and not user.google_id:
-            # Resend OTP so user can complete verification without extra friction
+            # Resend OTP — user will be redirected to the OTP verification screen
             await EmailOTPService.send_otp(db, request.email)
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Email not verified. A new verification code has been sent to your email.",
+            return StandardResponse(
+                success=False,
+                message="Email not verified. A verification code has been sent to your email.",
+                data={
+                    "requires_email_verification": True,
+                    "email": request.email,
+                    "expires_in": 600,
+                },
             )
 
         # Update last login
@@ -531,6 +617,113 @@ async def get_current_user_info(
         },
     )
 
+@router.post(
+    "/forgot-password",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Request Password Reset OTP",
+    description=(
+        "Send a password-reset OTP to the given email address. "
+        "Returns success regardless of whether the email is registered "
+        "(security: does not reveal account existence)."
+    ),
+)
+async def forgot_password(
+    request: ForgotPasswordRequest,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """
+    SonarQube: S5131 — response does not reveal whether the email exists.
+    Sends OTP to any registered user (including Google OAuth users who want to add a password).
+    When DEBUG=True the OTP is included in the response for development convenience.
+    """
+    is_debug = getattr(settings, "DEBUG", False)
+    otp_hint: Optional[str] = None
+
+    user_doc = await db.users.find_one({"email": request.email})
+    if user_doc:
+        # Send reset OTP regardless of auth method (email/password OR Google OAuth)
+        result = await PasswordResetOTPService.send_otp(db, request.email)
+        if result.get("sent"):
+            logger.info(f"[FORGOT_PW] Reset OTP dispatched for {request.email}")
+            # Only expose the OTP in the response when SMTP failed to deliver it
+            # (e.g. SMTP not configured, credentials expired, network error).
+            # When email_delivered=True the user already has the code in their inbox.
+            if is_debug and not result.get("email_delivered"):
+                otp_hint = result.get("otp")
+
+    # Always return the same message to avoid leaking account existence
+    return StandardResponse(
+        success=True,
+        message="If an account exists for this email, a reset code has been sent.",
+        data={"debug_otp": otp_hint} if is_debug and otp_hint else {},
+    )
+
+
+@router.post(
+    "/reset-password",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Reset Password with OTP",
+    description="Verify the 6-digit reset OTP and set a new password.",
+)
+async def reset_password(
+    request: ResetPasswordRequest,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """
+    Flow:
+    1. Verify and consume the one-time reset OTP.
+    2. Validate the new password differs from the current one.
+    3. Store the new bcrypt hash.
+    """
+    # 1. Verify and consume OTP
+    verification = await PasswordResetOTPService.verify_and_consume(
+        db, request.email, request.otp
+    )
+    if not verification["verified"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=verification["error"],
+        )
+
+    # 2. Look up user
+    user_doc = await db.users.find_one({"email": request.email})
+    if not user_doc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No account found for this email.",
+        )
+
+    user = User(**user_doc)
+    if user.status == UserStatus.SUSPENDED:
+        raise AuthenticationError(
+            message=ACCOUNT_SUSPENDED_ERROR, details={"contact": SUPPORT_EMAIL}
+        )
+
+    existing_hash = user_doc.get("password_hash")
+
+    # 3. If the user already has a password, ensure the new one is different
+    if existing_hash and security_manager.verify_password(request.new_password, existing_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from your current password.",
+        )
+
+    # 4. Hash and persist the new password (first-time set for Google OAuth users is fine)
+    new_hash = security_manager.get_password_hash(request.new_password)
+    await db.users.update_one(
+        {"_id": user_doc["_id"]},
+        {"$set": {"password_hash": new_hash, "updated_at": datetime.now(timezone.utc)}},
+    )
+
+    logger.info(f"[RESET_PW] Password updated for user {str(user.id)}")
+
+    return StandardResponse(
+        success=True,
+        message="Your password has been reset successfully. Please sign in with your new password.",
+        data={},
+    )
 
 @router.post(
     "/ws-ticket",

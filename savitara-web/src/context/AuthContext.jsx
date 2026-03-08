@@ -1,9 +1,10 @@
+import { useGoogleLogin } from '@react-oauth/google'
 import PropTypes from 'prop-types'
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import api from '../services/api'
-import { checkRedirectResult, signInWithGoogle as firebaseGoogleSignIn, firebaseSignOut } from '../services/firebase'
+import { firebaseSignOut } from '../services/firebase'
 
 const AuthContext = createContext({})
 
@@ -64,91 +65,15 @@ export const AuthProvider = ({ children }) => {
   const navigate = useNavigate()
   const location = useLocation()
 
+  // Ref to hold resolve/reject for the promise returned by loginWithGoogle()
+  const pendingGoogleAuthRef = useRef(null)
+
   useEffect(() => {
     const initAuth = async () => {
-      try {
-        // Check for redirect result first (for Google OAuth)
-        // Catch errors here to ensure we always proceed to checkAuth
-        await handleRedirectResult().catch(e => console.warn('Redirect check failed:', e))
-      } catch (error) {
-        console.error('Auth init error:', error)
-      } finally {
-        // Always run checkAuth to ensure loading completes
-        // checkAuth guarantees setLoading(false) in its finally block
-        await checkAuth()
-      }
+      await checkAuth()
     }
-
     initAuth()
   }, [])
-
-  /**
-   * WCAG Compliant: Handle Google OAuth redirect result
-   * Provides clear feedback during OAuth flow
-   */
-  const handleRedirectResult = async () => {
-    try {
-      const result = await checkRedirectResult()
-      if (result?.idToken) {
-        console.log('Processing Google redirect result...')
-        toast.info('Completing your Google sign-in...')
-        
-        // Send token to backend
-        const response = await api.post('/auth/google', {
-          id_token: result.idToken,
-          role: 'grihasta'
-        })
-
-        const { data } = response.data
-        const { access_token, refresh_token, user: userData } = data
-        
-        localStorage.setItem('accessToken', access_token)
-        localStorage.setItem('refreshToken', refresh_token)
-        setToken(access_token)
-        
-        setUser(userData)
-        
-        // Navigate based on onboarding status
-        if (userData.onboarded || userData.onboarding_completed) {
-          navigate('/')
-        } else {
-          navigate('/onboarding')
-        }
-
-        toast.success('Successfully signed in with Google!')
-      }
-    } catch (error) {
-      console.error('Redirect result error:', error)
-      
-      // WCAG: Provide specific, actionable error messages
-      let errorMessage = 'Google sign-in failed'
-      let errorDetails = ''
-      
-      if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        errorMessage = 'Unable to connect to the server'
-        errorDetails = 'Please check your internet connection and try again. If the problem persists, the service may be temporarily unavailable.'
-      } else if (error.response?.status === 401) {
-        errorMessage = 'Google authentication failed'
-        errorDetails = 'We could not verify your Google account. Please try signing in again or use email sign-in instead.'
-      } else if (error.response?.status === 403) {
-        errorMessage = 'Your account has been suspended'
-        errorDetails = 'Please contact support at support@savitara.com for assistance.'
-      } else if (error.response?.status >= 500) {
-        errorMessage = 'Server error occurred'
-        errorDetails = 'Our servers are experiencing technical difficulties. Please try again in a few minutes or use email sign-in instead.'
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message
-      }
-      
-      toast.error(
-        <div>
-          <strong>{errorMessage}</strong>
-          {errorDetails && <div style={{ marginTop: '8px', fontSize: '0.9em' }}>{errorDetails}</div>}
-        </div>,
-        { autoClose: 8000 }
-      )
-    }
-  }
 
   const checkAuth = async () => {
     try {
@@ -189,8 +114,15 @@ export const AuthProvider = ({ children }) => {
   const loginWithEmail = useCallback(async (email, password) => {
     try {
       const response = await api.post('/auth/login', { email, password })
-      // Backend returns StandardResponse: { success, data: {...}, message }
-      const { access_token, refresh_token, user: userData } = response.data.data || response.data
+      const responseData = response.data.data || response.data
+
+      // Unverified account — backend sent a fresh OTP, caller must show OTP screen
+      if (responseData.requires_email_verification) {
+        return { requiresVerification: true, email: responseData.email }
+      }
+
+      // Normal login success
+      const { access_token, refresh_token, user: userData } = responseData
 
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)
@@ -340,89 +272,98 @@ export const AuthProvider = ({ children }) => {
   }, [navigate])
 
   /**
-   * WCAG Compliant: Google Sign-In with Popup
-   * Provides clear, actionable feedback throughout the authentication process
+   * Called by @react-oauth/google when the user successfully authenticates.
+   * Receives tokenResponse.access_token — sent to backend for validation.
    */
-  const loginWithGoogle = useCallback(async (legacyCredential = null) => {
+  const _handleGoogleSuccess = useCallback(async (tokenResponse) => {
     try {
-      let idToken = null;
-      if (legacyCredential) {
-        idToken = legacyCredential;
-      } else {
-        const result = await firebaseGoogleSignIn();
-        idToken = result?.idToken;
-      }
-      
-      if (!idToken) {
-        toast.error('Google sign-in was cancelled or failed. Please try again or use email sign-in.');
-        setLoading(false);
-        return;
-      }
-      
       const response = await api.post('/auth/google', {
-        id_token: idToken,
-        role: 'grihasta'
-      });
-      
-      const { data } = response.data;
-      const { access_token, refresh_token, user: userData } = data;
-      
-      localStorage.setItem('accessToken', access_token);
-      localStorage.setItem('refreshToken', refresh_token);
-      setToken(access_token);
-      setUser(userData);
-      
+        access_token: tokenResponse.access_token,
+        role: 'grihasta',
+      })
+      const { data } = response.data
+      const { access_token, refresh_token, user: userData } = data
+
+      localStorage.setItem('accessToken', access_token)
+      localStorage.setItem('refreshToken', refresh_token)
+      setToken(access_token)
+      setUser(userData)
+
       if (userData.onboarded || userData.onboarding_completed) {
-        const from = location.state?.from?.pathname || '/';
-        const search = location.state?.from?.search || '';
-        navigate(`${from}${search}`, { replace: true });
+        const from = location.state?.from?.pathname || '/'
+        const search = location.state?.from?.search || ''
+        navigate(`${from}${search}`, { replace: true })
       } else {
-        navigate('/onboarding', { replace: true });
+        navigate('/onboarding', { replace: true })
       }
-      
-      toast.success('Successfully signed in with Google!');
+
+      toast.success('Successfully signed in with Google!')
+      pendingGoogleAuthRef.current?.resolve()
     } catch (error) {
-      console.error('Google login failed:', error);
-      
-      // WCAG: Provide specific, actionable error messages
-      let errorMessage = 'Google sign-in failed';
-      let errorDetails = '';
-      
+      console.error('Google login failed:', error)
+      let errorMessage = 'Google sign-in failed'
+      let errorDetails = ''
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        errorMessage = 'Unable to connect to the server';
-        errorDetails = 'Please check your internet connection and try again. If the problem persists, try using email sign-in instead.';
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        errorMessage = 'Sign-in cancelled';
-        errorDetails = 'You closed the Google sign-in window. Please try again if you wish to continue.';
-      } else if (error.code === 'auth/popup-blocked') {
-        errorMessage = 'Pop-up blocked by browser';
-        errorDetails = 'Please allow pop-ups for this site in your browser settings and try again, or use email sign-in instead.';
-      } else if (error.code === 'auth/cancelled-popup-request') {
-        errorMessage = 'Sign-in cancelled';
-        errorDetails = 'Only one sign-in window can be open at a time. Please close any other sign-in windows and try again.';
+        errorMessage = 'Unable to connect to the server'
+        errorDetails = 'Please check your internet connection and try again.'
       } else if (error.response?.status === 401) {
-        errorMessage = 'Google authentication failed';
-        errorDetails = 'We could not verify your Google account. Please try again or use email sign-in instead.';
+        errorMessage = 'Google authentication failed'
+        errorDetails = 'We could not verify your Google account. Please try again or use email sign-in.'
       } else if (error.response?.status === 403) {
-        errorMessage = 'Your account has been suspended';
-        errorDetails = 'Please contact support at support@savitara.com for assistance.';
+        errorMessage = 'Your account has been suspended'
+        errorDetails = 'Please contact support@savitara.com for assistance.'
       } else if (error.response?.status >= 500) {
-        errorMessage = 'Server error occurred';
-        errorDetails = 'Our servers are experiencing technical difficulties. Please try again in a few minutes or use email sign-in instead.';
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
+        errorMessage = 'Server error occurred'
+        errorDetails = 'Our servers are having difficulties. Please try again in a few minutes.'
+      } else if (error.response?.data?.error?.message) {
+        errorMessage = error.response.data.error.message
       }
-      
       toast.error(
         <div>
           <strong>{errorMessage}</strong>
           {errorDetails && <div style={{ marginTop: '8px', fontSize: '0.9em' }}>{errorDetails}</div>}
         </div>,
         { autoClose: 8000 }
-      );
-      throw error;
+      )
+      pendingGoogleAuthRef.current?.reject(error)
+    } finally {
+      pendingGoogleAuthRef.current = null
     }
   }, [navigate, location])
+
+  const _handleGoogleError = useCallback((errorResponse) => {
+    // Don't toast if user just closed the popup
+    const isCancelled = !errorResponse ||
+      errorResponse?.error === 'access_denied' ||
+      errorResponse?.error === 'popup_closed_by_user'
+    if (!isCancelled) {
+      toast.error('Google sign-in failed. Please try again or use email sign-in.')
+    }
+    const err = new Error(errorResponse?.error_description || 'Google sign-in cancelled')
+    err.code = errorResponse?.error || 'google_sign_in_failed'
+    pendingGoogleAuthRef.current?.reject(err)
+    pendingGoogleAuthRef.current = null
+  }, [])
+
+  // useGoogleLogin hook — opens Google's OAuth2 popup via @react-oauth/google
+  // GoogleOAuthProvider (in main.jsx) must have the real VITE_GOOGLE_CLIENT_ID set
+  const _googleLoginTrigger = useGoogleLogin({
+    onSuccess: _handleGoogleSuccess,
+    onError: _handleGoogleError,
+    flow: 'implicit',
+    scope: 'openid email profile',
+  })
+
+  /**
+   * Opens the Google sign-in popup.
+   * Returns a Promise that resolves on success or rejects on failure/cancel.
+   */
+  const loginWithGoogle = useCallback(() => {
+    return new Promise((resolve, reject) => {
+      pendingGoogleAuthRef.current = { resolve, reject }
+      _googleLoginTrigger()
+    })
+  }, [_googleLoginTrigger])
 
   const logout = useCallback(async () => {
     try {
@@ -445,6 +386,16 @@ export const AuthProvider = ({ children }) => {
     navigate('/login')
     toast.info('Logged out successfully')
   }, [navigate])
+
+  const forgotPasswordSendOtp = useCallback(async (email) => {
+    const response = await api.post('/auth/forgot-password', { email })
+    // Return debug_otp when backend is in DEBUG mode (dev only)
+    return response?.data?.data || {}
+  }, [])
+
+  const forgotPasswordResetPassword = useCallback(async (email, otp, newPassword) => {
+    await api.post('/auth/reset-password', { email, otp, new_password: newPassword })
+  }, [])
 
   const updateUser = useCallback((userData) => {
     setUser(userData)
@@ -473,7 +424,9 @@ export const AuthProvider = ({ children }) => {
     logout,
     updateUser,
     refreshUserData,
-  }), [user, token, loading, loginWithGoogle, loginWithEmail, registerWithEmail, sendEmailOtp, verifyEmailOtp, logout, updateUser, refreshUserData])
+    forgotPasswordSendOtp,
+    forgotPasswordResetPassword,
+  }), [user, token, loading, loginWithGoogle, loginWithEmail, registerWithEmail, sendEmailOtp, verifyEmailOtp, logout, updateUser, refreshUserData, forgotPasswordSendOtp, forgotPasswordResetPassword])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

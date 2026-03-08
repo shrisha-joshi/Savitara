@@ -1,30 +1,31 @@
 import ChatIcon from '@mui/icons-material/Chat';
 import {
-  Alert,
-  Avatar,
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  Container,
-  Divider,
-  Grid,
-  Paper,
-  Rating,
-  Tab,
-  Tabs,
-  Typography
+    Alert,
+    Avatar,
+    Box,
+    Button,
+    Chip,
+    CircularProgress,
+    Container,
+    Divider,
+    Grid,
+    Paper,
+    Rating,
+    Tab,
+    Tabs,
+    Typography
 } from '@mui/material';
+import { useTheme as useMuiTheme } from '@mui/material/styles';
 import PropTypes from 'prop-types';
 import { useEffect, useState } from 'react';
 import {
-  FaCheckCircle,
-  FaComment,
-  FaGraduationCap,
-  FaLanguage,
-  FaMapMarkerAlt,
-  FaStar,
-  FaUserClock
+    FaCheckCircle,
+    FaComment,
+    FaGraduationCap,
+    FaLanguage,
+    FaMapMarkerAlt,
+    FaStar,
+    FaUserClock
 } from 'react-icons/fa';
 import { useNavigate, useParams } from 'react-router-dom';
 import ServiceCard from '../../components/cards/ServiceCard';
@@ -62,6 +63,7 @@ CustomTabPanel.propTypes = {
 export default function AcharyaProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const profileTheme = useMuiTheme()
   
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -149,12 +151,14 @@ export default function AcharyaProfile() {
 
   return (
     <Layout>
-      <Box sx={{ backgroundColor: '#f8f9fa', minHeight: '100vh', pb: 8 }}>
+      <Box sx={{ bgcolor: 'background.default', minHeight: '100vh', pb: 8 }}>
         {/* Header / Hero Section */}
         <Paper 
           elevation={0}
           sx={{ 
-            background: 'linear-gradient(135deg, #1A2233 0%, #2C3E50 100%)',
+            background: profileTheme.palette.mode === 'dark'
+              ? 'linear-gradient(135deg, #0F1923 0%, #1C2B3A 100%)'
+              : 'linear-gradient(135deg, #1A2233 0%, #2C3E50 100%)',
             color: 'white',
             pt: 8,
             pb: 4,

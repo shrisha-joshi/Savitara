@@ -1,10 +1,16 @@
-import { Box, Typography, Card, CardContent, IconButton } from '@mui/material';
+import { Box, Card, CardContent, IconButton, Typography } from '@mui/material';
 import { motion } from 'framer-motion';
-import { 
-  FaFire, FaOm, FaHeart, FaHome, FaStar, FaBook, 
-  FaMoon, FaSun, FaPray
+import {
+    FaBook,
+    FaFire,
+    FaHeart, FaHome,
+    FaMoon,
+    FaOm,
+    FaPray,
+    FaStar,
+    FaSun
 } from 'react-icons/fa';
-import { GiLotus, GiPrayerBeads, GiIndianPalace } from 'react-icons/gi';
+import { GiIndianPalace, GiLotus, GiPrayerBeads } from 'react-icons/gi';
 
 // Icon mapping for services
 const serviceIcons = {
@@ -109,8 +115,9 @@ export const ServiceCard = ({
             overflow: 'hidden',
             cursor: 'pointer',
             height: '100%',
-            background: '#FFFFFF',
-            border: '1px solid #E8E8E8',
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
             '&:hover': {
               boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
               borderColor: color,
@@ -179,7 +186,7 @@ export const ServiceCard = ({
           padding: 2,
           borderRadius: 3,
           cursor: 'pointer',
-          background: '#FFFFFF',
+          bgcolor: 'background.paper',
           '&:hover': {
             borderColor: color,
           },

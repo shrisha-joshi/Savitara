@@ -1,12 +1,12 @@
-import { AppBar, Toolbar, Typography, Button, IconButton, Box, Avatar, Menu, MenuItem, Container, Tooltip, useTheme as useMuiTheme, alpha, ListItemIcon, ListItemText, Chip } from '@mui/material'
-import { Logout, Dashboard, Person, Search as SearchIcon, Event as EventIcon, Wallet as WalletIcon, Chat as ChatIcon, MoreVert, CalendarMonth, Category, Info, Handshake, MonetizationOn } from '@mui/icons-material'
-import { useState, useEffect } from 'react'
+import { CalendarMonth, Category, Chat as ChatIcon, Dashboard, Event as EventIcon, Handshake, Info, Logout, MonetizationOn, MoreVert, Person, Search as SearchIcon, Wallet as WalletIcon } from '@mui/icons-material'
+import { alpha, AppBar, Avatar, Box, Button, Chip, Container, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Toolbar, Tooltip, Typography, useTheme as useMuiTheme } from '@mui/material'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import api from '../services/api'
 // Make getInitials, generateAvatarColor optional or mock if missing, assuming they exist
-import { getInitials, generateAvatarColor } from '../utils/helpers'
+import { generateAvatarColor, getInitials } from '../utils/helpers'
 
 export default function Navbar() {
   const [anchorEl, setAnchorEl] = useState(null)
@@ -20,7 +20,7 @@ export default function Navbar() {
   // Fetch coin balance when user is logged in
   useEffect(() => {
     if (user) {
-      api.get('/gamification/coins/balance')
+      api.get('/gamification/coins/balance', { _skipErrorToast: true })
         .then(res => setCoinBalance(res.data?.balance || res.data?.data?.balance || 0))
         .catch(err => console.error('Failed to fetch coin balance:', err))
     }

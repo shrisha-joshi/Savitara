@@ -64,15 +64,26 @@ class RegisterRequest(BaseModel):
 
 
 class GoogleAuthRequest(BaseModel):
-    """Google OAuth authentication request"""
+    """Google OAuth authentication request.
+    Accepts either:
+    - access_token: from @react-oauth/google useGoogleLogin (recommended for web)
+    - id_token: from Google One Tap / GoogleLogin component
+    """
 
-    id_token: str = Field(..., description="Google ID token")
-    role: UserRole = Field(..., description="User role selection")
+    id_token: Optional[str] = Field(None, description="Google ID token (JWT)")
+    access_token: Optional[str] = Field(None, description="Google OAuth2 access token")
+    role: UserRole = Field(UserRole.GRIHASTA, description="User role selection")
+
+    @model_validator(mode='after')
+    def validate_tokens(self) -> 'GoogleAuthRequest':
+        if not self.id_token and not self.access_token:
+            raise ValueError("Either id_token or access_token must be provided")
+        return self
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjEifQ...",
+                "access_token": "ya29.a0ARrd...",
                 "role": "grihasta",
             }
         }

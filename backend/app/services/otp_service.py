@@ -49,7 +49,10 @@ class OTPService:
             sort=[("created_at", -1)],
         )
         if existing:
-            elapsed = (datetime.now(timezone.utc) - existing["created_at"]).total_seconds()
+            created_at = existing["created_at"]
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            elapsed = (datetime.now(timezone.utc) - created_at).total_seconds()
             if elapsed < OTP_COOLDOWN_SECONDS:
                 wait = int(OTP_COOLDOWN_SECONDS - elapsed)
                 return {
@@ -169,7 +172,10 @@ class EmailOTPService:
             sort=[("created_at", -1)],
         )
         if existing:
-            elapsed = (datetime.now(timezone.utc) - existing["created_at"]).total_seconds()
+            created_at = existing["created_at"]
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            elapsed = (datetime.now(timezone.utc) - created_at).total_seconds()
             if elapsed < OTP_COOLDOWN_SECONDS:
                 wait = int(OTP_COOLDOWN_SECONDS - elapsed)
                 return {
@@ -214,8 +220,17 @@ class EmailOTPService:
         try:
             from app.core.config import get_settings
             settings = get_settings()
-            if not settings.SMTP_HOST or not settings.SMTP_USER:
-                # SMTP not configured — log OTP for dev use
+            _placeholders = ("test-", "your-", "placeholder", "test_", "none")
+            if (
+                not settings.SMTP_HOST
+                or not settings.SMTP_USER
+                or not settings.SMTP_PASSWORD
+                or any(str(settings.SMTP_PASSWORD).lower().startswith(p) for p in _placeholders)
+            ):
+                logger.warning(
+                    "[EMAIL_OTP] SMTP not configured — OTP NOT emailed. "
+                    "Set SMTP_USER + SMTP_PASSWORD (Gmail App Password) in .env to enable email delivery."
+                )
                 return
 
             import smtplib
@@ -268,7 +283,10 @@ class EmailOTPService:
             return {"verified": False, "error": "No OTP found. Please request a new one."}
 
         # Check expiry
-        if datetime.now(timezone.utc) > otp_doc["expires_at"]:
+        expires_at = otp_doc["expires_at"]
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) > expires_at:
             await db.email_otps.delete_one({"_id": otp_doc["_id"]})
             return {"verified": False, "error": "OTP has expired. Please request a new one."}
 
@@ -304,5 +322,192 @@ class EmailOTPService:
         """Remove expired email OTPs (housekeeping)"""
         result = await db.email_otps.delete_many(
             {"expires_at": {"$lt": datetime.now(timezone.utc)}}
+        )
+        return result.deleted_count
+
+
+class PasswordResetOTPService:
+    """OTP service for password reset flow — uses a separate collection to avoid
+    conflicting with email-verification OTPs (email_otps)."""
+
+    @staticmethod
+    def generate_otp() -> str:
+        """Generate a secure numeric OTP"""
+        return "".join(random.choices(string.digits, k=OTP_LENGTH))
+
+    @classmethod
+    async def send_otp(
+        cls, db: AsyncIOMotorDatabase, email: str
+    ) -> Dict[str, Any]:
+        """
+        Generate and store a password-reset OTP for the given email.
+        Always succeeds silently (caller should not reveal whether email exists).
+        """
+        email = email.strip().lower()
+
+        # Cooldown check — prevent OTP spam
+        existing = await db.password_reset_otps.find_one(
+            {"email": email, "consumed": False},
+            sort=[("created_at", -1)],
+        )
+        if existing:
+            created_at = existing["created_at"]
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            elapsed = (datetime.now(timezone.utc) - created_at).total_seconds()
+            if elapsed < OTP_COOLDOWN_SECONDS:
+                wait = int(OTP_COOLDOWN_SECONDS - elapsed)
+                return {
+                    "sent": False,
+                    "message": f"Please wait {wait} seconds before requesting another code",
+                    "retry_after": wait,
+                }
+
+        otp = cls.generate_otp()
+        otp_doc = {
+            "email": email,
+            "otp": otp,
+            "attempts": 0,
+            "consumed": False,
+            "created_at": datetime.now(timezone.utc),
+            "expires_at": datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES),
+        }
+
+        # Upsert — one active reset OTP per email
+        await db.password_reset_otps.update_one(
+            {"email": email, "consumed": False},
+            {"$set": otp_doc},
+            upsert=True,
+        )
+
+        logger.info(f"[PW_RESET_OTP] Email: {email}, OTP: {otp} (integrate email provider for production)")
+        email_delivered = await cls._send_email(email, otp)
+
+        return {
+            "sent": True,
+            "message": "Reset code sent",
+            "expires_in": OTP_EXPIRY_MINUTES * 60,
+            "otp": otp,                     # NEVER send to client in production
+            "email_delivered": email_delivered,  # True only when SMTP actually sent the email
+        }
+
+    @classmethod
+    async def _send_email(cls, email: str, otp: str) -> bool:
+        """
+        Send password-reset OTP via SMTP if configured.
+        Returns True if the email was successfully delivered, False otherwise.
+        """
+        try:
+            from app.core.config import get_settings
+            settings = get_settings()
+            _placeholders = ("test-", "your-", "placeholder", "test_", "none")
+            if (
+                not settings.SMTP_HOST
+                or not settings.SMTP_USER
+                or not settings.SMTP_PASSWORD
+                or any(str(settings.SMTP_PASSWORD).lower().startswith(p) for p in _placeholders)
+            ):
+                logger.warning(
+                    "[PW_RESET_OTP] SMTP not configured — reset code NOT emailed. "
+                    "Set SMTP credentials in .env to enable delivery."
+                )
+                return False
+
+            import smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = "Reset Your Savitara Password"
+            msg["From"] = f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>"
+            msg["To"] = email
+
+            text_body = (
+                f"Your Savitara password reset code is: {otp}\n\n"
+                f"This code expires in {OTP_EXPIRY_MINUTES} minutes.\n"
+                "If you did not request this, please ignore this email.\n"
+                "Do not share this code with anyone."
+            )
+            html_body = (
+                "<p>We received a request to reset your <strong>Savitara</strong> password.</p>"
+                "<p>Your reset code is:</p>"
+                f"<h2 style='letter-spacing:6px;font-size:2rem;color:#FF6B35'>{otp}</h2>"
+                f"<p>This code expires in <strong>{OTP_EXPIRY_MINUTES} minutes</strong>.</p>"
+                "<p>If you did not request this, please ignore this email.</p>"
+                "<p>Do not share this code with anyone.</p>"
+            )
+
+            msg.attach(MIMEText(text_body, "plain"))
+            msg.attach(MIMEText(html_body, "html"))
+
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+                server.starttls()
+                server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                server.sendmail(settings.EMAIL_FROM, email, msg.as_string())
+
+            logger.info(f"[PW_RESET_OTP] Sent reset code email to {email}")
+            return True
+        except Exception as exc:
+            logger.warning(f"[PW_RESET_OTP] Failed to send email to {email}: {exc}")
+            return False
+
+    @classmethod
+    async def verify_and_consume(
+        cls, db: AsyncIOMotorDatabase, email: str, otp: str
+    ) -> Dict[str, Any]:
+        """
+        Verify a password-reset OTP and consume it (one-time use).
+        Returns {'verified': True} on success or {'verified': False, 'error': str} on failure.
+        """
+        email = email.strip().lower()
+
+        otp_doc = await db.password_reset_otps.find_one(
+            {"email": email, "consumed": False},
+            sort=[("created_at", -1)],
+        )
+
+        if not otp_doc:
+            return {"verified": False, "error": "No reset code found. Please request a new one."}
+
+        expires_at = otp_doc["expires_at"]
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) > expires_at:
+            await db.password_reset_otps.delete_one({"_id": otp_doc["_id"]})
+            return {"verified": False, "error": "Reset code has expired. Please request a new one."}
+
+        if otp_doc["attempts"] >= OTP_MAX_ATTEMPTS:
+            await db.password_reset_otps.delete_one({"_id": otp_doc["_id"]})
+            return {"verified": False, "error": "Too many failed attempts. Please request a new code."}
+
+        # Increment attempts before verifying (prevent timing attacks on counter)
+        await db.password_reset_otps.update_one(
+            {"_id": otp_doc["_id"]},
+            {"$inc": {"attempts": 1}},
+        )
+
+        if otp_doc["otp"] != otp:
+            remaining = OTP_MAX_ATTEMPTS - otp_doc["attempts"] - 1
+            return {
+                "verified": False,
+                "error": f"Invalid code. {remaining} attempts remaining.",
+            }
+
+        # Consume — mark as used so it cannot be replayed
+        await db.password_reset_otps.update_one(
+            {"_id": otp_doc["_id"]},
+            {"$set": {"consumed": True, "consumed_at": datetime.now(timezone.utc)}},
+        )
+
+        return {"verified": True, "email": email}
+
+    @classmethod
+    async def cleanup_expired(cls, db: AsyncIOMotorDatabase) -> int:
+        """Remove expired/consumed password-reset OTPs (housekeeping)"""
+        result = await db.password_reset_otps.delete_many(
+            {"$or": [
+                {"expires_at": {"$lt": datetime.now(timezone.utc)}},
+                {"consumed": True, "consumed_at": {"$lt": datetime.now(timezone.utc) - timedelta(hours=24)}},
+            ]}
         )
         return result.deleted_count

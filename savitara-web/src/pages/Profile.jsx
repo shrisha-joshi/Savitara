@@ -1,37 +1,37 @@
-import { useState, useEffect } from 'react'
+import { DarkMode, LightMode, SettingsBrightness } from '@mui/icons-material'
 import {
-  Container,
-  Paper,
-  Box,
-  Divider,
-  Grid,
-  Typography,
-  CircularProgress,
-  Card,
-  CardContent,
-  FormControl,
-  RadioGroup,
-  FormControlLabel,
-  Radio,
-  Stack
+    Box,
+    Card,
+    CardContent,
+    CircularProgress,
+    Container,
+    Divider,
+    FormControl,
+    FormControlLabel,
+    Grid,
+    Paper,
+    Radio,
+    RadioGroup,
+    Stack,
+    Typography
 } from '@mui/material'
-import { LightMode, DarkMode, SettingsBrightness } from '@mui/icons-material'
-import { useAuth } from '../context/AuthContext'
-import { useTheme } from '../context/ThemeContext'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Layout from '../components/Layout'
-import api from '../services/api'
 import { toast } from 'react-toastify'
 import GamificationDashboard from '../components/GamificationDashboard'
+import Layout from '../components/Layout'
 import {
-  ProfileHeader,
-  ProfileStats,
-  LogoutDialog,
-  DeleteAccountDialog1,
-  DeleteAccountDialog2
+    DeleteAccountDialog1,
+    DeleteAccountDialog2,
+    LogoutDialog,
+    ProfileHeader,
+    ProfileStats
 } from '../components/profile'
-import { CommonProfileFields, AcharyaProfileFields } from '../components/profile/ProfileFields'
-import { QuickLinks, AccountActions } from '../components/profile/AccountActions'
+import { AccountActions, QuickLinks } from '../components/profile/AccountActions'
+import { AcharyaProfileFields, CommonProfileFields } from '../components/profile/ProfileFields'
+import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
+import api from '../services/api'
 
 export default function Profile() {
   const { user, logout } = useAuth()
@@ -290,7 +290,7 @@ export default function Profile() {
               sx={{
                 p: 4,
                 borderRadius: 4,
-                background: 'linear-gradient(180deg, #FFFFFF 0%, #FFF8F0 100%)'
+                bgcolor: 'background.paper'
               }}
             >
               <ProfileHeader

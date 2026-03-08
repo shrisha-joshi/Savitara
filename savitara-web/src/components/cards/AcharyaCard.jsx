@@ -1,6 +1,7 @@
-import { Box, Typography, Card, CardContent, CardMedia, Button, Rating, Chip, Avatar, IconButton, Stack } from '@mui/material';
+import { Avatar, Box, Button, Card, CardContent, CardMedia, Chip, IconButton, Rating, Stack, Typography } from '@mui/material';
+import { useTheme as useMuiTheme } from '@mui/material/styles';
 import { motion } from 'framer-motion';
-import { FaStar, FaMapMarkerAlt, FaClock, FaHeart, FaRegHeart, FaUserCircle, FaComments, FaCalendarCheck } from 'react-icons/fa';
+import { FaCalendarCheck, FaClock, FaComments, FaHeart, FaMapMarkerAlt, FaRegHeart, FaStar, FaUserCircle } from 'react-icons/fa';
 
 // Acharya Card Component
 export const AcharyaCard = ({ 
@@ -12,6 +13,8 @@ export const AcharyaCard = ({
   isFavorite = false,
   variant = 'default' // 'default', 'compact', 'featured'
 }) => {
+  const cardTheme = useMuiTheme();
+  const cardIsDark = cardTheme.palette.mode === 'dark';
   const {
     id: originalId,
     _id,
@@ -103,8 +106,10 @@ export const AcharyaCard = ({
             borderRadius: 4,
             overflow: 'hidden',
             position: 'relative',
-            background: 'linear-gradient(135deg, #FFFFFF 0%, #FFF8E1 100%)',
-            border: '2px solid #FFD700',
+            background: cardIsDark
+              ? 'linear-gradient(135deg, #1C1917 0%, #292524 100%)'
+              : 'linear-gradient(135deg, #FFFFFF 0%, #FFF8E1 100%)',
+            border: `2px solid ${cardIsDark ? '#92400E' : '#FFD700'}`,
             boxShadow: '0 8px 32px rgba(255, 153, 51, 0.2)',
             '&:hover': {
               boxShadow: '0 16px 48px rgba(255, 153, 51, 0.3)',
@@ -191,10 +196,10 @@ export const AcharyaCard = ({
                   label={spec}
                   size="small"
                   sx={{
-                    backgroundColor: '#FFF8E1',
-                    color: '#FF9933',
+                    backgroundColor: cardIsDark ? 'rgba(249, 115, 22, 0.15)' : '#FFF8E1',
+                    color: cardIsDark ? '#FB923C' : '#FF9933',
                     fontWeight: 500,
-                    border: '1px solid #FF9933',
+                    border: `1px solid ${cardIsDark ? '#92400E' : '#FF9933'}`,
                   }}
                 />
               ))}

@@ -24,13 +24,16 @@ const api = createApiClient({
 })
 
 // HTTP status-code toast notifications (separate concern from auth refresh)
+// Pass { _skipErrorToast: true } in axios config to suppress toasts for background/optional calls
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const status = error.response?.status
-    if (status === 403) toast.error('Access denied')
-    else if (status === 404) toast.error('Resource not found')
-    else if (status >= 500) toast.error('Server error. Please try again later.')
+    if (!error.config?._skipErrorToast) {
+      const status = error.response?.status
+      if (status === 403) toast.error('Access denied')
+      else if (status === 404) toast.error('Resource not found')
+      else if (status >= 500) toast.error('Server error. Please try again later.')
+    }
     throw error
   }
 )

@@ -14,11 +14,11 @@
      3. The @font-face below will serve them from /fonts/ automatically.
    Licensing: Samarkan is a proprietary typeface — confirm your licence
    allows web embedding before distributing the font files. */
+/* Samarkan font is loaded via CDN in index.html (https://fonts.cdnfonts.com/css/samarkan).
+   Local font files are optional — place Samarkan.woff2 / .woff in public/fonts/ to self-host. */
 @font-face {
   font-family: 'Samarkan';
-  src: url('/fonts/Samarkan.woff2') format('woff2'),
-       url('/fonts/Samarkan.woff') format('woff'),
-       local('Samarkan'), local('Times New Roman');
+  src: local('Samarkan'), local('Times New Roman');
   font-weight: normal;
   font-style: normal;
   font-display: swap;

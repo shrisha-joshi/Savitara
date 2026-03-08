@@ -1,7 +1,7 @@
-import { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import PropTypes from 'prop-types';
-import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles';
+import PropTypes from 'prop-types';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 // Theme Context
 const ThemeContext = createContext();
@@ -432,6 +432,7 @@ const createAppTheme = (mode) => {
       },
       // ========================================
       // APP BAR / NAVIGATION
+      // Always saffron orange for brand consistency — white text is visible on orange in both modes
       // ========================================
       MuiAppBar: {
         defaultProps: {
@@ -439,13 +440,14 @@ const createAppTheme = (mode) => {
         },
         styleOverrides: {
           root: {
-            backgroundColor: isDark ? 'rgba(28, 25, 23, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+            background: `linear-gradient(135deg, ${SAFFRON[500]} 0%, ${SAFFRON[600]} 100%)`,
             backdropFilter: 'blur(12px) saturate(180%)',
             WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-            boxShadow: isDark 
-              ? '0 4px 30px rgba(249, 115, 22, 0.15)' 
-              : '0 4px 30px rgba(249, 115, 22, 0.08)',
-            borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}`,
+            boxShadow: isDark
+              ? `0 4px 30px rgba(249, 115, 22, 0.3)`
+              : `0 4px 30px rgba(249, 115, 22, 0.2)`,
+            borderBottom: '1px solid rgba(255, 255, 255, 0.15)',
+            color: '#FFFFFF',
           },
         },
       },

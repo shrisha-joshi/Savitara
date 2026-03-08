@@ -462,9 +462,9 @@ def _parse_grihasta_id(user_id_str: str) -> Any:
 async def get_price_estimate(
     acharya_id: Annotated[str, Query(..., description="Acharya profile ID")],
     date_time: Annotated[str, Query(..., description="ISO-8601 datetime e.g. 2026-03-15T14:00:00")],
-    duration_hours: Annotated[int, Query(2, ge=1, le=12, description="Booking duration in hours")],
-    booking_type: Annotated[str, Query("only", description="'only' or 'with_samagri'")],
-    pooja_id: Annotated[Optional[str], Query(None, description="Optional pooja/service ID for base price")],
+    duration_hours: Annotated[int, Query(ge=1, le=12, description="Booking duration in hours")] = 2,
+    booking_type: Annotated[str, Query(description="'only' or 'with_samagri'")] = "only",
+    pooja_id: Annotated[Optional[str], Query(description="Optional pooja/service ID for base price")] = None,
     current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
@@ -575,7 +575,7 @@ async def get_price_estimate(
 async def check_availability(
     acharya_id: Annotated[str, Query(..., description="Acharya profile ID")],
     date_time: Annotated[str, Query(..., description="ISO-8601 datetime e.g. 2026-03-15T14:00:00")],
-    duration: Annotated[int, Query(2, ge=1, le=12, description="Booking duration in hours")],
+    duration: Annotated[int, Query(ge=1, le=12, description="Booking duration in hours")] = 2,
     current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):

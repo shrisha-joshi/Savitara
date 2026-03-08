@@ -944,7 +944,7 @@ async def send_media_message(
     receiver_id: Annotated[Optional[str], Form()] = None,
     message_type: Annotated[str, Form()] = "file",
     duration_seconds: Annotated[Optional[int], Form()] = None,
-    file: UploadFile = File(None),
+    file: Annotated[Optional[UploadFile], File()] = None,  # SonarQube: S8410
     current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):

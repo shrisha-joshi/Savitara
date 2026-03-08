@@ -1,6 +1,6 @@
+import { Box, Container, Typography, useTheme } from '@mui/material';
+import { keyframes, styled } from '@mui/material/styles';
 import PropTypes from 'prop-types';
-import { Box, Typography, Container, useTheme } from '@mui/material';
-import { styled, keyframes } from '@mui/material/styles';
 
 // Keyframes for rotating circles
 const rotate = keyframes`
@@ -42,6 +42,7 @@ const RotatingCircle = styled('div')(({ theme, duration, radius, direction = 'no
   marginTop: `-${radius}px`,
   marginLeft: `-${radius}px`,
   borderRadius: '50%',
+  overflow: 'visible',
   animation: `${rotate} ${duration}s linear infinite`,
   animationDirection: direction,
   display: 'flex',
@@ -280,7 +281,7 @@ const HeroSection = ({ height = '100vh' }) => {
                     letterSpacing="3px" // SPACED OUT
                     style={{ textShadow: '0 0 5px rgba(255, 140, 0, 0.4)' }} // GLOW
                   >
-                    <textPath href="#circleInner" startOffset="0%">
+                    <textPath href="#circleInner" xlinkHref="#circleInner" startOffset="0%">
                       {sanskritTexts.inner}
                     </textPath>
                   </text>
@@ -309,7 +310,7 @@ const HeroSection = ({ height = '100vh' }) => {
                     letterSpacing="4px" // SPACED OUT
                     style={{ textShadow: '0 0 8px rgba(255, 120, 0, 0.4)' }} // GLOW
                   >
-                    <textPath href="#circleMiddle" startOffset="0%">
+                    <textPath href="#circleMiddle" xlinkHref="#circleMiddle" startOffset="0%">
                       {sanskritTexts.middle}
                     </textPath>
                   </text>
@@ -338,7 +339,7 @@ const HeroSection = ({ height = '100vh' }) => {
                     letterSpacing="5px" // WIDE SPACING
                     style={{ textShadow: '0 0 10px rgba(255, 69, 0, 0.5)' }} // STRONG GLOW
                   >
-                    <textPath href="#circleOuter" startOffset="0%">
+                    <textPath href="#circleOuter" xlinkHref="#circleOuter" startOffset="0%">
                       {sanskritTexts.outer}
                     </textPath>
                   </text>
@@ -347,7 +348,6 @@ const HeroSection = ({ height = '100vh' }) => {
 
               {/* Central Hero Image */}
               <HeroImage
-                theme={theme}
                 src="/assets/images/hero-image1.png"
                 alt="Spiritual Guidance"
                 onError={(e) => {

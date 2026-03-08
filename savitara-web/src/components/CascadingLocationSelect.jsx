@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
-import { Autocomplete, TextField, Box, InputAdornment, Typography } from '@mui/material';
-import { Country, State, City } from 'country-state-city';
+import { Autocomplete, Box, InputAdornment, TextField, Typography } from '@mui/material';
+import { City, Country, State } from 'country-state-city';
+import PropTypes from 'prop-types';
+import { useEffect, useState } from 'react';
 
 const CascadingLocationSelect = ({
   country,
@@ -104,7 +105,7 @@ const CascadingLocationSelect = ({
     const inputValue = event.target.value;
     
     // Only allow digits in the input
-    const digitsOnly = inputValue.replace(/\D/g, '');
+    const digitsOnly = inputValue.replaceAll(/\D/g, '');
     
     // Validate: exactly 10 digits for mobile number
     if (digitsOnly.length > 10) {
@@ -242,6 +243,18 @@ const CascadingLocationSelect = ({
       )}
     </Box>
   );
+};
+
+CascadingLocationSelect.propTypes = {
+  country: PropTypes.string,
+  state: PropTypes.string,
+  city: PropTypes.string,
+  phone: PropTypes.string,
+  onLocationChange: PropTypes.func.isRequired,
+  onPhoneChange: PropTypes.func,
+  disabled: PropTypes.bool,
+  required: PropTypes.bool,
+  sx: PropTypes.object,
 };
 
 export default CascadingLocationSelect;

@@ -1620,7 +1620,7 @@ def _serialize_document(doc: Any) -> Any:
     each contain their own ObjectId fields.
     """
     if isinstance(doc, dict):
-        for key in doc.keys():
+        for key in list(doc.keys()):  # NOSONAR - snapshot required; dict grows during iteration when adding "id" key
             val = doc[key]
             if isinstance(val, ObjectId):
                 doc[key] = str(val)

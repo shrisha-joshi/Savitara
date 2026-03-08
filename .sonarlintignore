@@ -1,0 +1,9 @@
+# SonarLint: exclude files outside this project
+# Python stdlib and package manager paths
+**/scoop/**
+**/pyenv/**
+**/AppData/**
+**/.vscode/extensions/**
+**/typeshed-fallback/**
+**/site-packages/**
+**/Lib/**

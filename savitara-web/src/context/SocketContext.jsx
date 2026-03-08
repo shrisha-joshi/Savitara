@@ -1,7 +1,14 @@
 import PropTypes from 'prop-types';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import api from '../services/api';
 import { useAuth } from './AuthContext';
+
+// ── Module-level WS message state updater to avoid deep function nesting ──
+function applyWsMarkRead(messages, messageId, readAt) {
+  return messages.map(msg => {
+    if ((msg.id || msg._id) !== messageId) return msg;
+    return { ...msg, status: 'read', read_at: readAt || new Date().toISOString() };
+  });
+}
 
 const SocketContext = createContext(null);
 
@@ -117,6 +124,41 @@ export const SocketProvider = ({ children }) => {
     }));
   }, []);
 
+  // WebSocket message handler — defined at component level to avoid 4+ function nesting in connect
+  const handleWsMessage = useCallback((event) => {
+    try {
+      const data = JSON.parse(event.data);
+      // Do NOT log message content — may contain private chat data
+
+      if (data.type === 'new_message') {
+        setMessages(prev => [...prev, data]);
+      } else if (data.type === 'message_read') {
+        setMessages(prev => applyWsMarkRead(prev, data.message_id || data.id, data.read_at));
+      } else if (data.type === 'pong') {
+        // heartbeat response; no-op
+      } else if (data.type === 'typing_indicator') {
+        handleTypingIndicator(data);
+      } else if (data.type === 'payment_required') {
+        handlePaymentRequired(data);
+      } else if (data.type === 'booking_update') {
+        const normalized = {
+          booking_id: data.booking_id || data.booking?.id,
+          status: data.status || data.booking?.status,
+          grihasta_id: data.grihasta_id || data.booking?.grihasta_id,
+          acharya_id: data.acharya_id || data.booking?.acharya_id,
+          initiator_id: data.initiator_id,
+          timestamp: data.timestamp,
+          received_at: Date.now(),
+        };
+        setBookingUpdates(prev => [...prev.slice(-10), normalized]);
+      } else if (data.type === 'delivery_status') {
+        handleDeliveryStatus(data);
+      }
+    } catch (err) {
+      console.error('WS Parse Error:', err);
+    }
+  }, [handleTypingIndicator, handlePaymentRequired, handleDeliveryStatus]);
+
   const connect = useCallback(async () => {
     if (!user || !token || socket?.readyState === WebSocket.OPEN || connectingRef.current) return;
 
@@ -132,17 +174,30 @@ export const SocketProvider = ({ children }) => {
     const protocol = isSecure ? 'wss:' : 'ws:';
     
     // Get WebSocket host from environment or derive from current location
+    const fallbackApiUrl = import.meta.env.DEV ? 'http://localhost:8000/api/v1' : '';
+    const apiBaseUrl = import.meta.env.VITE_BACKEND_API_URL || fallbackApiUrl;
+    
     let wsHost = import.meta.env.VITE_BACKEND_WS_HOST;
     if (!wsHost) {
-      const apiUrl = import.meta.env.VITE_BACKEND_API_URL || `http://localhost:8000`;
-      wsHost = apiUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+      // derive wsHost from apiBaseUrl, stripping protocol and "/api/v1" or other paths
+      wsHost = apiBaseUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     }
 
     // Fetch a short-lived WS ticket to avoid exposing the JWT in the URL
+    // Uses native fetch (not axios) so browser won't log HTTP error codes to console
     let wsAuthParam;
     try {
-      const ticketRes = await api.post('/auth/ws-ticket', {}, { _skipErrorToast: true });
-      const ticket = ticketRes.data?.data?.ticket;
+      const ticketRes = await fetch(`${apiBaseUrl}/auth/ws-ticket`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: '{}',
+      });
+      if (!ticketRes.ok) throw new Error(`HTTP ${ticketRes.status}`);
+      const ticketData = await ticketRes.json();
+      const ticket = ticketData?.data?.ticket;
       if (!ticket) throw new Error('No ticket in response');
       wsAuthParam = `ticket=${ticket}`;
     } catch (err) {
@@ -153,8 +208,8 @@ export const SocketProvider = ({ children }) => {
         connectingRef.current = false;
         return;
       }
-      // In development, if ticket fails (e.g., Redis unavailable), skip WebSocket
-      console.warn('[WS] WebSocket ticket unavailable (Redis not running). Skipping WebSocket connection in development.');
+      // In development, if ticket fails (e.g., Redis unavailable), skip WebSocket silently
+      console.debug('[WS] WebSocket ticket unavailable (Redis not running). Skipping WebSocket connection in development.');
       setIsConnecting(false);
       connectingRef.current = false;
       return;
@@ -185,54 +240,29 @@ export const SocketProvider = ({ children }) => {
       // Send any queued messages
       if (offlineQueue.length > 0) {
         console.log(`[WS] Sending ${offlineQueue.length} queued messages`);
-        offlineQueue.forEach(msg => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify(msg));
+        const newRemaining = [];
+        for (const msg of offlineQueue) {
+          try {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify(msg));
+            } else {
+              newRemaining.push(msg);
+            }
+          } catch (err) {
+            console.error('Failed to send queued message via WS:', err);
+            newRemaining.push(msg);
           }
-        });
-        setOfflineQueue([]);
-        localStorage.removeItem(OFFLINE_QUEUE_KEY);
+        }
+        setOfflineQueue(newRemaining);
+        if (newRemaining.length === 0) {
+          localStorage.removeItem(OFFLINE_QUEUE_KEY);
+        } else {
+          localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(newRemaining));
+        }
       }
     };
 
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        // Do NOT log message content — may contain private chat data
-        
-        if (data.type === 'new_message') {
-          setMessages(prev => [...prev, data]);
-        } else if (data.type === 'message_read') {
-          setMessages(prev => prev.map(msg => {
-            if ((msg.id || msg._id) === (data.message_id || data.id)) {
-              return { ...msg, status: 'read', read_at: data.read_at || new Date().toISOString() };
-            }
-            return msg;
-          }));
-        } else if (data.type === 'pong') {
-          // heartbeat response; no-op
-        } else if (data.type === 'typing_indicator') {
-          handleTypingIndicator(data);
-        } else if (data.type === 'payment_required') {
-          handlePaymentRequired(data);
-        } else if (data.type === 'booking_update') {
-          const normalized = {
-            booking_id: data.booking_id || data.booking?.id,
-            status: data.status || data.booking?.status,
-            grihasta_id: data.grihasta_id || data.booking?.grihasta_id,
-            acharya_id: data.acharya_id || data.booking?.acharya_id,
-            initiator_id: data.initiator_id,
-            timestamp: data.timestamp,
-            received_at: Date.now(),
-          };
-          setBookingUpdates(prev => [...prev.slice(-10), normalized]);
-        } else if (data.type === 'delivery_status') {
-          handleDeliveryStatus(data);
-        }
-      } catch (err) {
-        console.error('WS Parse Error:', err);
-      }
-    };
+    ws.onmessage = handleWsMessage;
 
     ws.onclose = (event) => {
       console.log('[WS] Disconnected:', event.code, event.reason);
@@ -268,7 +298,7 @@ export const SocketProvider = ({ children }) => {
       // Let onclose handle reconnection
     };
 
-  }, [user, token, socket, offlineQueue, startHeartbeat, stopHeartbeat, handleTypingIndicator, handlePaymentRequired, handleDeliveryStatus]);
+  }, [user, token, socket, offlineQueue, startHeartbeat, stopHeartbeat, handleWsMessage]);
 
   useEffect(() => {
     if (user && token) {

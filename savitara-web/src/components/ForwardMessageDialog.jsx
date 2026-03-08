@@ -1,33 +1,32 @@
-import { useState, useEffect, useCallback } from 'react';
-import PropTypes from 'prop-types';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemAvatar,
-  ListItemText,
-  Avatar,
-  Checkbox,
-  Typography,
-  Box,
-  Chip,
-  InputAdornment,
-  CircularProgress,
-  Alert,
-  IconButton
-} from '@mui/material';
-import {
-  Search,
-  Close,
-  Person,
-  Group
+    Close,
+    Person,
+    Search
 } from '@mui/icons-material';
+import {
+    Alert,
+    Avatar,
+    Box,
+    Button,
+    Checkbox,
+    Chip,
+    CircularProgress,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    IconButton,
+    InputAdornment,
+    List,
+    ListItem,
+    ListItemAvatar,
+    ListItemButton,
+    ListItemText,
+    TextField,
+    Typography
+} from '@mui/material';
+import PropTypes from 'prop-types';
+import { useCallback, useEffect, useState } from 'react';
 import api from '../services/api';
 
 const MAX_FORWARD_TARGETS = 50; // Maximum recipients per forward
@@ -53,6 +52,27 @@ const ForwardMessageDialog = ({ open, onClose, message, currentUserId }) => {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
 
+  const loadConversations = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const response = await api.get('/chat/conversations', {
+        params: { page: 1, limit: 100 }
+      });
+
+      const convData = response.data?.data?.conversations || response.data?.conversations || [];
+      // Filter out the current conversation
+      const filtered = convData.filter(
+        (conv) => (conv.id || conv._id) !== message?.conversation_id
+      );
+      setConversations(filtered);
+    } catch (err) {
+      console.error('Failed to load conversations:', err);
+      setError('Failed to load conversations');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [message]);
+
   useEffect(() => {
     if (open) {
       loadConversations();
@@ -63,31 +83,6 @@ const ForwardMessageDialog = ({ open, onClose, message, currentUserId }) => {
       setError('');
     }
   }, [open, loadConversations]);
-
-  const loadConversations = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const response = await api.get('/conversations', {
-        params: {
-          limit: 100,
-          include_blocked: false,
-        }
-      });
-
-      if (response.data.success) {
-        // Filter out the current conversation
-        const filtered = response.data.data.conversations.filter(
-          (conv) => conv.id !== message?.conversation_id
-        );
-        setConversations(filtered);
-      }
-    } catch (err) {
-      console.error('Failed to load conversations:', err);
-      setError('Failed to load conversations');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [message]);
 
   const handleToggleConversation = (conversationId) => {
     setSelectedConversations((prev) => {
@@ -110,59 +105,48 @@ const ForwardMessageDialog = ({ open, onClose, message, currentUserId }) => {
       return;
     }
 
+    const messageId = message.id || message._id;
+    if (!messageId) {
+      setError('Message ID is missing, cannot forward.');
+      return;
+    }
+
     try {
       setIsSending(true);
       setError('');
 
-      // Determine if forwarding to users or conversations
-      const selectedUsers = selectedConversations
-        .map((convId) => {
-          const conv = conversations.find((c) => c.id === convId);
-          // For 1-on-1 conversations, extract the other user's ID
-          if (conv?.participants?.length === 2) {
-            return conv.participants.find((p) => p.id !== currentUserId)?.id;
-          }
-          return null;
-        })
-        .filter(Boolean);
-
-      const groupConversations = selectedConversations.filter((convId) => {
-        const conv = conversations.find((c) => c.id === convId);
-        return conv?.participants?.length > 2;
+      const promises = selectedConversations.map(async (convId) => {
+        const conv = conversations.find((c) => (c.id || c._id) === convId);
+        const recipientId = conv?.other_user?.id || conv?.other_user?._id;
+        if (!recipientId) {
+          throw new Error(`Missing recipient for conversation ${conv?.title || convId}`);
+        }
+        await api.post(`/chat/messages`, {
+          receiver_id: recipientId,
+          content: message.content || '',
+          message_type: message.message_type || 'text',
+          media_url: message.media_url,
+          forwarded_from: { id: messageId, name: message.sender_name || '' },
+        });
+        return { convId, success: true };
       });
 
-      // Forward to users (1-on-1 conversations)
-      if (selectedUsers.length > 0) {
-        await api.post(`/messages/${message.id}/forward`, {
-          recipient_ids: selectedUsers,
-          include_original_context: true,
-        });
+      const results = await Promise.allSettled(promises);
+      const failed = results.filter(r => r.status === 'rejected');
+
+      const failedConversations = selectedConversations.filter((_, index) => results[index].status === 'rejected');
+      setSelectedConversations(failedConversations);
+
+      if (failed.length === 0) {
+        onClose(true); // Complete success
+      } else {
+        const failedCount = failed.length;
+        setError(`Failed to forward message to ${failedCount} recipient(s).`);
+        // We do not close the dialog on partial failure so the user can inspect or retry.
       }
-
-      // Forward to group conversations
-      for (const conversationId of groupConversations) {
-        await api.post(`/messages/${message.id}/forward/conversation`, {
-          conversation_id: conversationId,
-          include_original_context: true,
-        });
-      }
-
-      // Success - close dialog
-      onClose(true); // Pass true to indicate success
-
     } catch (err) {
       console.error('Forward failed:', err);
-      
-      let errorMessage = 'Failed to forward message';
-      if (err.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      } else if (err.response?.status === 403) {
-        errorMessage = 'You don\'t have permission to forward this message';
-      } else if (err.response?.status === 404) {
-        errorMessage = 'Message not found';
-      }
-      
-      setError(errorMessage);
+      setError('Failed to forward message');
     } finally {
       setIsSending(false);
     }
@@ -170,49 +154,18 @@ const ForwardMessageDialog = ({ open, onClose, message, currentUserId }) => {
 
   const filteredConversations = conversations.filter((conv) => {
     if (!searchQuery) return true;
-
     const query = searchQuery.toLowerCase();
-    
-    // Search by conversation name (for group chats)
-    if (conv.name?.toLowerCase().includes(query)) {
-      return true;
-    }
-
-    // Search by participant names
-    if (conv.participants) {
-      return conv.participants.some(
-        (p) => p.name?.toLowerCase().includes(query)
-      );
-    }
-
-    return false;
+    const name = conv.other_user?.name?.toLowerCase() || '';
+    const lastMsg = conv.last_message?.content?.toLowerCase() || '';
+    return name.includes(query) || lastMsg.includes(query);
   });
 
   const getConversationDisplay = (conversation) => {
-    if (conversation.name) {
-      return {
-        title: conversation.name,
-        subtitle: `${conversation.participants?.length || 0} members`,
-        isGroup: true,
-      };
-    }
-
-    // For 1-on-1 conversations, show the other user
-    const otherUser = conversation.participants?.find(
-      (p) => p.id !== currentUserId
-    );
-
-    if (otherUser) {
-      return {
-        title: otherUser.name || 'Unknown User',
-        subtitle: otherUser.role === 'acharya' ? 'Acharya' : 'Grihasta',
-        isGroup: false,
-      };
-    }
-
+    const otherUser = conversation.other_user;
     return {
-      title: 'Unknown Conversation',
-      subtitle: '',
+      title: otherUser?.name || 'Unknown User',
+      subtitle: otherUser?.role === 'acharya' ? 'Acharya' : 'Grihasta',
+      avatar: otherUser?.profile_picture || otherUser?.profile_image,
       isGroup: false,
     };
   };
@@ -256,16 +209,17 @@ const ForwardMessageDialog = ({ open, onClose, message, currentUserId }) => {
       <List sx={{ maxHeight: 400, overflow: 'auto' }}>
         {filteredConversations.map((conversation) => {
           const display = getConversationDisplay(conversation);
-          const isSelected = selectedConversations.includes(conversation.id);
+          const convId = conversation.id || conversation._id;
+          const isSelected = selectedConversations.includes(convId);
 
           return (
             <ListItem
-              key={conversation.id}
+              key={convId}
               disablePadding
               sx={{ mb: 0.5 }}
             >
               <ListItemButton
-                onClick={() => handleToggleConversation(conversation.id)}
+                onClick={() => handleToggleConversation(convId)}
                 sx={{
                   borderRadius: 1,
                   bgcolor: isSelected ? 'primary.light' : 'transparent',
@@ -285,8 +239,8 @@ const ForwardMessageDialog = ({ open, onClose, message, currentUserId }) => {
                   }}
                 />
                 <ListItemAvatar>
-                  <Avatar sx={{ bgcolor: display.isGroup ? 'secondary.main' : 'primary.main' }}>
-                    {display.isGroup ? <Group /> : <Person />}
+                  <Avatar src={display.avatar} alt={display.title} sx={{ bgcolor: 'primary.main' }}>
+                    {!display.avatar && <Person />}
                   </Avatar>
                 </ListItemAvatar>
                 <ListItemText
@@ -404,12 +358,28 @@ const ForwardMessageDialog = ({ open, onClose, message, currentUserId }) => {
 ForwardMessageDialog.propTypes = {
   open: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
-  message: PropTypes.shape({
-    id: PropTypes.string.isRequired,
-    conversation_id: PropTypes.string,
-    content: PropTypes.string,
-    message_type: PropTypes.string,
-  }),
+  message: function(props, propName, componentName) {
+    const val = props[propName];
+    if (props.open && !val) {
+      return new Error(`Prop \`${propName}\` is required in \`${componentName}\` when \`open\` is true.`);
+    }
+
+    const error = PropTypes.shape({
+      id: PropTypes.string,
+      _id: PropTypes.string,
+      conversation_id: PropTypes.string,
+      content: PropTypes.string,
+      message_type: PropTypes.string,
+      media_url: PropTypes.string,
+      sender_name: PropTypes.string,
+    })(props, propName, componentName);
+    if (error) return error;
+    
+    if (props.open && val && !val.id && !val._id) {
+      return new Error(`Prop \`${propName}\` in \`${componentName}\` must include \`id\` or \`_id\`.`);
+    }
+    return null;
+  },
   currentUserId: PropTypes.string.isRequired,
 };
 

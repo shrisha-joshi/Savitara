@@ -218,8 +218,8 @@ export default function Home() {
 
         {/* Feature Cards - 4-column grid on desktop */}
         <Grid container spacing={4}>
-          {features.map((feature, index) => (
-            <Grid item xs={12} sm={6} md={3} key={index}>
+          {features.map((feature) => (
+            <Grid item xs={12} sm={6} md={3} key={feature.title}>
               <Card
                 elevation={0}
                 sx={{
@@ -324,18 +324,18 @@ export default function Home() {
           
           <Grid container spacing={3}>
             {[
-              { title: 'Vedic Rituals', image: 'https://images.unsplash.com/photo-1542283870-072e9dd772af?auto=format&fit=crop&w=800&q=80' },
-              { title: 'Vivaha (Marriage)', image: 'https://images.unsplash.com/photo-1604904612715-47bf9d9bc664?auto=format&fit=crop&w=800&q=80' },
-              { title: 'Namkaran (Naming)', image: 'https://images.unsplash.com/photo-1587271339318-2e06c27f31f3?auto=format&fit=crop&w=800&q=80' },
-              { title: 'Grihapravesh', image: 'https://images.unsplash.com/photo-1590059902641-5df786720f4f?auto=format&fit=crop&w=800&q=80' },
-              { title: 'Upanayanam', image: 'https://images.unsplash.com/photo-1550965378-57bd63635e95?auto=format&fit=crop&w=800&q=80' },
-              { title: 'Shraddha', image: 'https://images.unsplash.com/photo-1598462725287-3475f4eb2c64?auto=format&fit=crop&w=800&q=80' },
-              { title: 'Puja Services', image: 'https://images.unsplash.com/photo-1567591414240-e1752c92d53c?auto=format&fit=crop&w=800&q=80' },
-              { title: 'Havan', image: 'https://images.unsplash.com/photo-1623836376842-1e9671d49265?auto=format&fit=crop&w=800&q=80' },
-              { title: 'Astrology', image: 'https://images.unsplash.com/photo-1616423668832-628d01b1f630?auto=format&fit=crop&w=800&q=80' },
-              { title: 'Vastu', image: 'https://images.unsplash.com/photo-1590059902641-5df786720f4f?auto=format&fit=crop&w=800&q=80' },
-            ].map((service, index) => (
-              <Grid item xs={12} sm={6} md={4} lg={3} key={index}>
+              { title: 'Vedic Rituals', icon: '🕉️', gradient: 'linear-gradient(135deg, #FF6B35 0%, #F7931E 100%)' },
+              { title: 'Vivaha (Marriage)', icon: '💍', gradient: 'linear-gradient(135deg, #E91E63 0%, #9C27B0 100%)' },
+              { title: 'Namkaran (Naming)', icon: '🌸', gradient: 'linear-gradient(135deg, #2196F3 0%, #03A9F4 100%)' },
+              { title: 'Grihapravesh', icon: '🏠', gradient: 'linear-gradient(135deg, #4CAF50 0%, #8BC34A 100%)' },
+              { title: 'Upanayanam', icon: '✨', gradient: 'linear-gradient(135deg, #FFC107 0%, #FF9800 100%)' },
+              { title: 'Shraddha', icon: '🪔', gradient: 'linear-gradient(135deg, #607D8B 0%, #455A64 100%)' },
+              { title: 'Puja Services', icon: '🌺', gradient: 'linear-gradient(135deg, #FF5722 0%, #FF9800 100%)' },
+              { title: 'Havan', icon: '🔥', gradient: 'linear-gradient(135deg, #F44336 0%, #FF5722 100%)' },
+              { title: 'Astrology', icon: '🌙', gradient: 'linear-gradient(135deg, #311B92 0%, #6A1B9A 100%)' },
+              { title: 'Vastu', icon: '🏛️', gradient: 'linear-gradient(135deg, #795548 0%, #5D4037 100%)' },
+            ].map((service) => (
+              <Grid item xs={12} sm={6} md={4} lg={3} key={service.title}>
                 <Paper
                   className="glass-card"
                   elevation={0}
@@ -358,30 +358,17 @@ export default function Home() {
                   }}
                   onClick={() => navigate(`/search?service=${service.title.toLowerCase()}`)}
                 >
-                  <Box sx={{ position: 'relative', height: 160, overflow: 'hidden' }}>
-                     <Box 
-                       component="img"
-                       src={service.image}
-                       alt={service.title}
-                       className="service-img"
-                       onError={(e) => {
-                         e.target.style.display = 'none';
-                         e.target.parentElement.style.background = 'linear-gradient(135deg, var(--saffron-500) 0%, var(--amber-500) 100%)';
-                       }}
-                       sx={{
-                         width: '100%',
-                         height: '100%',
-                         objectFit: 'cover',
-                         transition: 'transform 0.5s ease',
-                       }}
-                     />
+                  <Box sx={{ position: 'relative', height: 160, overflow: 'hidden', background: service.gradient, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                     <Typography sx={{ fontSize: '3rem', lineHeight: 1, mb: 1 }}>
+                       {service.icon}
+                     </Typography>
                      <Box sx={{ 
                        position: 'absolute', 
                        top: 0, 
                        left: 0, 
                        right: 0, 
                        bottom: 0,
-                       background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 100%)' 
+                       background: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0) 60%)' 
                      }} />
                      <Typography 
                        variant="h6" 

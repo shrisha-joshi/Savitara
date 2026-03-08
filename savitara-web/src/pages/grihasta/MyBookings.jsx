@@ -139,6 +139,7 @@ const BookingCard = ({ booking, onPayNow }) => {
 BookingCard.propTypes = {
   booking: PropTypes.shape({
     id: PropTypes.string,
+    _id: PropTypes.string,
     booking_id: PropTypes.string,
     date_time: PropTypes.string.isRequired,
     pooja_name: PropTypes.string,
@@ -159,7 +160,6 @@ export default function MyBookings() {
   const [error, setError] = useState(null);
   const [bookings, setBookings] = useState([]);
   const [tabIndex, setTabIndex] = useState(0);
-  const [paymentLoading, setPaymentLoading] = useState(null);
   const [notification, setNotification] = useState(null);
 
   useEffect(() => {
@@ -231,7 +231,6 @@ export default function MyBookings() {
 
   const handlePayNow = async (booking) => {
     try {
-      setPaymentLoading(booking.id);
       
       // For request-mode bookings, create payment order first
       if (booking.booking_mode === 'request' && booking.payment_status === 'pending') {
@@ -254,7 +253,7 @@ export default function MyBookings() {
       console.error('Payment order creation failed:', err);
       alert(err.response?.data?.message || 'Failed to initiate payment. Please try again.');
     } finally {
-      setPaymentLoading(null);
+      // payment complete
     }
   };
 

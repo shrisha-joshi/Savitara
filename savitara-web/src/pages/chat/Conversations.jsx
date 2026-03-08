@@ -1,41 +1,41 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import PropTypes from 'prop-types';
-import { useNavigate } from 'react-router-dom';
-import { 
-  Box, 
-  List, 
-  ListItem, 
-  ListItemAvatar, 
-  ListItemText, 
-  Avatar, 
-  Typography, 
-  Paper, 
-  Divider,
-  Badge,
-  Button,
-  IconButton,
-  TextField,
-  InputAdornment,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  Chip,
-  Snackbar,
-  Alert
-} from '@mui/material';
-import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
-import SearchIcon from '@mui/icons-material/Search';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import PushPinIcon from '@mui/icons-material/PushPin';
 import ArchiveIcon from '@mui/icons-material/Archive';
-import NotificationsOffIcon from '@mui/icons-material/NotificationsOff';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import DeleteIcon from '@mui/icons-material/Delete';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
-import UnarchiveIcon from '@mui/icons-material/Unarchive';
 import NotificationsIcon from '@mui/icons-material/Notifications';
+import NotificationsOffIcon from '@mui/icons-material/NotificationsOff';
+import PushPinIcon from '@mui/icons-material/PushPin';
+import SearchIcon from '@mui/icons-material/Search';
+import UnarchiveIcon from '@mui/icons-material/Unarchive';
+import {
+    Alert,
+    Avatar,
+    Badge,
+    Box,
+    Button,
+    Chip,
+    Divider,
+    IconButton,
+    InputAdornment,
+    List,
+    ListItem,
+    ListItemAvatar,
+    ListItemIcon,
+    ListItemText,
+    Menu,
+    MenuItem,
+    Paper,
+    Snackbar,
+    TextField,
+    Typography
+} from '@mui/material';
+import PropTypes from 'prop-types';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import ConversationSkeleton from '../../components/ConversationSkeleton';
 import { useSocket } from '../../context/SocketContext';
 import api from '../../services/api';
-import ConversationSkeleton from '../../components/ConversationSkeleton';
 import { getConversationTime } from '../../utils/timeFormat';
 
 const Conversations = ({ onSelectConversation, selectedConversationId }) => {
@@ -272,11 +272,14 @@ const Conversations = ({ onSelectConversation, selectedConversationId }) => {
             
             {/* Search Bar */}
             <TextField
+                id="conversation-search"
+                name="conversation-search"
                 fullWidth
                 placeholder="Search conversations..."
                 value={searchQuery}
                 onChange={handleSearchChange}
                 sx={{ mb: 2 }}
+                inputProps={{ 'aria-label': 'Search conversations' }}
                 InputProps={{
                     startAdornment: (
                         <InputAdornment position="start">
@@ -361,7 +364,7 @@ const Conversations = ({ onSelectConversation, selectedConversationId }) => {
                                     <Button 
                                         variant="contained" 
                                         color="primary"
-                                        onClick={() => navigate('/acharyas')}
+                                        onClick={() => navigate('/search')}
                                         sx={{ mt: 2 }}
                                     >
                                         Browse Acharyas
@@ -412,6 +415,8 @@ const Conversations = ({ onSelectConversation, selectedConversationId }) => {
                                             </Badge>
                                         </ListItemAvatar>
                                         <ListItemText
+                                            primaryTypographyProps={{ component: 'div' }}
+                                            secondaryTypographyProps={{ component: 'div' }}
                                             primary={
                                                 <Box display="flex" justifyContent="space-between" alignItems="center">
                                                     <Box display="flex" alignItems="center" gap={0.5}>

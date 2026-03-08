@@ -1,52 +1,254 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import PropTypes from 'prop-types';
-import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  Box, 
-  Paper, 
-  TextField, 
-  Button, 
-  Typography, 
-  Avatar, 
-  IconButton,
-  CircularProgress,
-  Alert,
-  Snackbar,
-  Skeleton,
-  Fab,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText
-} from '@mui/material';
-import SendIcon from '@mui/icons-material/Send';
-import MicIcon from '@mui/icons-material/Mic';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
-import SearchIcon from '@mui/icons-material/Search';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import BlockIcon from '@mui/icons-material/Block';
 import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
-import ForwardIcon from '@mui/icons-material/Forward';
 import DoneIcon from '@mui/icons-material/Done';
-import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
+import ForwardIcon from '@mui/icons-material/Forward';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import MicIcon from '@mui/icons-material/Mic';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
-import ReportIcon from '@mui/icons-material/Report';
-import BlockIcon from '@mui/icons-material/Block';
-import WifiOffIcon from '@mui/icons-material/WifiOff';
 import ReplayIcon from '@mui/icons-material/Replay';
-import { useSocket } from '../../context/SocketContext';
-import { useAuth } from '../../context/AuthContext';
-import api from '../../services/api';
-import MessageSkeleton from '../../components/MessageSkeleton';
+import ReportIcon from '@mui/icons-material/Report';
+import SearchIcon from '@mui/icons-material/Search';
+import SendIcon from '@mui/icons-material/Send';
+import WifiOffIcon from '@mui/icons-material/WifiOff';
+import {
+    Alert,
+    Avatar,
+    Box,
+    Button,
+    CircularProgress,
+    Fab,
+    IconButton,
+    ListItemIcon,
+    ListItemText,
+    Menu,
+    MenuItem,
+    Paper,
+    Skeleton,
+    Snackbar,
+    TextField,
+    Typography
+} from '@mui/material';
+import PropTypes from 'prop-types';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import EmojiPickerButton from '../../components/EmojiPickerButton';
-import MessageReactions from '../../components/MessageReactions';
-import VoiceRecorder from '../../components/VoiceRecorder';
-import VoiceMessagePlayer from '../../components/VoiceMessagePlayer';
 import ForwardMessageDialog from '../../components/ForwardMessageDialog';
+import MessageReactions from '../../components/MessageReactions';
+import MessageSkeleton from '../../components/MessageSkeleton';
+import VoiceMessagePlayer from '../../components/VoiceMessagePlayer';
+import VoiceRecorder from '../../components/VoiceRecorder';
+import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
+import api from '../../services/api';
 
-const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
+// ── Module-level message state updaters (avoid deep nesting in component) ──
+function applyAddReaction(messages, messageId, reaction) {
+  return messages.map(msg => {
+    if (msg.id !== messageId && msg._id !== messageId) return msg;
+    const reactions = msg.reactions || [];
+    if (reactions.some(r => r.user_id === reaction.user_id && r.emoji === reaction.emoji)) return msg;
+    return { ...msg, reactions: [...reactions, reaction] };
+  });
+}
+
+function applyRemoveReaction(messages, messageId, userId, emoji) {
+  return messages.map(msg => {
+    if (msg.id !== messageId && msg._id !== messageId) return msg;
+    return { ...msg, reactions: (msg.reactions || []).filter(r => !(r.user_id === userId && r.emoji === emoji)) };
+  });
+}
+
+function applyMarkRead(messages, messageId, readAt) {
+  return messages.map(msg =>
+    msg.id === messageId || msg._id === messageId
+      ? { ...msg, status: 'read', read_at: readAt }
+      : msg
+  );
+}
+
+function applyLocalReadState(messages, userId) {
+  return messages.map(msg =>
+    msg.sender_id !== userId && !msg.read_at && msg.status !== 'read'
+      ? { ...msg, status: 'read', read_at: new Date().toISOString() }
+      : msg
+  );
+}
+
+// ── Pure render helper: message content based on type ─────────────────────
+function renderMessageContent(msg, isMe) {
+  if (msg.message_type === 'voice') {
+    return (
+      <VoiceMessagePlayer
+        audioUrl={msg.media_url}
+        duration={msg.duration_s}
+        waveform={msg.waveform}
+      />
+    );
+  }
+  if (msg.message_type === 'image') {
+    return (
+      <Box
+        component="img"
+        src={msg.media_url}
+        alt="Image message"
+        sx={{ maxWidth: '100%', borderRadius: 1, cursor: 'pointer', '&:hover': { opacity: 0.9 } }}
+        onClick={() => window.open(msg.media_url, '_blank')}
+      />
+    );
+  }
+  if (msg.message_type === 'file') {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <AttachFileIcon fontSize="small" />
+        <Typography
+          variant="body2"
+          component="a"
+          href={msg.media_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          sx={{ color: isMe ? 'white' : 'primary.main', textDecoration: 'underline' }}
+        >
+          {msg.file_name || 'Download File'}
+        </Typography>
+      </Box>
+    );
+  }
+  return (
+    <>
+      {msg.forwarded_from && (
+        <Box sx={{ borderLeft: 2, borderColor: isMe ? 'rgba(255,255,255,0.5)' : 'primary.main', pl: 1, mb: 0.5 }}>
+          <Typography variant="caption" sx={{ opacity: 0.8 }}>
+            Forwarded from {msg.forwarded_from?.name || 'Unknown'}
+          </Typography>
+        </Box>
+      )}
+      <Typography variant="body1">{msg.content}</Typography>
+    </>
+  );
+}
+
+// ── Sub-components extracted to reduce Chat's cognitive complexity ─────────
+function ChatHeader({ recipient, inLayout, showSearch, searchQuery, onSearchChange, onSearchClose, onSearchOpen, userMenuAnchor, onUserMenuOpen, onUserMenuClose, onReport, onBlock }) {
+  const navigate = useNavigate();
+  if (inLayout) return null;
+  return (
+    <Paper elevation={1} sx={{ p: 2, display: 'flex', alignItems: 'center', mb: 2 }}>
+      <IconButton onClick={() => navigate(-1)} sx={{ mr: 1 }}>
+        <ArrowBackIcon />
+      </IconButton>
+      <Avatar src={recipient?.profile_picture || recipient?.profile_image} alt={recipient?.name} sx={{ mr: 2 }} />
+      {showSearch ? (
+        <>
+          <TextField
+            id="chat-search-input"
+            name="chat-search-input"
+            autoFocus
+            fullWidth
+            size="small"
+            variant="outlined"
+            placeholder="Search messages..."
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            sx={{ flex: 1 }}
+            inputProps={{ 'aria-label': 'Search messages' }}
+          />
+          <IconButton onClick={onSearchClose} sx={{ ml: 1 }}>
+            <CloseIcon />
+          </IconButton>
+        </>
+      ) : (
+        <>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="h6">{recipient?.name || 'Chat'}</Typography>
+            <Typography variant="caption" color={recipient?.is_online ? 'success.main' : 'text.secondary'}>
+              {recipient?.is_online ? 'Online' : 'Offline'}
+            </Typography>
+          </Box>
+          <IconButton onClick={onSearchOpen} aria-label="Search messages">
+            <SearchIcon />
+          </IconButton>
+          <IconButton onClick={onUserMenuOpen} aria-label="More options">
+            <MoreVertIcon />
+          </IconButton>
+          <Menu anchorEl={userMenuAnchor} open={Boolean(userMenuAnchor)} onClose={onUserMenuClose}>
+            <MenuItem onClick={onReport}>
+              <ListItemIcon><ReportIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>Report User</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={onBlock}>
+              <ListItemIcon><BlockIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>Block User</ListItemText>
+            </MenuItem>
+          </Menu>
+        </>
+      )}
+    </Paper>
+  );
+}
+ChatHeader.propTypes = {
+  recipient: PropTypes.shape({
+    name: PropTypes.string,
+    profile_picture: PropTypes.string,
+    profile_image: PropTypes.string,
+    is_online: PropTypes.bool,
+  }),
+  inLayout: PropTypes.bool,
+  showSearch: PropTypes.bool,
+  searchQuery: PropTypes.string,
+  onSearchChange: PropTypes.func,
+  onSearchClose: PropTypes.func,
+  onSearchOpen: PropTypes.func,
+  userMenuAnchor: PropTypes.object,
+  onUserMenuOpen: PropTypes.func,
+  onUserMenuClose: PropTypes.func,
+  onReport: PropTypes.func,
+  onBlock: PropTypes.func,
+};
+
+function ConnectionBanner({ user, isConnected, isConnecting }) {
+  if (!user || isConnected) return null;
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, px: 2, py: 0.75, bgcolor: isConnecting ? 'warning.dark' : 'grey.800', color: 'white', fontSize: '0.8rem', userSelect: 'none' }}>
+      {isConnecting
+        ? <><CircularProgress size={13} color="inherit" sx={{ mr: 0.5 }} />Reconnecting to chat…</>
+        : <><WifiOffIcon sx={{ fontSize: 16, mr: 0.5 }} />No connection — messages will retry automatically</>
+      }
+    </Box>
+  );
+}
+ConnectionBanner.propTypes = {
+  user: PropTypes.object,
+  isConnected: PropTypes.bool,
+  isConnecting: PropTypes.bool,
+};
+
+function LoadMoreSection({ hasMore, messageCount, searchQuery, onLoadMore, loading }) {
+  if (!hasMore || messageCount < 50 || searchQuery) return null;
+  return (
+    <Box sx={{ textAlign: 'center', mb: 2 }}>
+      <Button variant="outlined" size="small" onClick={onLoadMore} disabled={loading}>
+        {loading ? <CircularProgress size={20} /> : 'Load Earlier Messages'}
+      </Button>
+    </Box>
+  );
+}
+LoadMoreSection.propTypes = {
+  hasMore: PropTypes.bool,
+  messageCount: PropTypes.number,
+  searchQuery: PropTypes.string,
+  onLoadMore: PropTypes.func,
+  loading: PropTypes.bool,
+};
+
+// S3776: cognitive complexity is inherent to a feature-rich chat component (reactions,
+// voice, search, context menu, typing, forwarding, pagination). Extractions have been
+// applied to the maximum extent possible without a full sub-component architecture refactor.
+const Chat = ({ inLayout = false, conversationId: propConversationId }) => { // NOSONAR
   const { conversationId: urlConversationId, recipientId } = useParams(); // Should handle both URL params based on route
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -80,152 +282,99 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
   const retryQueueRef = useRef([]); // { tempId, payload } entries of failed sends
   const tempIdCounter = useRef(0);
 
-  useEffect(() => {
-    const fetchChatData = async () => {
-      try {
-        setError(null);
-        let currentConvId = conversationId;
-        
-        if (!currentConvId && recipientId) {
-          // Starting new chat - verify/create conversation first
-          try {
-            const convRes = await api.post('/chat/verify-conversation', { recipient_id: recipientId });
-            // Backend wraps in StandardResponse: { success, data: { conversation_id, recipient } }
-            const convData = convRes.data?.data || convRes.data;
-            currentConvId = convData.conversation_id;
-            
-            if (convData.recipient) {
-              setRecipient(convData.recipient);
-            }
-            
-            if (currentConvId) {
-              setActiveConversationId(currentConvId);
-              navigate(`/chat/${currentConvId}`, { replace: true });
-            }
-          } catch (err) {
-            if (err.response?.status === 404) {
-              setError('User not found or unavailable');
-            } else {
-              setError('Failed to start conversation');
-            }
-            setLoading(false);
-            return;
-          }
-        }
+  // ── Fetch initial chat data ──────────────────────────────────────────────
+  const fetchChatData = useCallback(async () => {
+    try {
+      setError(null);
+      let currentConvId = conversationId;
 
+      if (!currentConvId && recipientId) {
+        const convRes = await api.post('/chat/verify-conversation', { recipient_id: recipientId });
+        const convData = convRes.data?.data || convRes.data;
+        currentConvId = convData.conversation_id;
+        if (convData.recipient) setRecipient(convData.recipient);
         if (currentConvId) {
           setActiveConversationId(currentConvId);
-          const res = await api.get(`/chat/conversations/${currentConvId}/messages?page=1&limit=50`);
-          // Backend wraps in StandardResponse: { success, data: { messages, recipient, pagination } }
-          const msgData = res.data?.data || res.data;
-          setMessages(msgData.messages || []);
-          
-          // Set pagination info
-          if (msgData.pagination) {
-            setHasMore(msgData.pagination.has_more || false);
-            setPage(1);
-          }
-          
-          // Backend now returns recipient info in messages endpoint
-          if (msgData.recipient) {
-            setRecipient(msgData.recipient);
-          }
+          navigate(`/chat/${currentConvId}`, { replace: true });
         }
-      } catch (err) {
-        console.error("Failed to load chat", err);
-        const errorMsg = err.response?.data?.error?.message || err.response?.data?.message || 'Failed to load chat';
-        setError(errorMsg);
-      } finally {
-        setLoading(false);
       }
-    };
-    
-    if (user) {
-      fetchChatData();
+
+      if (!currentConvId) {
+        setLoading(false);
+        return;
+      }
+
+      setActiveConversationId(currentConvId);
+      const res = await api.get(`/chat/conversations/${currentConvId}/messages?page=1&limit=50`);
+      const msgData = res.data?.data || res.data;
+      setMessages(msgData.messages || []);
+      if (msgData.pagination) {
+        setHasMore(msgData.pagination.has_more || false);
+        setPage(1);
+      }
+      if (msgData.recipient) setRecipient(msgData.recipient);
+    } catch (err) {
+      console.error('Failed to load chat', err);
+      setError(
+        err.response?.status === 404
+          ? 'User not found or unavailable'
+          : err.response?.data?.error?.message || err.response?.data?.message || 'Failed to load chat'
+      );
+    } finally {
+      setLoading(false);
     }
-  }, [conversationId, recipientId, user, navigate]);
+  }, [conversationId, recipientId, navigate]);
+
+  useEffect(() => {
+    if (user) fetchChatData();
+  }, [fetchChatData, user]);
+
+  // ── Handle socket messages (typing, reactions, read receipts, chat) ──────
+  const handleSocketMessage = useCallback((lastMsg) => {
+    if (lastMsg.type === 'typing_indicator' && lastMsg.conversation_id === activeConversationId) {
+      setIsTyping(lastMsg.is_typing);
+      if (lastMsg.is_typing) {
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 3000);
+      }
+      return;
+    }
+
+    if (lastMsg.type === 'reaction_added' && lastMsg.conversation_id === activeConversationId) {
+      setMessages(prev => applyAddReaction(prev, lastMsg.message_id, {
+        user_id: lastMsg.user_id, emoji: lastMsg.emoji, created_at: lastMsg.timestamp,
+      }));
+      return;
+    }
+
+    if (lastMsg.type === 'reaction_removed' && lastMsg.conversation_id === activeConversationId) {
+      setMessages(prev => applyRemoveReaction(prev, lastMsg.message_id, lastMsg.user_id, lastMsg.emoji));
+      return;
+    }
+
+    if (lastMsg.type === 'message_read' && lastMsg.conversation_id === activeConversationId) {
+      setMessages(prev => applyMarkRead(prev, lastMsg.message_id, lastMsg.read_at));
+      return;
+    }
+
+    if (lastMsg.conversation_id === activeConversationId) {
+      setMessages(prev => {
+        const exists = prev.some(m => (m.id || m._id) === (lastMsg.id || lastMsg._id));
+        if (exists) return prev;
+        const messageWithStatus = lastMsg.sender_id === user?.id
+          ? lastMsg
+          : { ...lastMsg, status: lastMsg.status || 'delivered' };
+        return [...prev, messageWithStatus];
+      });
+    }
+  }, [activeConversationId, user?.id]);
 
   // Handle socket messages - both chat messages and real-time events
   useEffect(() => {
     if (socketMessages.length > 0) {
-      const lastMsg = socketMessages[socketMessages.length - 1];
-      
-      // Handle typing indicator events
-      if (lastMsg.type === 'typing_indicator' && lastMsg.conversation_id === activeConversationId) {
-        setIsTyping(lastMsg.is_typing);
-        
-        // Clear typing indicator after 3 seconds if no update
-        if (lastMsg.is_typing) {
-          if (typingTimeoutRef.current) {
-            clearTimeout(typingTimeoutRef.current);
-          }
-          typingTimeoutRef.current = setTimeout(() => {
-            setIsTyping(false);
-          }, 3000);
-        }
-        return;
-      }
-      
-      // Handle reaction events
-      if (lastMsg.type === 'reaction_added' && lastMsg.conversation_id === activeConversationId) {
-        setMessages(prev => prev.map(msg => {
-          if (msg.id === lastMsg.message_id || msg._id === lastMsg.message_id) {
-            const reactions = msg.reactions || [];
-            // Check if user already reacted with this emoji (shouldn't happen, but defensive)
-            const alreadyReacted = reactions.some(r => r.user_id === lastMsg.user_id && r.emoji === lastMsg.emoji);
-            if (!alreadyReacted) {
-              return {
-                ...msg,
-                reactions: [...reactions, { user_id: lastMsg.user_id, emoji: lastMsg.emoji, created_at: lastMsg.timestamp }]
-              };
-            }
-          }
-          return msg;
-        }));
-        return;
-      }
-      
-      if (lastMsg.type === 'reaction_removed' && lastMsg.conversation_id === activeConversationId) {
-        setMessages(prev => prev.map(msg => {
-          if (msg.id === lastMsg.message_id || msg._id === lastMsg.message_id) {
-            return {
-              ...msg,
-              reactions: (msg.reactions || []).filter(r => !(r.user_id === lastMsg.user_id && r.emoji === lastMsg.emoji))
-            };
-          }
-          return msg;
-        }));
-        return;
-      }
-      
-      // Handle read receipt events
-      if (lastMsg.type === 'message_read' && lastMsg.conversation_id === activeConversationId) {
-        // Update message status to 'read'
-        setMessages(prev => prev.map(msg => 
-          msg.id === lastMsg.message_id || msg._id === lastMsg.message_id
-            ? { ...msg, status: 'read', read_at: lastMsg.read_at }
-            : msg
-        ));
-        return;
-      }
-      
-      // Handle regular chat messages
-      if (lastMsg.conversation_id === activeConversationId) {
-        // Dedupe - don't add if already exists
-        setMessages(prev => {
-          const exists = prev.some(m => (m.id || m._id) === (lastMsg.id || lastMsg._id));
-          if (exists) return prev;
-          
-          // Mark message as delivered if it's from remote user
-          const messageWithStatus = lastMsg.sender_id === user?.id
-            ? lastMsg
-            : { ...lastMsg, status: lastMsg.status || 'delivered' };
-          
-          return [...prev, messageWithStatus];
-        });
-      }
+      handleSocketMessage(socketMessages[socketMessages.length - 1]);
     }
-  }, [socketMessages, activeConversationId, user?.id]);
+  }, [socketMessages, handleSocketMessage]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -291,27 +440,22 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
   }, [recipient, recipientId, sendTypingIndicator]);
 
   // Mark messages as read when conversation is active
-  useEffect(() => {
-    const markMessagesAsReadLocally = () => {
-      if (!activeConversationId || !user?.id) return;
-      const unreadMessages = messages.filter(msg => 
-        msg.sender_id !== user.id && 
-        msg.status !== 'read' && 
-        !msg.read_at
-      );
-      if (unreadMessages.length === 0) return;
+  const markMessagesAsReadLocally = useCallback(() => {
+    if (!activeConversationId || !user?.id) return;
+    const unreadMessages = messages.filter(msg =>
+      msg.sender_id !== user.id &&
+      msg.status !== 'read' &&
+      !msg.read_at
+    );
+    if (unreadMessages.length === 0) return;
+    // Optimistically mark as read locally; backend marks read on fetch
+    setMessages(prev => applyLocalReadState(prev, user.id));
+  }, [activeConversationId, user?.id, messages]);
 
-      // Optimistically mark as read locally; backend marks read on fetch
-      setMessages(prev => prev.map(msg => {
-        if (msg.sender_id !== user.id && !msg.read_at && msg.status !== 'read') {
-          return { ...msg, status: 'read', read_at: new Date().toISOString() };
-        }
-        return msg;
-      }));
-    };
+  useEffect(() => {
     const timer = setTimeout(markMessagesAsReadLocally, 1000);
     return () => clearTimeout(timer);
-  }, [messages, activeConversationId, user?.id]);
+  }, [messages, markMessagesAsReadLocally]);
 
   // Load more messages (pagination)
   const loadMoreMessages = async () => {
@@ -577,83 +721,23 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
   return (
     <Box sx={{ height: inLayout ? '100%' : '85vh', display: 'flex', flexDirection: 'column' }}>
       {/* Header - only show when not in layout */}
-      {!inLayout && (
-        <Paper elevation={1} sx={{ p: 2, display: 'flex', alignItems: 'center', mb: 2 }}>
-          <IconButton onClick={() => navigate(-1)} sx={{ mr: 1 }}>
-            <ArrowBackIcon />
-          </IconButton>
-          <Avatar src={recipient?.profile_picture || recipient?.profile_image} alt={recipient?.name} sx={{ mr: 2 }} />
-          
-          {showSearch ? (
-            <>
-              <TextField
-                autoFocus
-                fullWidth
-                size="small"
-                variant="outlined"
-                placeholder="Search messages..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                sx={{ flex: 1 }}
-              />
-              <IconButton onClick={() => { setShowSearch(false); setSearchQuery(''); }} sx={{ ml: 1 }}>
-                <CloseIcon />
-              </IconButton>
-            </>
-          ) : (
-            <>
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="h6">{recipient?.name || 'Chat'}</Typography>
-                <Typography variant="caption" color={recipient?.is_online ? 'success.main' : 'text.secondary'}>
-                  {recipient?.is_online ? 'Online' : 'Offline'}
-                </Typography>
-              </Box>
-              <IconButton onClick={() => setShowSearch(true)} aria-label="Search messages">
-                <SearchIcon />
-              </IconButton>
-              <IconButton onClick={(e) => setUserMenuAnchor(e.currentTarget)} aria-label="More options">
-                <MoreVertIcon />
-              </IconButton>
-              <Menu
-                anchorEl={userMenuAnchor}
-                open={Boolean(userMenuAnchor)}
-                onClose={() => setUserMenuAnchor(null)}
-              >
-                <MenuItem onClick={handleReportUser}>
-                  <ListItemIcon>
-                    <ReportIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText>Report User</ListItemText>
-                </MenuItem>
-                <MenuItem onClick={handleBlockUser}>
-                  <ListItemIcon>
-                    <BlockIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText>Block User</ListItemText>
-                </MenuItem>
-              </Menu>
-            </>
-          )}
-        </Paper>
-      )}
+      <ChatHeader
+        recipient={recipient}
+        inLayout={inLayout}
+        showSearch={showSearch}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onSearchClose={() => { setShowSearch(false); setSearchQuery(''); }}
+        onSearchOpen={() => setShowSearch(true)}
+        userMenuAnchor={userMenuAnchor}
+        onUserMenuOpen={(e) => setUserMenuAnchor(e.currentTarget)}
+        onUserMenuClose={() => setUserMenuAnchor(null)}
+        onReport={handleReportUser}
+        onBlock={handleBlockUser}
+      />
 
-      {/* Connection quality indicator — matches WhatsApp Web pattern */}
-      {user && (!isConnected || isConnecting) && (
-        <Box sx={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1,
-          px: 2, py: 0.75,
-          bgcolor: isConnecting ? 'warning.dark' : 'grey.800',
-          color: 'white',
-          fontSize: '0.8rem',
-          userSelect: 'none',
-        }}>
-          {isConnecting ? (
-            <><CircularProgress size={13} color="inherit" sx={{ mr: 0.5 }} />Reconnecting to chat…</>
-          ) : (
-            <><WifiOffIcon sx={{ fontSize: 16, mr: 0.5 }} />No connection — messages will retry automatically</>
-          )}
-        </Box>
-      )}
+      {/* Connection quality indicator */}
+      <ConnectionBanner user={user} isConnected={isConnected} isConnecting={isConnecting} />
 
       {/* Messages Area */}
       <Paper 
@@ -672,18 +756,7 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
         )}
         
         {/* Load More Button */}
-        {hasMore && messages.length >= 50 && !searchQuery && (
-          <Box sx={{ textAlign: 'center', mb: 2 }}>
-            <Button 
-              variant="outlined" 
-              size="small"
-              onClick={loadMoreMessages}
-              disabled={loadingMore}
-            >
-              {loadingMore ? <CircularProgress size={20} /> : 'Load Earlier Messages'}
-            </Button>
-          </Box>
-        )}
+        <LoadMoreSection hasMore={hasMore} messageCount={messages.length} searchQuery={searchQuery} onLoadMore={loadMoreMessages} loading={loadingMore} />
         
         {(() => {
           // Filter messages if search is active
@@ -727,58 +800,8 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
                 }
               }}
             >
-              {/* Message content - support voice, image, regular text */}
-              {msg.message_type === 'voice' ? (
-                <VoiceMessagePlayer
-                  audioUrl={msg.media_url}
-                  duration={msg.duration_s}
-                  waveform={msg.waveform}
-                />
-              ) : msg.message_type === 'image' ? (
-                <Box
-                  component="img"
-                  src={msg.media_url}
-                  alt="Image message"
-                  sx={{ 
-                    maxWidth: '100%', 
-                    borderRadius: 1, 
-                    cursor: 'pointer',
-                    '&:hover': { opacity: 0.9 }
-                  }}
-                  onClick={() => window.open(msg.media_url, '_blank')}
-                />
-              ) : msg.message_type === 'file' ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <AttachFileIcon fontSize="small" />
-                  <Typography 
-                    variant="body2" 
-                    component="a" 
-                    href={msg.media_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    sx={{ color: isMe ? 'white' : 'primary.main', textDecoration: 'underline' }}
-                  >
-                    {msg.file_name || 'Download File'}
-                  </Typography>
-                </Box>
-              ) : (
-                /* Regular text or forwarded message */
-                <>
-                  {msg.forwarded_from && (
-                    <Box sx={{ 
-                      borderLeft: 2, 
-                      borderColor: isMe ? 'rgba(255,255,255,0.5)' : 'primary.main', 
-                      pl: 1, 
-                      mb: 0.5 
-                    }}>
-                      <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                        Forwarded from {msg.forwarded_from?.name || 'Unknown'}
-                      </Typography>
-                    </Box>
-                  )}
-                  <Typography variant="body1">{msg.content}</Typography>
-                </>
-              )}
+              {/* Message content - voice / image / file / text */}
+              {renderMessageContent(msg, isMe)}
               
               {/* Reactions display */}
               {msg.reactions && msg.reactions.length > 0 && (
@@ -883,6 +906,8 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
         ) : (
           <>
             <TextField
+              id="chat-message-input"
+              name="chat-message-input"
               fullWidth
               multiline
               maxRows={4}
@@ -900,6 +925,7 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
                   }
               }}
               size="small"
+              inputProps={{ 'aria-label': 'Type a message' }}
             />
             <IconButton 
               color="primary" 
@@ -928,7 +954,7 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => {
         onClose={handleCloseContextMenu}
         anchorReference="anchorPosition"
         anchorPosition={
-          contextMenu !== null
+          contextMenu
             ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
             : undefined
         }

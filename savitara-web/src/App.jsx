@@ -1,54 +1,54 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
 import PropTypes from 'prop-types'
-import { useAuth } from './context/AuthContext'
-import { SocketProvider } from './context/SocketContext'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import PrivateRoute from './components/auth/PrivateRoute'
 import ErrorBoundary from './components/ErrorBoundary'
+import { useAuth } from './context/AuthContext'
+import { SocketProvider } from './context/SocketContext'
 
 // Common pages
-import Home from './pages/Home'
-import Login from './pages/Login'
-import LanguageSelector from './pages/LanguageSelector'
-import Onboarding from './pages/Onboarding'
-import Profile from './pages/Profile'
-import Wallet from './pages/Wallet'
-import Privacy from './pages/Privacy'
-import Terms from './pages/Terms'
 import About from './pages/About'
-import Rewards from './pages/Rewards'
 import AnalyticsDashboard from './pages/AnalyticsDashboard'
+import Home from './pages/Home'
+import LanguageSelector from './pages/LanguageSelector'
+import Login from './pages/Login'
+import Onboarding from './pages/Onboarding'
+import Privacy from './pages/Privacy'
+import Profile from './pages/Profile'
+import Rewards from './pages/Rewards'
+import Terms from './pages/Terms'
+import Wallet from './pages/Wallet'
 
 // Services pages
-import Services from './pages/Services'
-import ServiceDetail from './pages/ServiceDetail'
 import Panchanga from './pages/Panchanga'
+import ServiceDetail from './pages/ServiceDetail'
+import Services from './pages/Services'
 
 // Grihasta pages
-import GrihastaDashboard from './pages/grihasta/Dashboard'
-import SearchAcharyas from './pages/grihasta/SearchAcharyas'
 import AcharyaProfile from './pages/grihasta/AcharyaProfile'
-import CreateBooking from './pages/grihasta/CreateBooking'
-import Payment from './pages/grihasta/Payment'
-import MyBookings from './pages/grihasta/MyBookings'
 import BookingDetails from './pages/grihasta/BookingDetails'
+import CreateBooking from './pages/grihasta/CreateBooking'
+import GrihastaDashboard from './pages/grihasta/Dashboard'
+import MyBookings from './pages/grihasta/MyBookings'
+import Payment from './pages/grihasta/Payment'
+import SearchAcharyas from './pages/grihasta/SearchAcharyas'
 import SubmitReview from './pages/grihasta/SubmitReview'
 
 // Acharya pages
-import AcharyaDashboard from './pages/acharya/Dashboard'
 import AcharyaBookings from './pages/acharya/Bookings'
-import StartService from './pages/acharya/StartService'
+import CalendarManagement from './pages/acharya/CalendarManagement'
+import AcharyaDashboard from './pages/acharya/Dashboard'
 import Earnings from './pages/acharya/Earnings'
+import KYCUpload from './pages/acharya/KYCUpload'
 import Reviews from './pages/acharya/Reviews'
 import Settings from './pages/acharya/Settings'
-import CalendarManagement from './pages/acharya/CalendarManagement'
-import KYCUpload from './pages/acharya/KYCUpload'
+import StartService from './pages/acharya/StartService'
 
 // Admin pages
-import UserManagement from './pages/admin/UserManagement'
 import ServiceManagement from './pages/admin/ServiceManagement'
+import UserManagement from './pages/admin/UserManagement'
 
 // Chat pages
-import ChatLayout from './pages/chat/ChatLayout';
+import ChatLayout from './pages/chat/ChatLayout'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -71,9 +71,9 @@ function ProtectedRoute({ children }) {
 // Wrapper component for onboarding route logic
 function OnboardingRoute({ user, isOnboarded }) {
   if (!user) {
-    return <Navigate to="/login" />;
+    return <Navigate to="/login" replace />;
   } else if (isOnboarded) {
-    return <Navigate to="/" />;
+    return <Navigate to="/" replace />;
   } else {
     return <Onboarding />;
   }
@@ -119,7 +119,7 @@ function App() {
       
       {/* Language Selection - after login/signup, before onboarding */}
       <Route path="/language-select" element={
-        user ? <LanguageSelector /> : <Navigate to="/login" />
+        user ? <LanguageSelector /> : <Navigate to="/login" replace />
       } />
       
       {/* Onboarding route - accessible when logged in but not onboarded */}
@@ -177,7 +177,7 @@ function App() {
       </Route>
       
       {/* Catch-all redirect */}
-        <Route path="*" element={<Navigate to="/" />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </SocketProvider>
     </ErrorBoundary>

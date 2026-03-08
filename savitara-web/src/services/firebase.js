@@ -14,11 +14,11 @@ const isPlaceholder = (val) => !val || PLACEHOLDER_PATTERNS.some(p => val.toLowe
 
 let firebaseAvailable = true
 if (isPlaceholder(import.meta.env.VITE_FIREBASE_API_KEY)) {
-  console.warn('Missing or placeholder VITE_FIREBASE_API_KEY – Firebase/Google Auth will be disabled')
+  console.debug('Missing or placeholder VITE_FIREBASE_API_KEY – Firebase/Google Auth will be disabled')
   firebaseAvailable = false
 }
 if (isPlaceholder(import.meta.env.VITE_FIREBASE_PROJECT_ID)) {
-  console.warn('Missing or placeholder VITE_FIREBASE_PROJECT_ID – Firebase/Google Auth will be disabled')
+  console.debug('Missing or placeholder VITE_FIREBASE_PROJECT_ID – Firebase/Google Auth will be disabled')
   firebaseAvailable = false
 }
 

@@ -1,17 +1,17 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Box,
-  Container,
-  Grid,
-  Paper,
-  useMediaQuery,
-  useTheme
+    Box,
+    Container,
+    Grid,
+    Paper,
+    useMediaQuery,
+    useTheme
 } from '@mui/material';
-import Conversations from './Conversations';
-import Chat from './Chat';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import ChatErrorBoundary from '../../components/ChatErrorBoundary';
 import ConnectionStatus from '../../components/ConnectionStatus';
+import Chat from './Chat';
+import Conversations from './Conversations';
 
 const ChatLayout = () => {
   const { conversationId, recipientId } = useParams();
@@ -35,15 +35,6 @@ const ChatLayout = () => {
     } else {
       // On desktop, update URL without navigation
       navigate(`/chat/${convId}`, { replace: true });
-    }
-  };
-
-  const handleStartNewChat = (recipientId) => {
-    if (isMobile) {
-      navigate(`/chat/u/${recipientId}`);
-    } else {
-      // For desktop, we could handle this differently
-      navigate(`/chat/u/${recipientId}`, { replace: true });
     }
   };
 
@@ -88,7 +79,7 @@ const ChatLayout = () => {
 
             {/* Chat Area */}
             <Grid item xs={12} md={8} lg={9} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-              {selectedConversationId ? (
+              {(selectedConversationId || recipientId) ? (
                 <Chat inLayout={true} conversationId={selectedConversationId} />
               ) : (
                 <Box

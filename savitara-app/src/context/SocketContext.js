@@ -10,6 +10,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Alert } from 'react-native';
 import { API_CONFIG } from '../config/api.config';
 import api from '../services/api';
+import logger from '../utils/logger';
 
 const SocketContext = createContext(null);
 
@@ -49,7 +50,7 @@ export const SocketProvider = ({ children }) => {
       const token = await SecureStore.getItemAsync('accessToken');
 
       if (!token || !userId) {
-        console.log('[WS] No token or userId found');
+        logger.log('[WS] No token or userId found');
         return null;
       }
 
@@ -119,7 +120,7 @@ export const SocketProvider = ({ children }) => {
       const queueJson = await AsyncStorage.getItem('ws_offline_queue');
       if (queueJson) {
         const queue = JSON.parse(queueJson);
-        console.log(`[WS] Processing ${queue.length} queued messages`);
+        logger.log(`[WS] Processing ${queue.length} queued messages`);
         
         queue.forEach((msg) => {
           if (ws.readyState === WebSocket.OPEN) {
@@ -167,7 +168,7 @@ export const SocketProvider = ({ children }) => {
   const handleWsMessage = useCallback((event) => {
     try {
       const data = JSON.parse(event.data);
-      console.log('[WS] Message received:', data.type);
+      logger.log('[WS] Message received:', data.type);
 
       const payload = data.data || data;
 
@@ -238,11 +239,11 @@ export const SocketProvider = ({ children }) => {
           break;
 
         case 'conversation_updated':
-          console.log('[WS] Conversation updated:', payload);
+          logger.log('[WS] Conversation updated:', payload);
           break;
 
         default:
-          console.log('[WS] Unknown message type:', data.type);
+          logger.log('[WS] Unknown message type:', data.type);
       }
     } catch (error) {
       console.error('[WS] Error parsing message:', error);
@@ -253,19 +254,19 @@ export const SocketProvider = ({ children }) => {
   const connect = useCallback(async () => {
     const wsConfig = await getWebSocketUrl();
     if (!wsConfig) {
-      console.log('[WS] Cannot connect - missing credentials');
+      logger.log('[WS] Cannot connect - missing credentials');
       setConnectionStatus('disconnected');
       return;
     }
 
     try {
-      console.log('[WS] Connecting to:', wsConfig.url.split('?')[0]); // Don't log token
+      logger.log('[WS] Connecting to:', wsConfig.url.split('?')[0]); // Don't log token
       setConnectionStatus(reconnectAttemptsRef.current > 0 ? 'reconnecting' : 'connecting');
 
       const ws = new WebSocket(wsConfig.url);
 
       ws.onopen = async () => {
-        console.log('[WS] Connected successfully');
+        logger.log('[WS] Connected successfully');
         setConnected(true);
         setConnectionStatus('connected');
         reconnectAttemptsRef.current = 0;
@@ -286,14 +287,14 @@ export const SocketProvider = ({ children }) => {
       };
 
       ws.onclose = (event) => {
-        console.log('[WS] Disconnected:', event.code, event.reason);
+        logger.log('[WS] Disconnected:', event.code, event.reason);
         setConnected(false);
         stopHeartbeat();
 
         // Attempt reconnection with exponential backoff
         if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
           const delay = BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttemptsRef.current);
-          console.log(
+          logger.log(
             `[WS] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current + 1}/${MAX_RECONNECT_ATTEMPTS})`
           );
           setConnectionStatus('reconnecting');
@@ -343,7 +344,7 @@ export const SocketProvider = ({ children }) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify(message));
     } else {
-      console.log('[WS] Queueing message for offline delivery');
+      logger.log('[WS] Queueing message for offline delivery');
       await queueMessage(message);
     }
   }, [queueMessage]);

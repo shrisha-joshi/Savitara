@@ -1,6 +1,7 @@
 import { Box, useTheme as useMuiTheme } from '@mui/material'
-import Navbar from './Navbar'
+import PropTypes from 'prop-types'
 import Footer from './Footer'
+import Navbar from './Navbar'
 
 export default function Layout({ children }) {
   const theme = useMuiTheme()
@@ -34,4 +35,8 @@ export default function Layout({ children }) {
       <Footer />
     </Box>
   )
+}
+
+Layout.propTypes = {
+  children: PropTypes.node.isRequired,
 }

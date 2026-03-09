@@ -54,7 +54,7 @@ class SearchService:
         try:
             if not await self.es.indices.exists(index=self.index_name):
                 await self.es.indices.create(
-                    index=self.index_name, body={"mappings": mappings}
+                    index=self.index_name, mappings=mappings
                 )
                 logger.info(f"Created Elasticsearch index: {self.index_name}")
         except Exception as e:
@@ -65,7 +65,7 @@ class SearchService:
         try:
             doc_id = str(acharya_data.get("_id", acharya_data.get("user_id")))
             await self.es.index(
-                index=self.index_name, id=doc_id, body=acharya_data, refresh="wait_for"
+                index=self.index_name, id=doc_id, document=acharya_data, refresh="wait_for"
             )
             logger.debug(f"Indexed acharya: {doc_id}")
         except Exception as e:
@@ -217,13 +217,11 @@ class SearchService:
         try:
             response = await self.es.search(
                 index=self.index_name,
-                body={
-                    "query": search_query,
-                    "sort": sort,
-                    "from": from_param,
-                    "size": limit,
-                    "track_total_hits": True,
-                },
+                query=search_query,
+                sort=sort,
+                from_=from_param,
+                size=limit,
+                track_total_hits=True,
             )
 
             hits = response["hits"]
@@ -258,12 +256,10 @@ class SearchService:
         try:
             response = await self.es.search(
                 index=self.index_name,
-                body={
-                    "suggest": {
-                        "acharya-suggest": {
-                            "prefix": partial_text,
-                            "completion": {"field": "name.suggest", "size": limit},
-                        }
+                suggest={
+                    "acharya-suggest": {
+                        "prefix": partial_text,
+                        "completion": {"field": "name.suggest", "size": limit},
                     }
                 },
             )

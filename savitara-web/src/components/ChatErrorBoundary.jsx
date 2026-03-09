@@ -1,15 +1,15 @@
-import { Component } from 'react';
-import PropTypes from 'prop-types';
+import { ErrorOutline, RefreshRounded } from '@mui/icons-material';
 import {
-  Box,
-  Container,
-  Typography,
-  Button,
-  Alert,
-  AlertTitle,
-  Paper,
+    Alert,
+    AlertTitle,
+    Box,
+    Button,
+    Container,
+    Paper,
+    Typography,
 } from '@mui/material';
-import { RefreshRounded, ErrorOutline } from '@mui/icons-material';
+import PropTypes from 'prop-types';
+import { Component } from 'react';
 
 class ChatErrorBoundary extends Component {
   constructor(props) {
@@ -38,8 +38,8 @@ class ChatErrorBoundary extends Component {
     }));
 
     // You can also log the error to an error reporting service here
-    if (window.gtag) {
-      window.gtag('event', 'exception', {
+    if (globalThis.gtag) {
+      globalThis.gtag('event', 'exception', {
         description: error.toString(),
         fatal: true,
       });
@@ -93,7 +93,7 @@ class ChatErrorBoundary extends Component {
 
               <Alert severity="error" sx={{ width: '100%', textAlign: 'left' }}>
                 <AlertTitle>Error Details</AlertTitle>
-                {this.state.error && this.state.error.toString()}
+                {this.state.error?.toString()}
               </Alert>
 
               {this.state.errorCount > 2 && (

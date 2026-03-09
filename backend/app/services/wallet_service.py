@@ -176,17 +176,21 @@ class WalletService:
             "created_at": datetime.now(timezone.utc),
         }
 
-        # Update wallet balance
-        await self.wallets.update_one(
-            {"_id": wallet["_id"]},
-            {
-                "$inc": {"balance": amount, "total_credited": amount},
-                "$set": {"updated_at": datetime.now(timezone.utc)},
-            },
-        )
+        # ARCH-05: Atomic — update balance and insert transaction in one session
+        async with await self.db.client.start_session() as session:
+            async with session.start_transaction():
+                # Update wallet balance
+                await self.wallets.update_one(
+                    {"_id": wallet["_id"]},
+                    {
+                        "$inc": {"balance": amount, "total_credited": amount},
+                        "$set": {"updated_at": datetime.now(timezone.utc)},
+                    },
+                    session=session,
+                )
 
-        # Save transaction
-        result = await self.transactions.insert_one(transaction)
+                # Save transaction
+                result = await self.transactions.insert_one(transaction, session=session)
         transaction["_id"] = str(result.inserted_id)
 
         logger.info(f"Added {amount} to wallet for user {user_id}")
@@ -260,21 +264,25 @@ class WalletService:
             "created_at": datetime.now(timezone.utc),
         }
 
-        # Update wallet
-        await self.wallets.update_one(
-            {"_id": wallet["_id"]},
-            {
-                "$inc": {
-                    "balance": -main_deduction,
-                    "bonus_balance": -bonus_deduction,
-                    "total_debited": amount,
-                },
-                "$set": {"updated_at": datetime.now(timezone.utc)},
-            },
-        )
+        # ARCH-05: Atomic — update balance and insert transaction in one session
+        async with await self.db.client.start_session() as session:
+            async with session.start_transaction():
+                # Update wallet
+                await self.wallets.update_one(
+                    {"_id": wallet["_id"]},
+                    {
+                        "$inc": {
+                            "balance": -main_deduction,
+                            "bonus_balance": -bonus_deduction,
+                            "total_debited": amount,
+                        },
+                        "$set": {"updated_at": datetime.now(timezone.utc)},
+                    },
+                    session=session,
+                )
 
-        # Save transaction
-        result = await self.transactions.insert_one(transaction)
+                # Save transaction
+                result = await self.transactions.insert_one(transaction, session=session)
         transaction["_id"] = str(result.inserted_id)
 
         logger.info(f"Deducted {amount} from wallet for user {user_id}")

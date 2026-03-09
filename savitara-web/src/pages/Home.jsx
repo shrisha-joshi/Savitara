@@ -14,7 +14,7 @@ const defaultTestimonials = [
     id: 1,
     name: 'Rajesh Sharma',
     location: 'Mumbai, Maharashtra',
-    avatar: 'https://randomuser.me/api/portraits/men/32.jpg',
+    avatar: null,  // FE-03: no external avatar deps — initials rendered by MUI Avatar
     rating: 5,
     text: 'The Acharya performed our Grihapravesh pooja with such devotion. Every mantra was recited perfectly. Highly recommended!',
     service: 'Grihapravesh'
@@ -23,7 +23,7 @@ const defaultTestimonials = [
     id: 2,
     name: 'Priya Patel',
     location: 'Ahmedabad, Gujarat',
-    avatar: 'https://randomuser.me/api/portraits/women/44.jpg',
+    avatar: null,
     rating: 5,
     text: 'Found the perfect pandit for my son\'s Namkaran ceremony. The booking process was seamless and the priest was very knowledgeable.',
     service: 'Namkaran'
@@ -32,7 +32,7 @@ const defaultTestimonials = [
     id: 3,
     name: 'Suresh Kumar',
     location: 'Delhi, NCR',
-    avatar: 'https://randomuser.me/api/portraits/men/67.jpg',
+    avatar: null,
     rating: 4,
     text: 'Excellent platform to find verified priests. The video consultation feature helped us finalize our requirements easily.',
     service: 'Vivaha'
@@ -41,7 +41,7 @@ const defaultTestimonials = [
     id: 4,
     name: 'Anita Reddy',
     location: 'Hyderabad, Telangana',
-    avatar: 'https://randomuser.me/api/portraits/women/65.jpg',
+    avatar: null,
     rating: 5,
     text: 'The Satyanarayan Pooja conducted by the Acharya was divine. My whole family felt blessed. Thank you Savitara!',
     service: 'Satyanarayan Pooja'
@@ -50,7 +50,7 @@ const defaultTestimonials = [
     id: 5,
     name: 'Vikram Singh',
     location: 'Jaipur, Rajasthan',
-    avatar: 'https://randomuser.me/api/portraits/men/85.jpg',
+    avatar: null,
     rating: 5,
     text: 'Used Savitara for my father\'s Shraddha ceremony. The priest was compassionate and guided us through every ritual.',
     service: 'Shraddha'
@@ -59,7 +59,7 @@ const defaultTestimonials = [
     id: 6,
     name: 'Lakshmi Iyer',
     location: 'Chennai, Tamil Nadu',
-    avatar: 'https://randomuser.me/api/portraits/women/90.jpg',
+    avatar: null,
     rating: 5,
     text: 'Wonderful experience! The Acharya explained the significance of each step during the Upanayanam. Very professional.',
     service: 'Upanayanam'
@@ -137,6 +137,9 @@ export default function Home() {
       animationFrame = requestAnimationFrame(autoScroll)
     }
 
+    // Respect prefers-reduced-motion — WCAG 2.3.3 (AAA) / improves 2.2.2 compliance
+    if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+
     // Start auto-scroll after a delay
     const timeout = setTimeout(() => {
       animationFrame = requestAnimationFrame(autoScroll)
@@ -163,13 +166,35 @@ export default function Home() {
 
   return (
     <Layout>
+      {/* Skip navigation — WCAG 2.4.1: Bypass Blocks */}
+      <a
+        href="#main-content"
+        style={{
+          position: 'absolute',
+          top: -50,
+          left: 0,
+          background: '#F97316',
+          color: 'white',
+          padding: '8px 16px',
+          zIndex: 9999,
+          textDecoration: 'none',
+          fontWeight: 600,
+          borderRadius: '0 0 4px 0',
+          transition: 'top 0.1s',
+        }}
+        onFocus={(e) => { e.target.style.top = '0'; }}
+        onBlur={(e) => { e.target.style.top = '-50px'; }}
+      >
+        Skip to main content
+      </a>
+
       {/* Hero Section - Full Height excluding header */}
       <Box sx={{ mt: -4 }}> {/* Negative margin to pull it up behind transparent header if needed, or just adjust height */}
          <HeroSection height="calc(100vh - 64px)" /> 
       </Box>
 
       {/* Features Section - Spacing: 96px vertical */}
-      <Container maxWidth="lg" component="section" sx={{ py: 12 }}>
+      <Container maxWidth="lg" component="section" id="main-content" aria-labelledby="features-heading" sx={{ py: 12 }}>
         {/* Section Header - Clear visual hierarchy */}
         <Box textAlign="center" sx={{ mb: 10 }}>
           <Typography 
@@ -187,6 +212,7 @@ export default function Home() {
           <Typography 
             variant="h2" 
             component="h2"
+            id="features-heading"
             fontWeight={700} 
             sx={{ mb: 2 }}
           >
@@ -278,6 +304,7 @@ export default function Home() {
       {/* Services Section - Alternate background */}
       <Box 
         component="section"
+        aria-labelledby="services-heading"
         sx={{ 
           position: 'relative',
           py: 16, // Increased spacing: 128px
@@ -304,6 +331,7 @@ export default function Home() {
             <Typography 
               variant="h2" 
               component="h2"
+              id="services-heading"
               fontWeight={700} 
               sx={{ mb: 2 }}
             >
@@ -339,6 +367,15 @@ export default function Home() {
                 <Paper
                   className="glass-card"
                   elevation={0}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Browse ${service.title} services`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      navigate(`/search?service=${service.title.toLowerCase()}`)
+                    }
+                  }}
                   sx={{
                     textAlign: 'center',
                     cursor: 'pointer',
@@ -359,7 +396,7 @@ export default function Home() {
                   onClick={() => navigate(`/search?service=${service.title.toLowerCase()}`)}
                 >
                   <Box sx={{ position: 'relative', height: 160, overflow: 'hidden', background: service.gradient, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                     <Typography sx={{ fontSize: '3rem', lineHeight: 1, mb: 1 }}>
+                     <Typography sx={{ fontSize: '3rem', lineHeight: 1, mb: 1 }} aria-hidden="true">
                        {service.icon}
                      </Typography>
                      <Box sx={{ 
@@ -425,6 +462,7 @@ export default function Home() {
       {/* Testimonials Section - Social proof */}
       <Box 
         component="section"
+        aria-labelledby="testimonials-heading"
         sx={{ 
           py: 16, 
           bgcolor: isDark ? '#0C0A09' : '#FFF8F0', 
@@ -449,6 +487,7 @@ export default function Home() {
             <Typography 
               variant="h2" 
               component="h2"
+              id="testimonials-heading"
               fontWeight={700} 
               gutterBottom
               sx={{ mb: 2 }}
@@ -472,6 +511,8 @@ export default function Home() {
         {/* Auto-sliding horizontal scroll */}
         <Box
           ref={scrollRef}
+          role="region"
+          aria-label="Testimonials carousel - auto-scrolling"
           sx={{
             display: 'flex',
             gap: 4,
@@ -508,7 +549,7 @@ export default function Home() {
                     color: 'primary.main', 
                     opacity: 0.2,
                     transform: 'rotate(180deg)'
-                  }} />
+                  }} aria-hidden="true" />
                 </Box>
                 
                 {/* Testimonial text */}
@@ -530,7 +571,8 @@ export default function Home() {
                    <Rating 
                     value={testimonial.rating} 
                     readOnly 
-                    size="small" 
+                    size="small"
+                    aria-label={`Rating: ${testimonial.rating} out of 5 stars`}
                     sx={{ color: '#F59E0B' }} 
                   />
                   <Chip 
@@ -584,6 +626,7 @@ export default function Home() {
         <Container 
           maxWidth="md" 
           component="section"
+          aria-labelledby="cta-heading"
           sx={{ py: 16, textAlign: 'center' }}
         >
           <Box 
@@ -627,6 +670,7 @@ export default function Home() {
             <Typography 
               variant="h2" 
               component="h2"
+              id="cta-heading"
               gutterBottom 
               fontWeight={700} 
               sx={{ position: 'relative', mb: 3 }}

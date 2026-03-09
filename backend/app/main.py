@@ -67,25 +67,35 @@ from app.api.v1 import (
 
 from slowapi.errors import RateLimitExceeded  # type: ignore
 import sentry_sdk
+from pythonjsonlogger import jsonlogger  # type: ignore
 
-# Configure logging
+# Configure logging — OBSRV-01: structured JSON output for log aggregation
 import os
 _log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs", "savitara.log")
 _log_file = os.path.normpath(_log_file)
 os.makedirs(os.path.dirname(_log_file), exist_ok=True)
+
+_json_formatter = jsonlogger.JsonFormatter(
+    fmt="%(asctime)s %(name)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+_stream_handler = logging.StreamHandler(sys.stdout)
+_stream_handler.setFormatter(_json_formatter)
+_file_handler = logging.FileHandler(_log_file)
+_file_handler.setFormatter(_json_formatter)
+
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[  # noqa: E501
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler(_log_file),
+        _stream_handler,
+        _file_handler,
     ],
 )
 
 # Sentry Initialization (Monitoring)
 if settings.is_production:
     sentry_sdk.init(
-        dsn=settings.SENTRY_DSN, traces_sample_rate=1.0, environment=settings.APP_ENV
+        dsn=settings.SENTRY_DSN, traces_sample_rate=0.1, environment=settings.APP_ENV
     )
 
 logger = logging.getLogger(__name__)
@@ -297,6 +307,15 @@ async def websocket_health():
         "redis": redis_status,
         "connections": len(manager.active_connections),
     }
+
+
+# Prometheus /metrics endpoint — MON-02: expose WS metrics for scraping
+try:
+    from prometheus_client import make_asgi_app as _make_prometheus_asgi
+    _prometheus_app = _make_prometheus_asgi()
+    app.mount("/metrics", _prometheus_app)
+except ImportError:
+    logger.warning("prometheus_client not installed — /metrics endpoint unavailable")
 
 
 # Simple readiness probe for Railway

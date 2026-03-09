@@ -84,12 +84,14 @@ export const AuthProvider = ({ children }) => {
         return
       }
 
-      const response = await api.get('/auth/me')
+      // Suppress global error toasts for this background check and set a short timeout
+      const response = await api.get('/auth/me', { _skipErrorToast: true, timeout: 4000 })
       // Extract user data from StandardResponse format
       const userData = response.data.data || response.data
       setUser(userData)
     } catch (error) {
-      console.error('Auth check failed:', error)
+      // Avoid noisy console stack traces for transient network failures
+      console.debug('Auth check failed (network/unauthenticated):', error?.message || error)
       try {
         localStorage.removeItem('accessToken')
         localStorage.removeItem('refreshToken')

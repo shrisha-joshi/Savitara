@@ -20,6 +20,7 @@ import { format, isToday, isYesterday } from 'date-fns';
 import PropTypes from 'prop-types';
 import { useEffect, useRef, useState } from 'react';
 import api from '../services/api';
+import logger from '../utils/logger';
 
 const ChatWidget = ({ 
   isOpen, 
@@ -36,6 +37,9 @@ const ChatWidget = ({
   const [isLoading, setIsLoading] = useState(true);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  let statusLabel = 'Connecting...';
+  if (isConnected) statusLabel = 'Online';
+  if (isTyping) statusLabel = 'typing...';
 
   useEffect(() => {
     if (isOpen && conversationId) {
@@ -63,7 +67,7 @@ const ChatWidget = ({
 
     websocket.onopen = () => {
       setIsConnected(true);
-      console.log('WebSocket connected');
+      logger.log('WebSocket connected');
     };
 
     websocket.onmessage = (event) => {
@@ -73,7 +77,7 @@ const ChatWidget = ({
 
     websocket.onclose = () => {
       setIsConnected(false);
-      console.log('WebSocket disconnected');
+      logger.log('WebSocket disconnected');
       // Attempt reconnection
       setTimeout(() => {
         if (isOpen) {
@@ -255,9 +259,7 @@ const ChatWidget = ({
             <Typography variant="subtitle1" fontWeight="bold">
               {recipientUser?.name || 'Chat'}
             </Typography>
-            <Typography variant="caption">
-              {isTyping ? 'typing...' : isConnected ? 'Online' : 'Connecting...'}
-            </Typography>
+            <Typography variant="caption">{statusLabel}</Typography>
           </Box>
         </Box>
         <IconButton onClick={onClose} sx={{ color: 'white' }} aria-label="Close chat">

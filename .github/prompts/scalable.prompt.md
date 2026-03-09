@@ -1,6 +1,12 @@
 ---
 name: scalable
-description: Describe when to use this prompt
+description: >
+  Production-grade scalable chat enhancements for the Savitara platform. Use this prompt when
+  implementing or extending any of: message reactions, voice message recording/playback, conversation
+  settings (pin/archive/mute), message forwarding with privacy controls, block/report/moderation,
+  group chat administration, push notifications, offline message queuing, optimistic UI, or
+  horizontal WebSocket scaling via Redis. Covers the full stack: FastAPI/MongoDB backend,
+  React (Vite) web frontend, and React Native (Expo) mobile app.
 ---
 SECTION 0: MASTER AGENT CONTEXT & RULES
 ◆ READ THIS BEFORE EVERY TASK

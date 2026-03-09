@@ -130,12 +130,13 @@ function App() {
         <Route path="/services" element={<Services />} />
         <Route path="/services/:serviceId" element={<ServiceDetail />} />
         <Route path="/panchanga" element={<Panchanga />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/wallet" element={<Wallet />} />
-        <Route path="/rewards" element={<Rewards />} />
-        <Route path="/chat" element={<ProtectedRoute><ChatLayout /></ProtectedRoute>} />
-        <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatLayout /></ProtectedRoute>} />
-        <Route path="/chat/u/:recipientId" element={<ProtectedRoute><ChatLayout /></ProtectedRoute>} />
+        {/* FE-04: Route-level ErrorBoundaries — a crash in one route does not unmount the whole app */}
+        <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
+        <Route path="/wallet" element={<ErrorBoundary><Wallet /></ErrorBoundary>} />
+        <Route path="/rewards" element={<ErrorBoundary><Rewards /></ErrorBoundary>} />
+        <Route path="/chat" element={<ErrorBoundary><ProtectedRoute><ChatLayout /></ProtectedRoute></ErrorBoundary>} />
+        <Route path="/chat/:conversationId" element={<ErrorBoundary><ProtectedRoute><ChatLayout /></ProtectedRoute></ErrorBoundary>} />
+        <Route path="/chat/u/:recipientId" element={<ErrorBoundary><ProtectedRoute><ChatLayout /></ProtectedRoute></ErrorBoundary>} />
         
         {/* Grihasta routes */}
         {(!user || user.role === 'grihasta') && (
@@ -143,11 +144,11 @@ function App() {
             <Route path="/dashboard" element={<GrihastaDashboard />} />
             <Route path="/search" element={<SearchAcharyas />} />
             <Route path="/acharya/:id" element={<AcharyaProfile />} />
-            <Route path="/booking/create/:acharyaId" element={<CreateBooking />} />
-            <Route path="/booking/:bookingId/payment" element={<Payment />} />
-            <Route path="/bookings" element={<MyBookings />} />
-            <Route path="/booking/:bookingId" element={<BookingDetails />} />
-            <Route path="/booking/:bookingId/review" element={<SubmitReview />} />
+            <Route path="/booking/create/:acharyaId" element={<ErrorBoundary><CreateBooking /></ErrorBoundary>} />
+            <Route path="/booking/:bookingId/payment" element={<ErrorBoundary><Payment /></ErrorBoundary>} />
+            <Route path="/bookings" element={<ErrorBoundary><MyBookings /></ErrorBoundary>} />
+            <Route path="/booking/:bookingId" element={<ErrorBoundary><BookingDetails /></ErrorBoundary>} />
+            <Route path="/booking/:bookingId/review" element={<ErrorBoundary><SubmitReview /></ErrorBoundary>} />
           </>
         )}
 

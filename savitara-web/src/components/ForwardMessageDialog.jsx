@@ -29,7 +29,7 @@ import PropTypes from 'prop-types';
 import { useCallback, useEffect, useState } from 'react';
 import api from '../services/api';
 
-const MAX_FORWARD_TARGETS = 50; // Maximum recipients per forward
+const MAX_FORWARD_TARGETS = 5; // Maximum recipients per forward (spec: max 5)
 
 /**
  * ForwardMessageDialog Component
@@ -358,24 +358,17 @@ const ForwardMessageDialog = ({ open, onClose, message, currentUserId }) => {
 ForwardMessageDialog.propTypes = {
   open: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
+  // `message` is optional when dialog is closed; when open it must be an object
+  // containing at least `id` or `_id`.
   message: function(props, propName, componentName) {
     const val = props[propName];
     if (props.open && !val) {
       return new Error(`Prop \`${propName}\` is required in \`${componentName}\` when \`open\` is true.`);
     }
-
-    const error = PropTypes.shape({
-      id: PropTypes.string,
-      _id: PropTypes.string,
-      conversation_id: PropTypes.string,
-      content: PropTypes.string,
-      message_type: PropTypes.string,
-      media_url: PropTypes.string,
-      sender_name: PropTypes.string,
-    })(props, propName, componentName);
-    if (error) return error;
-    
-    if (props.open && val && !val.id && !val._id) {
+    if (val && typeof val !== 'object') {
+      return new Error(`Prop \`${propName}\` in \`${componentName}\` must be an object.`);
+    }
+    if (val && !val.id && !val._id) {
       return new Error(`Prop \`${propName}\` in \`${componentName}\` must include \`id\` or \`_id\`.`);
     }
     return null;

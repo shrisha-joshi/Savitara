@@ -1,8 +1,0 @@
-{
-  "dependencies": {
-    "expo-linear-gradient": "^55.0.8"
-  },
-  "devDependencies": {
-    "next": "^16.1.6"
-  }
-}

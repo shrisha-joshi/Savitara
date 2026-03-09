@@ -4,7 +4,7 @@ Supports SMS providers (AWS SNS, Twilio) with fallback
 Strategy Report §12.5 #3 — Phone OTP Login
 """
 import logging
-import random
+import secrets
 import string
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
@@ -25,8 +25,9 @@ class OTPService:
 
     @staticmethod
     def generate_otp() -> str:
-        """Generate a secure numeric OTP"""
-        return "".join(random.choices(string.digits, k=OTP_LENGTH))
+        """Generate a cryptographically secure numeric OTP"""
+        # SonarQube: S2245 — use secrets (CSPRNG), not random (PRNG)
+        return "".join(secrets.choice(string.digits) for _ in range(OTP_LENGTH))
 
     @classmethod
     async def send_otp(
@@ -151,8 +152,9 @@ class EmailOTPService:
 
     @staticmethod
     def generate_otp() -> str:
-        """Generate a secure numeric OTP"""
-        return "".join(random.choices(string.digits, k=OTP_LENGTH))
+        """Generate a cryptographically secure numeric OTP"""
+        # SonarQube: S2245 — use secrets (CSPRNG), not random (PRNG)
+        return "".join(secrets.choice(string.digits) for _ in range(OTP_LENGTH))
 
     @classmethod
     async def send_otp(
@@ -332,8 +334,9 @@ class PasswordResetOTPService:
 
     @staticmethod
     def generate_otp() -> str:
-        """Generate a secure numeric OTP"""
-        return "".join(random.choices(string.digits, k=OTP_LENGTH))
+        """Generate a cryptographically secure numeric OTP"""
+        # SonarQube: S2245 — use secrets (CSPRNG), not random (PRNG)
+        return "".join(secrets.choice(string.digits) for _ in range(OTP_LENGTH))
 
     @classmethod
     async def send_otp(

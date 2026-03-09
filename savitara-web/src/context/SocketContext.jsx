@@ -1,5 +1,6 @@
 import PropTypes from 'prop-types';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import logger from '../utils/logger';
 import { useAuth } from './AuthContext';
 
 // ── Module-level WS message state updater to avoid deep function nesting ──
@@ -217,11 +218,11 @@ export const SocketProvider = ({ children }) => {
     
     const wsUrl = `${protocol}//${wsHost}/ws/${user.id}?${wsAuthParam}`;
 
-    console.log('[WS] Connecting to:', `${protocol}//${wsHost}/ws/${user.id}`);
+    logger.log('[WS] Connecting to:', `${protocol}//${wsHost}/ws/${user.id}`);
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      console.log('[WS] Connected successfully');
+      logger.log('[WS] Connected successfully');
       setIsConnected(true);
       setIsConnecting(false);
       connectingRef.current = false;
@@ -239,7 +240,7 @@ export const SocketProvider = ({ children }) => {
       
       // Send any queued messages
       if (offlineQueue.length > 0) {
-        console.log(`[WS] Sending ${offlineQueue.length} queued messages`);
+        logger.log(`[WS] Sending ${offlineQueue.length} queued messages`);
         const newRemaining = [];
         for (const msg of offlineQueue) {
           try {
@@ -265,7 +266,7 @@ export const SocketProvider = ({ children }) => {
     ws.onmessage = handleWsMessage;
 
     ws.onclose = (event) => {
-      console.log('[WS] Disconnected:', event.code, event.reason);
+      logger.log('[WS] Disconnected:', event.code, event.reason);
       setIsConnected(false);
       setIsConnecting(false);
       connectingRef.current = false;
@@ -275,7 +276,7 @@ export const SocketProvider = ({ children }) => {
       // Exponential backoff reconnection (avoid if intentional closure code 1000)
       if (user && token && event.code !== 1000 && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
         const delay = BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttemptsRef.current);
-        console.log(
+        logger.log(
           `[WS] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current + 1}/${MAX_RECONNECT_ATTEMPTS})`
         );
         
@@ -317,7 +318,7 @@ export const SocketProvider = ({ children }) => {
     // WebSocket is used for real-time updates and typing indicators
     if (socket?.readyState === WebSocket.OPEN) {
       // Can be extended for typing indicators
-      console.log('WebSocket ready for real-time features');
+      logger.log('WebSocket ready for real-time features');
     }
   }, [socket]);
 

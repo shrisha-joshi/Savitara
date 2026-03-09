@@ -5,7 +5,11 @@
 import { toast } from 'react-toastify'
 import { createApiClient } from './createApiClient'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:8000/api/v1' : (() => { throw new Error('VITE_API_BASE_URL must be set in production') })())
+const _apiEnvUrl = import.meta.env.VITE_API_BASE_URL
+if (!_apiEnvUrl && !import.meta.env.DEV) {
+  console.error('[Savitara] VITE_API_BASE_URL is not set. API calls will target the current origin. Check your build environment.')
+}
+const API_BASE_URL = _apiEnvUrl || (import.meta.env.DEV ? 'http://localhost:8000/api/v1' : '/api/v1')
 
 const TOKEN_KEY = 'accessToken'
 const REFRESH_KEY = 'refreshToken'

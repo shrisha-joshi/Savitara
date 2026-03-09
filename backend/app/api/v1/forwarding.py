@@ -25,8 +25,8 @@ class ForwardToUsersRequest(BaseModel):
     recipient_ids: List[str] = Field(
         ...,
         min_length=1,
-        max_length=50,
-        description="List of user IDs to forward the message to (max 50)"
+        max_length=5,
+        description="List of user IDs to forward the message to (max 5 per spec)"
     )
     include_original_context: bool = Field(
         default=True,
@@ -58,7 +58,7 @@ class ForwardedMessageResponse(BaseModel):
     """Response for a single forwarded message"""
     message_id: str
     conversation_id: str
-    recipient_id: Optional[str]
+    recipient_id: Optional[str] = None
     created_at: str
 
 
@@ -71,7 +71,6 @@ class ForwardCountResponse(BaseModel):
 # API Endpoints
 @router.post(
     "/{message_id}/forward",
-    response_model=StandardResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Forward message to users",
     description="""
@@ -147,7 +146,6 @@ async def forward_message_to_users(
 
 @router.post(
     "/{message_id}/forward/conversation",
-    response_model=StandardResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Forward message to conversation",
     description="""
@@ -211,7 +209,6 @@ async def forward_message_to_conversation(
 
 @router.get(
     "/{message_id}/forward-count",
-    response_model=StandardResponse,
     summary="Get forward count",
     description="""
     Get the number of times a message has been forwarded.

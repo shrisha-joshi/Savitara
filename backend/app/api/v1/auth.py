@@ -42,6 +42,7 @@ settings = get_settings()
 ADMIN_ROLE_ERROR = "Admin role cannot be self-assigned"
 ACCOUNT_SUSPENDED_ERROR = "Account suspended"
 SUPPORT_EMAIL = "support@savitara.com"
+OTP_REGEX = r"^\d{6}$"
 
 # ── Password-reset request models ────────────────────────────────────
 
@@ -59,7 +60,7 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     email: str = Field(..., max_length=320)
-    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    otp: str = Field(..., min_length=6, max_length=6, pattern=OTP_REGEX)
     new_password: str = Field(..., min_length=8, max_length=128)
 
     @field_validator("email")
@@ -798,7 +799,7 @@ class PhoneSendOTPRequest(BaseModel):
 class PhoneVerifyOTPRequest(BaseModel):
     """Request to verify phone OTP and login/register"""
     phone: str = Field(..., pattern=PHONE_REGEX)
-    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    otp: str = Field(..., min_length=6, max_length=6, pattern=OTP_REGEX)
     role: UserRole = Field(UserRole.GRIHASTA, description="Role for new users")
 
     @field_validator("role")
@@ -959,7 +960,7 @@ class EmailSendOTPRequest(BaseModel):
 class EmailVerifyOTPRequest(BaseModel):
     """Request to verify email with OTP"""
     email: str = Field(..., description="Email address that was registered")
-    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$", description="6-digit code from email")
+    otp: str = Field(..., min_length=6, max_length=6, pattern=OTP_REGEX, description="6-digit code from email")
 
 
 @router.post(

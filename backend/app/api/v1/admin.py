@@ -285,7 +285,7 @@ def _send_verification_push_notification(
             if action == "approve"
             else f"Verification denied: {reason or 'Please contact support'}"
         )
-        notification_service.send_notification(
+        await notification_service.send_notification_async(
             token=acharya_doc["fcm_token"],
             title=title,
             body=body,
@@ -993,7 +993,7 @@ async def broadcast_notification(
                 batch_size = 500
                 for i in range(0, len(fcm_tokens), batch_size):
                     batch_tokens = fcm_tokens[i : i + batch_size]
-                    notification_service.send_multicast(
+                    await notification_service.send_multicast_async(
                         tokens=batch_tokens,
                         title=notification_data.title,
                         body=notification_data.body,
@@ -1209,6 +1209,88 @@ async def get_booking_stats(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch booking statistics",
+        )
+
+
+@router.put(
+    "/bookings/{booking_id}/status",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update Booking Status (Admin)",
+    description="Admin override to update booking status with audit trail.",
+)
+async def admin_update_booking_status(
+    booking_id: str,
+    status_update: Dict[str, Any],
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """Admin-only booking status override — writes to audit_logs collection."""
+    try:
+        if not ObjectId.is_valid(booking_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid booking ID format",
+            )
+
+        new_status = status_update.get("status")
+        if not new_status:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="status field is required",
+            )
+
+        booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+        if not booking:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Booking not found",
+            )
+
+        old_status = booking.get("status")
+        await db.bookings.update_one(
+            {"_id": ObjectId(booking_id)},
+            {
+                "$set": {
+                    "status": new_status,
+                    "admin_override": True,
+                    "admin_override_by": str(current_user.get("_id")),
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            },
+        )
+
+        # Write audit log entry
+        await db.audit_logs.insert_one({
+            "action": "admin_booking_status_override",
+            "admin_id": str(current_user.get("_id")),
+            "admin_email": current_user.get("email"),
+            "resource_type": "booking",
+            "resource_id": booking_id,
+            "old_value": old_status,
+            "new_value": new_status,
+            "reason": status_update.get("reason"),
+            "timestamp": datetime.now(timezone.utc),
+        })
+
+        logger.info(
+            f"Admin {current_user.get('email')} changed booking {booking_id} "
+            f"status from {old_status!r} to {new_status!r}"
+        )
+
+        return StandardResponse(
+            success=True,
+            message=f"Booking status updated to {new_status}",
+            data={"booking_id": booking_id, "old_status": old_status, "new_status": new_status},
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Admin booking status update error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update booking status",
         )
 
 
@@ -1652,10 +1734,10 @@ async def review_report(
     description="Get demand density hotspots for city managers with Redis caching (TTL 3600s)",
 )
 async def get_pooja_hotspots(
-    city: str = Query(default="Bangalore", description="City to analyze"),
-    days: int = Query(default=30, ge=1, le=90, description="Number of days to analyze"),
-    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    city: Annotated[str, Query(default="Bangalore", description="City to analyze")],
+    days: Annotated[int, Query(default=30, ge=1, le=90, description="Number of days to analyze")],
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)],
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)],
 ):
     """
     Get "Pooja Hotspots" - residential clusters with high booking density.

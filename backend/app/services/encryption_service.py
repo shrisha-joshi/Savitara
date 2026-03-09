@@ -36,10 +36,31 @@ class EncryptionService:
             )
         else:
             # Generate key from password
-            password = os.getenv(
-                "ENCRYPTION_PASSWORD", "savitara-default-password-change-this"
+            # SonarQube: S6437 — never use default credentials
+            password = os.getenv("ENCRYPTION_PASSWORD")
+            salt_raw = os.getenv("ENCRYPTION_SALT")
+
+            if not password:
+                raise ValueError(
+                    "ENCRYPTION_PASSWORD environment variable is not set. "
+                    "Set a strong secret in your .env file before starting the server."
+                )
+            insecure_defaults = (
+                "savitara-default-password-change-this",
+                "change-this",
+                "default",
             )
-            salt = os.getenv("ENCRYPTION_SALT", "savitara-salt-12345678").encode()
+            if any(d in password.lower() for d in insecure_defaults):
+                raise ValueError(
+                    "ENCRYPTION_PASSWORD appears to be a placeholder value. "
+                    "Set a cryptographically strong password in your production .env file."
+                )
+            if not salt_raw:
+                raise ValueError(
+                    "ENCRYPTION_SALT environment variable is not set. "
+                    "Set a random 16-byte hex string in your .env file."
+                )
+            salt = salt_raw.encode()
 
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
@@ -167,29 +188,3 @@ class EncryptionService:
 
 # Singleton instance
 encryption_service = EncryptionService()
-
-
-# Usage examples:
-"""
-# Encrypt sensitive user data before storing
-user_data = {
-    "name": "John Doe",
-    "email": "john@example.com",
-    "phone": "+91-9876543210",
-    "aadhaar": "1234-5678-9012",
-    "bank_account": "1234567890"
-}
-
-encrypted_user = encryption_service.encrypt_dict(
-    user_data,
-    fields=["phone", "aadhaar", "bank_account"]
-)
-
-# Store encrypted_user in database
-
-# When retrieving, decrypt sensitive fields
-decrypted_user = encryption_service.decrypt_dict(
-    encrypted_user,
-    fields=["phone", "aadhaar", "bank_account"]
-)
-"""

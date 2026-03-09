@@ -7,6 +7,7 @@ import {
     signOut
 } from 'firebase/auth'
 import { getMessaging, getToken, onMessage } from 'firebase/messaging'
+import logger from '../utils/logger'
 
 // Validate required Firebase environment variables — M28 fix: graceful degradation instead of crashing
 const PLACEHOLDER_PATTERNS = ['test-', 'your-', 'placeholder', 'example']
@@ -46,7 +47,7 @@ export const checkRedirectResult = async () => {
 // Sign in with Google using Popup (Simpler and more reliable than redirect)
 export const signInWithGoogle = async () => {
   try {
-    console.log('🔄 Starting Google Sign-In with popup...')
+    logger.log('🔄 Starting Google Sign-In with popup...')
     const result = await signInWithPopup(auth, googleProvider)
     
     // Get the Google ID Token (required for backend verification)
@@ -142,7 +143,7 @@ export const requestNotificationPermission = async () => {
       })
       return token
     } else {
-      console.log('Notification permission denied')
+      logger.log('Notification permission denied')
       return null
     }
   } catch (error) {
@@ -159,7 +160,7 @@ export const onMessageListener = (callback) => {
   }
 
   return onMessage(messaging, (payload) => {
-    console.log('Message received in foreground:', payload)
+    logger.log('Message received in foreground:', payload)
     callback(payload)
   })
 }

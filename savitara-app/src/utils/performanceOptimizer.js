@@ -2,7 +2,46 @@
  * Performance Optimization Utilities for React Native
  * Provides debounce, throttle, memoization, and other optimization helpers
  */
-import { InteractionManager, Platform } from 'react-native';
+import { Platform } from 'react-native';
+import logger from './logger';
+
+const createMeasuredComponent = (Component, componentName) => {
+  function MeasuredComponent(props) {
+    const { useEffect, useRef } = require('react');
+    const startTimeRef = useRef(0);
+
+    useEffect(() => {
+      startTimeRef.current = performance.now();
+
+      return () => {
+        const endTime = performance.now();
+        logger.log(`[Performance] ${componentName} render time: ${endTime - startTimeRef.current}ms`);
+      };
+    }, [componentName]);
+
+    return Component(props);
+  }
+
+  return MeasuredComponent;
+};
+
+const runSearchWithCache = async (searchFunction, searchTerm, resultsCache, resolve) => {
+  try {
+    const results = await searchFunction(searchTerm);
+
+    resultsCache.set(searchTerm, results);
+
+    if (resultsCache.size > 50) {
+      const firstKey = resultsCache.keys().next().value;
+      resultsCache.delete(firstKey);
+    }
+
+    resolve(results);
+  } catch (error) {
+    console.error('Search error:', error);
+    resolve([]);
+  }
+};
 
 class PerformanceOptimizer {
   /**
@@ -39,10 +78,8 @@ class PerformanceOptimizer {
     let inThrottle;
     
     return function(...args) {
-      const context = this;
-      
       if (!inThrottle) {
-        func.apply(context, args);
+        func.apply(this, args);
         inThrottle = true;
         setTimeout(() => (inThrottle = false), limit);
       }
@@ -58,12 +95,12 @@ class PerformanceOptimizer {
    */
   static runAfterInteractions(task) {
     return new Promise((resolve) => {
-      InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
         requestAnimationFrame(() => {
           const result = task();
           resolve(result);
         });
-      });
+      }, 0);
     });
   }
 
@@ -81,7 +118,7 @@ class PerformanceOptimizer {
         return new Promise((resolve, reject) => {
           Image.prefetch(url)
             .then(() => resolve(url))
-            .catch(() => reject(url));
+            .catch((error) => reject(new Error(error?.message || `Failed to preload ${url}`)));
         });
       })
     );
@@ -150,8 +187,7 @@ class PerformanceOptimizer {
    * @returns {Function} Optimized handler
    */
   static useOptimizedCallback(handler, dependencies = []) {
-    const { useCallback } = require('react');
-    return useCallback(handler, dependencies);
+    return handler;
   }
 
   /**
@@ -194,22 +230,7 @@ class PerformanceOptimizer {
    * @returns {Function} Wrapper function for measuring
    */
   static measureRenderTime(componentName) {
-    return (Component) => {
-      return function MeasuredComponent(props) {
-        const { useEffect } = require('react');
-        
-        useEffect(() => {
-          const startTime = performance.now();
-          
-          return () => {
-            const endTime = performance.now();
-            console.log(`[Performance] ${componentName} render time: ${endTime - startTime}ms`);
-          };
-        });
-        
-        return Component(props);
-      };
-    };
+    return (Component) => createMeasuredComponent(Component, componentName);
   }
 
   /**
@@ -221,7 +242,6 @@ class PerformanceOptimizer {
    */
   static createOptimizedSearch(searchFunction, delay = 300) {
     let timeoutId;
-    let lastSearchTerm = '';
     const resultsCache = new Map();
     
     return (searchTerm) => {
@@ -236,24 +256,8 @@ class PerformanceOptimizer {
       }
       
       return new Promise((resolve) => {
-        timeoutId = setTimeout(async () => {
-          try {
-            const results = await searchFunction(searchTerm);
-            
-            // Cache results
-            resultsCache.set(searchTerm, results);
-            
-            // Limit cache size
-            if (resultsCache.size > 50) {
-              const firstKey = resultsCache.keys().next().value;
-              resultsCache.delete(firstKey);
-            }
-            
-            resolve(results);
-          } catch (error) {
-            console.error('Search error:', error);
-            resolve([]);
-          }
+        timeoutId = setTimeout(() => {
+          runSearchWithCache(searchFunction, searchTerm, resultsCache, resolve);
         }, delay);
       });
     };
@@ -270,21 +274,12 @@ class PerformanceOptimizer {
     if (!url) return url;
     
     // Add image optimization params (works with Cloudinary, ImgIX, etc.)
-    const params = [];
-    
-    if (dimensions.width) {
-      params.push(`w=${dimensions.width}`);
-    }
-    
-    if (dimensions.height) {
-      params.push(`h=${dimensions.height}`);
-    }
-    
-    // Add quality parameter
-    params.push('q=80'); // 80% quality
-    
-    // Add format parameter (prefer WebP)
-    params.push('f=auto');
+    const params = [
+      dimensions.width ? `w=${dimensions.width}` : null,
+      dimensions.height ? `h=${dimensions.height}` : null,
+      'q=80',
+      'f=auto',
+    ].filter(Boolean);
     
     if (params.length === 0) return url;
     

@@ -1,16 +1,16 @@
-import React, { useRef, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Dimensions,
-  Animated,
-  Image,
-  TouchableOpacity,
-} from 'react-native';
-import PropTypes from 'prop-types';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path, Defs, Text as SvgText, TextPath } from 'react-native-svg';
+import PropTypes from 'prop-types';
+import React, { useEffect, useRef } from 'react';
+import {
+    Animated,
+    Dimensions,
+    Image,
+    StyleSheet,
+    Text,
+    View
+} from 'react-native';
+import Svg, { Defs, Path, Text as SvgText, TextPath } from 'react-native-svg';
+import logger from '../utils/logger';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -171,7 +171,7 @@ const HeroSection = ({ onFindAcharya }) => {
               style={styles.heroImage}
               defaultSource={require('../../assets/icon.png')}
               onError={(e) => {
-                console.log('Image load error:', e.nativeEvent.error);
+                logger.log('Image load error:', e.nativeEvent.error);
               }}
             />
           </View>

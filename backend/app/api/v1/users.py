@@ -72,7 +72,7 @@ async def _send_acharya_verification_notification(
         admin_tokens = [u.get("fcm_token") for u in admin_users if u.get("fcm_token")]
         if admin_tokens:
             priority_tag = " [PRIORITY]" if verification_status == "priority_pending" else ""
-            notification_service.send_multicast(
+            await notification_service.send_multicast_async(
                 tokens=admin_tokens,
                 title=f"New Acharya Verification Request{priority_tag}",
                 body="User submitted profile for verification",

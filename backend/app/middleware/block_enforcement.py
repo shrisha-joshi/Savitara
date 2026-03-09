@@ -88,31 +88,26 @@ class BlockEnforcementMiddleware:
         if not sender_oid:
             return
 
-        # Check if sender is blocked by any other participant
-        for participant_id in participants:
-            # Skip self
-            if str(participant_id) == sender_id:
-                continue
+        # PERF-01: Single $in query instead of one query per participant (N+1 fix)
+        other_participants = [p for p in participants if str(p) != sender_id]
+        if not other_participants:
+            return
 
-            # Check if this participant has blocked the sender
-            block = await self.db.blocked_users.find_one(
-                {"blocker_id": participant_id, "blocked_user_id": sender_oid}
+        block_exists = await self.db.blocked_users.find_one(
+            {
+                "$or": [
+                    # Any participant blocked the sender
+                    {"blocker_id": {"$in": other_participants}, "blocked_user_id": sender_oid},
+                    # Sender blocked any participant
+                    {"blocker_id": sender_oid, "blocked_user_id": {"$in": other_participants}},
+                ]
+            }
+        )
+
+        if block_exists:
+            raise PermissionDeniedError(
+                "Cannot send message: blocked interaction with a conversation participant"
             )
-
-            if block:
-                raise PermissionDeniedError(
-                    "Cannot send message: you are blocked by a conversation participant"
-                )
-
-            # Also check reverse (sender blocked participant) for symmetry
-            reverse_block = await self.db.blocked_users.find_one(
-                {"blocker_id": sender_oid, "blocked_user_id": participant_id}
-            )
-
-            if reverse_block:
-                raise PermissionDeniedError(
-                    "Cannot send message: you have blocked a conversation participant"
-                )
 
     async def get_blocked_user_ids(self, user_id: str) -> list[str]:
         """

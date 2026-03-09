@@ -39,11 +39,13 @@ variable "availability_zones" {
 }
 
 variable "public_subnet_cidrs" {
+  description = "CIDR blocks for public subnets (one per AZ; must be within vpc_cidr)"
   type    = list(string)
   default = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
 }
 
 variable "private_subnet_cidrs" {
+  description = "CIDR blocks for private subnets (one per AZ; ECS tasks and DB run here)"
   type    = list(string)
   default = ["10.0.11.0/24", "10.0.12.0/24", "10.0.13.0/24"]
 }
@@ -73,11 +75,13 @@ variable "backend_desired_count" {
 }
 
 variable "backend_min_count" {
+  description = "Minimum number of ECS tasks (auto-scaling floor)"
   type    = number
   default = 1
 }
 
 variable "backend_max_count" {
+  description = "Maximum number of ECS tasks (auto-scaling ceiling)"
   type    = number
   default = 6
 }
@@ -90,6 +94,7 @@ variable "redis_node_type" {
 }
 
 variable "redis_num_cache_nodes" {
+  description = "Number of ElastiCache nodes (1 for dev/staging, 2+ for production HA)"
   type    = number
   default = 1
 }
@@ -125,6 +130,7 @@ variable "atlas_org_id" {
 }
 
 variable "atlas_project_name" {
+  description = "MongoDB Atlas project name (must match the project created in your Atlas org)"
   type    = string
   default = "savitara-production"
 }
@@ -155,26 +161,31 @@ variable "jwt_secret_key" {
 }
 
 variable "google_client_id" {
+  description = "Google OAuth 2.0 Client ID for user sign-in (from GCP Console)"
   type      = string
   sensitive = true
 }
 
 variable "google_client_secret" {
+  description = "Google OAuth 2.0 Client Secret — rotate every 6 months via GCP Console"
   type      = string
   sensitive = true
 }
 
 variable "razorpay_key_id" {
+  description = "Razorpay API key ID (public key, starts with rzp_live_ in production)"
   type      = string
   sensitive = true
 }
 
 variable "razorpay_key_secret" {
+  description = "Razorpay API key secret — rotate immediately if leaked; update in AWS Secrets Manager"
   type      = string
   sensitive = true
 }
 
 variable "sentry_dsn" {
+  description = "Sentry DSN for error tracking (format: https://<key>@<host>/<project>). Leave empty to disable."
   type      = string
   sensitive = true
   default   = ""

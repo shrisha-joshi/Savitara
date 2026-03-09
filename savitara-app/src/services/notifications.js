@@ -6,12 +6,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import logger from '../utils/logger';
 import api from './api';
 
 const PUSH_TOKEN_KEY = 'push_notification_token';
 
 // Check if running in Expo Go
-const isExpoGo = Constants.appOwnership === 'expo';
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
 // Lazy load notification modules to avoid initialization issues in Expo Go
 let Notifications = null;
@@ -19,7 +20,7 @@ let Device = null;
 
 async function loadNotificationModules() {
   if (isExpoGo && Platform.OS !== 'web') {
-    console.log('📱 Running in Expo Go - Push notifications disabled (SDK 53+)');
+    logger.log('📱 Running in Expo Go - Push notifications disabled (SDK 53+)');
     return false;
   }
   
@@ -51,20 +52,20 @@ class NotificationService {
   async initialize(navigation) {
     // Skip in Expo Go on mobile devices
     if (this.isExpoGo && Platform.OS !== 'web') {
-      console.log('ℹ️ Push notifications are not available in Expo Go (SDK 53+).');
-      console.log('ℹ️ To test push notifications, create a development build with: npx expo run:android');
+      logger.log('ℹ️ Push notifications are not available in Expo Go (SDK 53+).');
+      logger.log('ℹ️ To test push notifications, create a development build with: npx expo run:android');
       return;
     }
 
     // Try to load notification modules
     const loaded = await loadNotificationModules();
     if (!loaded || !Notifications) {
-      console.log('ℹ️ Notification modules not available');
+      logger.log('ℹ️ Notification modules not available');
       return;
     }
 
     if (Device && !Device.isDevice) {
-      console.log('Push notifications only work on physical devices');
+      logger.log('Push notifications only work on physical devices');
       return;
     }
 
@@ -107,7 +108,7 @@ class NotificationService {
       }
 
       if (finalStatus !== 'granted') {
-        console.log('Failed to get push notification permissions');
+        logger.log('Failed to get push notification permissions');
         return null;
       }
 
@@ -199,13 +200,13 @@ class NotificationService {
         break;
       
       default:
-        console.log('Unknown notification type:', type);
+        logger.log('Unknown notification type:', type);
     }
   }
 
   async scheduleLocalNotification(title, body, data = {}, triggerSeconds = 1) {
     if (!Notifications) {
-      console.log('ℹ️ Cannot schedule notification - notifications not available');
+      logger.log('ℹ️ Cannot schedule notification - notifications not available');
       return null;
     }
     

@@ -38,7 +38,7 @@ import { toast } from 'react-toastify'
 import Layout from '../../components/Layout'
 import { useSocket } from '../../context/SocketContext'
 import api from '../../services/api'
-// Helper to fetch all Acharyas for referral
+import logger from '../../utils/logger'
 async function fetchAcharyas() {
   try {
     const res = await api.get('/users/acharyas/search', { params: { limit: 100 } })
@@ -125,12 +125,12 @@ export default function AcharyaBookings() {
     try {
       setLoading(true)
       const response = await api.get('/bookings/my-bookings')
-      console.log('AcharyaBookings - Full response:', response.data);
+      logger.log('AcharyaBookings - Full response:', response.data);
       const raw = response.data?.data
       const bookingData = Array.isArray(raw) ? raw : (raw?.bookings || response.data?.bookings || [])
-      console.log('AcharyaBookings - Extracted bookings:', bookingData);
-      console.log('AcharyaBookings - Count:', bookingData.length);
-      console.log('AcharyaBookings - Statuses:', bookingData.map(b => b.status));
+      logger.log('AcharyaBookings - Extracted bookings:', bookingData);
+      logger.log('AcharyaBookings - Count:', bookingData.length);
+      logger.log('AcharyaBookings - Statuses:', bookingData.map(b => b.status));
       setBookings(bookingData)
     } catch (error) {
       console.error('Failed to load bookings:', error)

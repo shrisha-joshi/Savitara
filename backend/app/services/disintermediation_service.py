@@ -46,7 +46,7 @@ class DisintermediationService:
         re.IGNORECASE
     )
     LINK_PATTERN = re.compile(
-        r'(?:http[s]?://|www\.)[\w\.-]+\.\w+[\w\-\._~:/?#[\]@!\$&\'\(\)\*\+,;=.]*'
+        r'(?:https?://|www\.)[\w.]+(?:-[\w.]+)*\.\w+[^\s]*'
     )
     
     @staticmethod
@@ -270,6 +270,85 @@ class DisintermediationService:
         return min(score, 100.0)
     
     @staticmethod
+    async def _get_booking_history_flags(
+        db: AsyncIOMotorDatabase,
+        user_id: str,
+    ) -> Tuple[bool, bool]:
+        total_bookings = await db.bookings.count_documents({"user_id": user_id})
+        completed_bookings = await db.bookings.count_documents({
+            "user_id": user_id,
+            "status": "completed",
+        })
+
+        sudden_booking_drop = False
+        if total_bookings == 1 and completed_bookings == 1:
+            first_booking = await db.bookings.find_one(
+                {"user_id": user_id},
+                sort=[("created_at", 1)],
+            )
+            if first_booking:
+                days_since = (utcnow() - first_booking["created_at"]).days
+                sudden_booking_drop = days_since > 30
+
+        no_repeat_bookings = completed_bookings <= 1
+        return sudden_booking_drop, no_repeat_bookings
+
+    @staticmethod
+    async def _get_high_chat_activity_flag(
+        db: AsyncIOMotorDatabase,
+        booking_id: Optional[str],
+    ) -> bool:
+        if not booking_id:
+            return False
+
+        booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+        if not booking:
+            return False
+
+        conversation = await db.conversations.find_one({
+            "booking_id": booking_id,
+        })
+        if not conversation:
+            return False
+
+        messages_before = await db.messages.count_documents({
+            "conversation_id": str(conversation["_id"]),
+            "created_at": {"$lt": booking["created_at"]},
+        })
+        messages_after = await db.messages.count_documents({
+            "conversation_id": str(conversation["_id"]),
+            "created_at": {"$gt": booking["created_at"]},
+        })
+        return messages_before > 10 and messages_after < 2
+
+    @staticmethod
+    async def _get_contact_sharing_flag(
+        db: AsyncIOMotorDatabase,
+        user_id: str,
+    ) -> bool:
+        return await db.message_content_analyses.count_documents({
+            "sender_id": user_id,
+            "risk_score": {"$gte": 50},
+        }) > 0
+
+    @staticmethod
+    async def _get_user_cancellation_flag(
+        db: AsyncIOMotorDatabase,
+        booking_id: Optional[str],
+    ) -> bool:
+        if not booking_id:
+            return False
+
+        booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+        if not booking:
+            return False
+
+        return (
+            booking.get("status") == "cancelled"
+            and booking.get("cancelled_by") == "grihasta"
+        )
+
+    @staticmethod
     async def detect_offline_transaction(
         db: AsyncIOMotorDatabase,
         user_id: str,
@@ -287,68 +366,22 @@ class DisintermediationService:
         
         Threshold: >70 points = Likely offline transaction
         """
-        # Fetch user booking history
-        total_bookings = await db.bookings.count_documents({"user_id": user_id})
-        completed_bookings = await db.bookings.count_documents({
-            "user_id": user_id,
-            "status": "completed"
-        })
-        
-        # Signal 1: Sudden drop after first booking
-        sudden_booking_drop = False
-        if total_bookings == 1 and completed_bookings == 1:
-            # Check if booking was >30 days ago
-            first_booking = await db.bookings.find_one(
-                {"user_id": user_id},
-                sort=[("created_at", 1)]
-            )
-            if first_booking:
-                days_since = (utcnow() - first_booking["created_at"]).days
-                sudden_booking_drop = days_since > 30
-        
-        # Signal 2: No repeat bookings
-        repeat_bookings = await db.bookings.count_documents({
-            "user_id": user_id,
-            "status": "completed"
-        }) > 1
-        no_repeat_bookings = not repeat_bookings
-        
-        # Signal 3: High chat activity pre-booking
-        if booking_id:
-            booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
-            conversation = await db.conversations.find_one({
-                "booking_id": booking_id
-            }) if booking else None
-            
-            if conversation:
-                messages_before = await db.messages.count_documents({
-                    "conversation_id": str(conversation["_id"]),
-                    "created_at": {"$lt": booking["created_at"]}
-                })
-                messages_after = await db.messages.count_documents({
-                    "conversation_id": str(conversation["_id"]),
-                    "created_at": {"$gt": booking["created_at"]}
-                })
-                high_chat_activity_pre_booking = messages_before > 10 and messages_after < 2
-            else:
-                high_chat_activity_pre_booking = False
-        else:
-            high_chat_activity_pre_booking = False
-        
-        # Signal 4: Contact sharing detected
-        contact_sharing_detected = await db.message_content_analyses.count_documents({
-            "sender_id": user_id,
-            "risk_score": {"$gte": 50}
-        }) > 0
-        
-        # Signal 5: User-requested cancellation
-        user_requested_cancellation = False
-        if booking_id:
-            booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
-            user_requested_cancellation = (
-                booking.get("status") == "cancelled" 
-                and booking.get("cancelled_by") == "grihasta"
-            )
+        sudden_booking_drop, no_repeat_bookings = await DisintermediationService._get_booking_history_flags(
+            db,
+            user_id,
+        )
+        high_chat_activity_pre_booking = await DisintermediationService._get_high_chat_activity_flag(
+            db,
+            booking_id,
+        )
+        contact_sharing_detected = await DisintermediationService._get_contact_sharing_flag(
+            db,
+            user_id,
+        )
+        user_requested_cancellation = await DisintermediationService._get_user_cancellation_flag(
+            db,
+            booking_id,
+        )
         
         # Create detection signals
         detection_signals = {
@@ -381,8 +414,20 @@ class DisintermediationService:
         
         # Trigger admin alert if high confidence
         if ml_confidence > 80:
-            # TODO: Send admin alert
-            pass
+            try:
+                from app.services.notification_service import NotificationService
+                ns = NotificationService()
+                admin_users = await db.users.find({"role": "admin"}).to_list(None)
+                admin_tokens = [u.get("fcm_token") for u in admin_users if u.get("fcm_token")]
+                if admin_tokens:
+                    await ns.send_multicast_async(
+                        tokens=admin_tokens,
+                        title="High-Confidence Offline Transaction Detected",
+                        body=f"Confidence: {ml_confidence:.0f}%. Review acharya {acharya_id}.",
+                        data={"type": "offline_transaction_alert", "acharya_id": acharya_id},
+                    )
+            except Exception:
+                pass
         
         return detection
     
@@ -452,7 +497,19 @@ class DisintermediationService:
         incentive.id = str(result.inserted_id)
         
         # Send notification to user
-        # TODO: await notification_service.notify_incentive_earned(user_id, incentive)
+        try:
+            from app.services.notification_service import NotificationService
+            ns = NotificationService()
+            user_doc = await db.users.find_one({"_id": ObjectId(user_id)})
+            if user_doc and user_doc.get("fcm_token"):
+                await ns.send_notification_async(
+                    token=user_doc["fcm_token"],
+                    title="Loyalty Reward Earned!",
+                    body=f"You earned {incentive.coins_reward} coins. Keep booking to earn more!",
+                    data={"type": "incentive_earned", "incentive_id": str(incentive.id)},
+                )
+        except Exception:
+            pass
         
         return incentive
     
@@ -507,6 +564,19 @@ class DisintermediationService:
                     }
                 }
             )
-            # TODO: Send suspension notice
+            # Send suspension notice
+            try:
+                from app.services.notification_service import NotificationService
+                ns = NotificationService()
+                acharya_doc = await db.users.find_one({"_id": ObjectId(acharya_id)})
+                if acharya_doc and acharya_doc.get("fcm_token"):
+                    await ns.send_notification_async(
+                        token=acharya_doc["fcm_token"],
+                        title="Account Suspended",
+                        body="Your account has been suspended due to repeated policy violations. Contact support.",
+                        data={"type": "account_suspended", "reason": "disintermediation"},
+                    )
+            except Exception:
+                pass
         
         return {"penalty_applied": penalty_points, "total_penalty": new_penalty}

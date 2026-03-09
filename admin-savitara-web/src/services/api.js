@@ -1,7 +1,7 @@
 /**
  * Admin Savitara Web – API Client
  * Storage adapter: localStorage (browser, adminToken key)
- * No token refresh – admin sessions redirect to /login on 401.
+ * FE-01: Implements token refresh so admins are not logged out on access-token expiry.
  */
 import { createApiClient } from './createApiClient';
 
@@ -10,12 +10,12 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
 const api = createApiClient({
   baseURL:    API_BASE_URL,
   getToken:   () => Promise.resolve(localStorage.getItem('adminToken')),
-  // Admin web has no refresh flow – returning null forces the factory to trigger clearAuth
-  getRefresh: () => Promise.resolve(null),
+  getRefresh: () => Promise.resolve(localStorage.getItem('adminRefreshToken')),
   setToken:   (t) => { localStorage.setItem('adminToken', t); return Promise.resolve() },
-  setRefresh: () => Promise.resolve(),
+  setRefresh: (t) => { localStorage.setItem('adminRefreshToken', t); return Promise.resolve() },
   clearAuth: () => {
     localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminRefreshToken');
     localStorage.removeItem('adminUser');
     return Promise.resolve();
   },
@@ -75,7 +75,8 @@ export const adminAPI = {
   
   // Booking Management
   getBookings: (params) => api.get('/admin/bookings', { params }),
-  updateBookingStatus: (bookingId, data) => api.put(`/bookings/${bookingId}/status`, data),
+  // API-02: Use admin-specific endpoint to ensure audit logging (not the user-facing one)
+  updateBookingStatus: (bookingId, data) => api.put(`/admin/bookings/${bookingId}/status`, data),
 };
 
 // Admin Auth APIs (Email/Password based)

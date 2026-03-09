@@ -36,3 +36,23 @@ coverage/
 install_out.txt
 audit_out.txt
 build_output.txt
+
+# Test output / CI log .txt files
+*-tests.txt
+*-test.txt
+*tests.txt
+authtest.txt
+fwd-test.txt
+full-final.txt
+mr2.txt
+remaining-tests.txt
+test-results*.txt
+test-all.txt
+final-tests.txt
+
+# Temporary one-off fix/lint scripts at project root
+/fix_*.cjs
+/fix_*.js
+/fix_*.py
+/debug_*.js
+/check_*.js

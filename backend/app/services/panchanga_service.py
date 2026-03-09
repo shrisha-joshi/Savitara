@@ -66,12 +66,18 @@ TITHI_NAMES: Dict[int, Tuple[str, str]] = {
     30: ("Amavasya",     "अमावस्या"),
 }
 
+SHUKLA_SA = "शुक्ल"
+KRISHNA_SA = "कृष्ण"
+
+PAKSHA_SHUKLA_SA = SHUKLA_SA
+PAKSHA_KRISHNA_SA = KRISHNA_SA
+
 PAKSHA_FOR_TITHI = {
-    t: ("Shukla", "शुक्ल") if t <= 15 else ("Krishna", "कृष्ण")
+    t: ("Shukla", PAKSHA_SHUKLA_SA) if t <= 15 else ("Krishna", PAKSHA_KRISHNA_SA)
     for t in range(1, 31)
 }
 # Amavasya (30) is end of Krishna Paksha
-PAKSHA_FOR_TITHI[30] = ("Krishna", "कृष्ण")
+PAKSHA_FOR_TITHI[30] = ("Krishna", PAKSHA_KRISHNA_SA)
 
 # Nakshatra names — (English, Sanskrit)
 NAKSHATRA_NAMES: Dict[int, Tuple[str, str]] = {
@@ -129,7 +135,7 @@ YOGA_NAMES: Dict[int, Tuple[str, str]] = {
     17: ("Vyatipata",  "व्यतीपात"), 18: ("Variyan",   "वरीयान"),
     19: ("Parigha",    "परिघ"),      20: ("Shiva",     "शिव"),
     21: ("Siddha",     "सिद्ध"),     22: ("Sadhya",    "साध्य"),
-    23: ("Shubha",     "शुभ"),       24: ("Shukla",    "शुक्ल"),
+    23: ("Shubha",     "शुभ"),       24: ("Shukla",    SHUKLA_SA),
     25: ("Brahma",     "ब्रह्म"),    26: ("Indra",     "ऐन्द्र"),
     27: ("Vaidhriti",  "वैधृति"),
 }
@@ -148,6 +154,10 @@ KARANA_NAMES: Dict[int, Tuple[str, str]] = {
     10: ("Naga",        "नाग"),
     11: ("Kimstughna",  "किंस्तुघ्न"),
 }
+
+# Shared literal constants (avoid duplication)
+AVOID_AUSPICIOUS = "Avoid auspicious activities"
+DATE_START_FMT = "%Y/%m/%d 00:00:00"
 
 # Solar month names for Souramana Panchanga
 SOLAR_MONTH_NAMES: List[Tuple[str, str]] = [
@@ -186,17 +196,17 @@ TITHI_ACTIVITIES: Dict[int, List[str]] = {
     1:  ["Starting new ventures", "House warming", "Travel"],
     2:  ["Marriage", "Naming ceremony", "Grihapravesh"],
     3:  ["Vehicle purchase", "Hair cutting"],
-    4:  ["Avoid auspicious activities", "Good for Ganesh worship"],
+    4:  [AVOID_AUSPICIOUS, "Good for Ganesh worship"],
     5:  ["Education start", "Medical treatment", "Vratas"],
     6:  ["Starting construction", "Plantation", "Agriculture"],
     7:  ["Vehicle purchase", "Journey", "New clothes"],
     8:  ["Avoid auspicious work", "Good for Durga worship"],
-    9:  ["Avoid auspicious activities", "Good for Durga worship"],
+    9:  [AVOID_AUSPICIOUS, "Good for Durga worship"],
     10: ["Government work", "Education", "Marriage"],
     11: ["Fasting", "Spiritual activities", "Vratas"],
     12: ["Temple visits", "Donations", "Charity"],
     13: ["Mixed results", "Good for remedial measures"],
-    14: ["Avoid auspicious activities", "Good for Shiva worship"],
+    14: [AVOID_AUSPICIOUS, "Good for Shiva worship"],
     15: ["Satyanarayan Puja", "Pitru Karma", "Full moon rituals"],
     30: ["Pitru Tarpan", "Ancestor rituals", "Meditation"],
 }
@@ -253,6 +263,118 @@ GULIKA_PART = {0: 7, 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1}
 HINDI_DAYS = {
     0: "सोमवार", 1: "मंगलवार", 2: "बुधवार",
     3: "गुरुवार", 4: "शुक्रवार", 5: "शनिवार", 6: "रविवार",
+}
+
+# ===========================================================================
+# Extended Panchanga constants
+# ===========================================================================
+
+# 60-year Samvatsara (Jovian year) names — index 0 = Prabhava
+SAMVATSARA_NAMES: List[Tuple[str, str]] = [
+    ("Prabhava",     "प्रभव"),      ("Vibhava",      "विभव"),
+    ("Shukla",       SHUKLA_SA),    ("Pramoda",      "प्रमोद"),
+    ("Prajapati",    "प्रजापति"),   ("Angirasa",     "आंगिरस"),
+    ("Shrimukha",    "श्रीमुख"),    ("Bhava",        "भव"),
+    ("Yuva",         "युव"),         ("Dhatri",       "धातृ"),
+    ("Ishvara",      "ईश्वर"),       ("Bahudhanya",   "बहुधान्य"),
+    ("Pramathi",     "प्रमाथि"),    ("Vikrama",      "विक्रम"),
+    ("Vrisha",       "वृष"),         ("Chitrabhanu",  "चित्रभानु"),
+    ("Subhanu",      "सुभानु"),      ("Tarana",       "तारण"),
+    ("Parthiva",     "पार्थिव"),    ("Vyaya",        "व्यय"),
+    ("Sarvajit",     "सर्वजित"),    ("Sarvadharin",  "सर्वधारिण"),
+    ("Virodhi",      "विरोधि"),      ("Vikruta",      "विकृत"),
+    ("Khara",        "खर"),          ("Nandana",      "नंदन"),
+    ("Vijaya",       "विजय"),        ("Jaya",         "जय"),
+    ("Manmatha",     "मन्मथ"),       ("Durmukha",     "दुर्मुख"),
+    ("Hevilambi",    "हेविलम्बि"),   ("Vilambi",      "विलम्बि"),
+    ("Vikari",       "विकारी"),      ("Sharvari",     "शार्वरी"),
+    ("Plava",        "प्लव"),        ("Shubhakrit",   "शुभकृत"),
+    ("Shobhana",     "शोभन"),        ("Krodhi",       "क्रोधि"),
+    ("Vishvavasu",   "विश्वावसु"),   ("Parabhava",    "परभव"),
+    ("Plavanga",     "प्लवंग"),      ("Kilaka",       "कीलक"),
+    ("Saumya",       "सौम्य"),        ("Sadharana",    "साधारण"),
+    ("Virodhikrit",  "विरोधिकृत"),  ("Paridhavi",    "परिधावि"),
+    ("Pramadicha",   "प्रमादीच"),   ("Ananda",       "आनंद"),
+    ("Rakshasa",     "राक्षस"),      ("Anala",        "अनल"),
+    ("Pingala",      "पिंगल"),       ("Kalayukti",    "कालयुक्ति"),
+    ("Siddharthi",   "सिद्धार्थि"), ("Raudri",       "रौद्री"),
+    ("Durmati",      "दुर्मति"),     ("Dundubhi",     "दुंदुभि"),
+    ("Rudhirodgari", "रुधिरोद्गारि"),("Raktakshi",   "रक्ताक्षि"),
+    ("Krodhana",     "क्रोधन"),      ("Kshaya",       "क्षय"),
+]
+
+# 6 Ritu (seasons) based on Sun longitude: index = floor(sun_lon / 60) % 6
+RITU_NAMES: List[Tuple[str, str]] = [
+    ("Vasanta",  "वसंत"),    # Spring   — Sun 0°–60°
+    ("Grishma",  "ग्रीष्म"), # Summer   — Sun 60°–120°
+    ("Varsha",   "वर्षा"),   # Monsoon  — Sun 120°–180°
+    ("Sharad",   "शरद"),     # Autumn   — Sun 180°–240°
+    ("Hemanta",  "हेमंत"),   # Pre-winter — Sun 240°–300°
+    ("Shishira", "शिशिर"),   # Winter   — Sun 300°–360°
+]
+
+# 12 Rashi (zodiac sign) names: index = floor(longitude / 30) % 12
+RASHI_NAMES: List[Tuple[str, str]] = [
+    ("Mesha",      "मेष"),      ("Vrishabha",  "वृषभ"),
+    ("Mithuna",    "मिथुन"),   ("Karka",      "कर्क"),
+    ("Simha",      "सिंह"),    ("Kanya",      "कन्या"),
+    ("Tula",       "तुला"),    ("Vrishchika", "वृश्चिक"),
+    ("Dhanu",      "धनु"),     ("Makara",     "मकर"),
+    ("Kumbha",     "कुम्भ"),   ("Meena",      "मीन"),
+]
+
+# Choghadiya 7-item quality cycle (index advances +1 each period)
+# order: Udveg, Amrit, Rog, Labh, Shubh, Char, Kaal
+_CHG_CYCLE: List[Tuple[str, str, str, str]] = [
+    ("Udveg",  "उद्वेग",  "caution",      "Sun"),
+    ("Amrit",  "अमृत",    "excellent",    "Moon"),
+    ("Rog",    "रोग",     "inauspicious", "Mars"),
+    ("Labh",   "लाभ",     "good",         "Mercury"),
+    ("Shubh",  "शुभ",     "auspicious",   "Jupiter"),
+    ("Char",   "चर",      "neutral",      "Venus"),
+    ("Kaal",   "काल",     "inauspicious", "Saturn"),
+]
+
+# Day choghadiya start index in _CHG_CYCLE by Python weekday (0=Mon, 6=Sun)
+# Sun→Udveg(0), Mon→Amrit(1), Tue→Rog(2), Wed→Labh(3), Thu→Shubh(4), Fri→Char(5), Sat→Kaal(6)
+_CHG_DAY_START: Dict[int, int] = {0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 0}
+
+# Night choghadiya start index by Python weekday
+# Sun night→Shubh(4), Mon→Char(5), Tue→Kaal(6), Wed→Udveg(0), Thu→Amrit(1), Fri→Rog(2), Sat→Labh(3)
+_CHG_NIGHT_START: Dict[int, int] = {0: 5, 1: 6, 2: 0, 3: 1, 4: 2, 5: 3, 6: 4}
+
+# 7 Hora planet lords in weekday naming sequence [Sun=0, Moon=1, Mars=2, Mercury=3, Jupiter=4, Venus=5, Saturn=6]
+HORA_LORDS: List[Tuple[str, str, str]] = [
+    ("Surya",   "सूर्य",    "#FF6B35"),
+    ("Chandra", "चंद्र",    "#AED6F1"),
+    ("Mangala", "मंगल",    "#E74C3C"),
+    ("Budha",   "बुध",     "#58D68D"),
+    ("Guru",    "गुरु",    "#F7DC6F"),
+    ("Shukra",  "शुक्र",   "#FF69B4"),
+    ("Shani",   "शनि",     "#7F8C8D"),
+]
+
+# Python weekday (0=Mon) → first hora lord index in HORA_LORDS
+_HORA_DAY_LORD: Dict[int, int] = {0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 0}
+
+# Durmuhurtam: (start_muhurta_pos, end_muhurta_pos) out of 30 day-muhurtas (1-indexed)
+# Day = sunrise→sunset divided into 30 equal parts
+_DURM_POS: Dict[int, List[Tuple[int, int]]] = {
+    0: [(14, 15)],              # Monday
+    1: [(13, 14), (22, 23)],   # Tuesday
+    2: [(5, 6), (14, 15)],     # Wednesday
+    3: [(10, 12)],              # Thursday (spans 2 muhurtas)
+    4: [(9, 10), (16, 17)],    # Friday
+    5: [(6, 7), (8, 9)],       # Saturday
+    6: [(14, 15), (23, 24)],   # Sunday
+}
+
+# Varjyam: offset in hours after nakshatra start when Varjyam begins (duration 1.5h)
+_VARJYAM_OFFSET_H: Dict[int, float] = {
+    1: 14.0, 2: 7.0,  3: 2.0,  4: 22.0, 5: 20.0, 6: 5.0,  7: 3.0,
+    8: 9.0,  9: 11.0, 10: 15.0,11: 18.0,12: 6.0, 13: 8.0, 14: 4.0,
+    15: 12.0,16: 16.0,17: 1.0, 18: 10.0,19: 13.0,20: 19.0,21: 21.0,
+    22: 17.0,23: 23.0,24: 0.5, 25: 7.5, 26: 4.5, 27: 2.5,
 }
 
 
@@ -416,7 +538,7 @@ class PanchangaService:
         obs = ephem.Observer()
         obs.lat = str(latitude)
         obs.lon = str(longitude)
-        obs.date = date_obj.strftime("%Y/%m/%d 00:00:00")
+        obs.date = date_obj.strftime(DATE_START_FMT)
         obs.pressure = 0
         obs.horizon = "-0:34"  # Standard sunrise/sunset definition
 
@@ -460,7 +582,7 @@ class PanchangaService:
             obs = ephem.Observer()
             obs.lat = str(latitude)
             obs.lon = str(longitude)
-            obs.date = date_obj.strftime("%Y/%m/%d 00:00:00")
+            obs.date = date_obj.strftime(DATE_START_FMT)
             obs.pressure = 0
             obs.horizon = "-0:34"
             sun = ephem.Sun()
@@ -572,7 +694,7 @@ class PanchangaService:
             "name": name_en,
             "name_sa": name_sa,
             "is_bhadra": is_bhadra,
-            "warning": "Vishti (Bhadra) Karana — avoid auspicious activities" if is_bhadra else None,
+            "warning": (f"Vishti (Bhadra) Karana — {AVOID_AUSPICIOUS}" if is_bhadra else None),
         }
 
     def calculate_rahu_kalam(
@@ -611,6 +733,373 @@ class PanchangaService:
         tz_name = self._resolve_timezone(latitude, longitude)
         start, end = self._kalam_period(date_obj, latitude, longitude, tz_name, GULIKA_PART)
         return {"start": start, "end": end, "timezone": tz_name}
+
+    # ------------------------------------------------------------------
+    # Extended Panchanga element builders
+    # ------------------------------------------------------------------
+
+    def _compute_samvatsara(self, date_obj: date) -> Dict[str, Any]:
+        """Compute the 60-year Jovian Samvatsara cycle for the given date."""
+        # Vikrama Samvat starts mid-April; before that, still in previous VS year
+        if date_obj.month < 4 or (date_obj.month == 4 and date_obj.day < 14):
+            vs = date_obj.year + 56
+        else:
+            vs = date_obj.year + 57
+        # Formula verified: 2024 (Apr-Dec) → VS 2081 → Krodhi (idx 37, number 38)
+        idx = (vs - 3) % 60
+        name_en, name_sa = SAMVATSARA_NAMES[idx]
+        return {
+            "number": idx + 1,
+            "name": name_en,
+            "name_sa": name_sa,
+            "vikrama_samvat": vs,
+        }
+
+    def _compute_eras(self, date_obj: date) -> Dict[str, Any]:
+        """Return Vikrama Samvat, Shaka Samvat, and Kali Yuga year numbers."""
+        if date_obj.month < 4 or (date_obj.month == 4 and date_obj.day < 14):
+            vs = date_obj.year + 56
+        else:
+            vs = date_obj.year + 57
+        shaka = vs - 135
+        kali_yuga = date_obj.year + 3101
+        return {
+            "vikrama_samvat": vs,
+            "shaka_samvat": shaka,
+            "kali_yuga": kali_yuga,
+        }
+
+    def _compute_ayana(self, date_obj: date, latitude: float, longitude: float) -> Dict[str, Any]:
+        """
+        Compute Ayana (celestial half-year) from Sun's ecliptic longitude.
+        Uttarayana: Sun at 270°–90° (starts winter solstice, traditional Makar Sankranti).
+        Dakshinayana: Sun at 90°–270° (starts summer solstice).
+        """
+        sun_lon, _ = self._sun_moon_longitudes(date_obj, latitude, longitude)
+        if sun_lon >= 270 or sun_lon < 90:
+            return {
+                "name": "Uttarayana",
+                "name_sa": "उत्तरायण",
+                "description": "Sun moving northward — auspicious half-year",
+            }
+        return {
+            "name": "Dakshinayana",
+            "name_sa": "दक्षिणायन",
+            "description": "Sun moving southward",
+        }
+
+    def _compute_ritu(self, date_obj: date, latitude: float, longitude: float) -> Dict[str, Any]:
+        """Compute the current Ritu (season) from Sun's ecliptic longitude."""
+        sun_lon, _ = self._sun_moon_longitudes(date_obj, latitude, longitude)
+        ritu_idx = int(sun_lon / 60) % 6
+        name_en, name_sa = RITU_NAMES[ritu_idx]
+        return {
+            "number": ritu_idx + 1,
+            "name": name_en,
+            "name_sa": name_sa,
+        }
+
+    def _compute_surya_rashi(self, date_obj: date, latitude: float, longitude: float) -> Dict[str, Any]:
+        """Return Sun's Rashi (zodiac sign) from Sun's ecliptic longitude."""
+        sun_lon, _ = self._sun_moon_longitudes(date_obj, latitude, longitude)
+        idx = int(sun_lon / 30) % 12
+        name_en, name_sa = RASHI_NAMES[idx]
+        return {"number": idx + 1, "name": name_en, "name_sa": name_sa,
+                "longitude": round(sun_lon % 30, 2)}
+
+    def _compute_chandra_rashi(self, date_obj: date, latitude: float, longitude: float) -> Dict[str, Any]:
+        """Return Moon's Rashi (zodiac sign) from Moon's ecliptic longitude."""
+        _, moon_lon = self._sun_moon_longitudes(date_obj, latitude, longitude)
+        idx = int(moon_lon / 30) % 12
+        name_en, name_sa = RASHI_NAMES[idx]
+        return {"number": idx + 1, "name": name_en, "name_sa": name_sa,
+                "longitude": round(moon_lon % 30, 2)}
+
+    def _compute_moonrise_moonset(
+        self, date_obj: date, latitude: float, longitude: float, tz_name: str
+    ) -> Dict[str, str]:
+        """Compute moonrise and moonset times in local timezone."""
+        if not EPHEM_AVAILABLE or not TZ_AVAILABLE:
+            return {"moonrise": "N/A", "moonset": "N/A"}
+        obs = ephem.Observer()
+        obs.lat = str(latitude)
+        obs.lon = str(longitude)
+        obs.date = date_obj.strftime(DATE_START_FMT)
+        obs.pressure = 0
+        obs.horizon = "-0:34"
+        moon = ephem.Moon()
+        try:
+            rise_utc = obs.next_rising(moon).datetime().replace(tzinfo=pytz.utc)
+            moonrise = self._format_time_in_tz(rise_utc, tz_name)
+        except (ephem.AlwaysUpError, ephem.NeverUpError):
+            moonrise = "N/A"
+        try:
+            obs.date = date_obj.strftime(DATE_START_FMT)  # reset
+            set_utc = obs.next_setting(moon).datetime().replace(tzinfo=pytz.utc)
+            moonset = self._format_time_in_tz(set_utc, tz_name)
+        except (ephem.AlwaysUpError, ephem.NeverUpError):
+            moonset = "N/A"
+        return {"moonrise": moonrise, "moonset": moonset}
+
+    def _sunrise_sunset_local_mins(
+        self, date_obj: date, latitude: float, longitude: float, tz_name: str
+    ) -> Optional[Tuple[float, float]]:
+        """Return (sunrise_mins, sunset_mins) as minutes since midnight in local tz, or None."""
+        if not EPHEM_AVAILABLE or not TZ_AVAILABLE:
+            return None
+        obs = ephem.Observer()
+        obs.lat = str(latitude)
+        obs.lon = str(longitude)
+        obs.date = date_obj.strftime(DATE_START_FMT)
+        obs.pressure = 0
+        obs.horizon = "-0:34"
+        tz = pytz.timezone(tz_name)
+        sun = ephem.Sun()
+        try:
+            rise = obs.next_rising(sun).datetime().replace(tzinfo=pytz.utc).astimezone(tz)
+            sset = obs.next_setting(sun).datetime().replace(tzinfo=pytz.utc).astimezone(tz)
+            return rise.hour * 60 + rise.minute, sset.hour * 60 + sset.minute
+        except (ephem.AlwaysUpError, ephem.NeverUpError, Exception):
+            return None
+
+    def _next_sunrise_local_mins(
+        self, date_obj: date, latitude: float, longitude: float, tz_name: str
+    ) -> float:
+        """Return sunrise of next calendar day as minutes since midnight + 24*60."""
+        if not EPHEM_AVAILABLE or not TZ_AVAILABLE:
+            return 24 * 60 + 6 * 60  # fallback: 06:00 next day
+        obs = ephem.Observer()
+        obs.lat = str(latitude)
+        obs.lon = str(longitude)
+        next_day = date_obj + timedelta(days=1)
+        obs.date = next_day.strftime(DATE_START_FMT)
+        obs.pressure = 0
+        obs.horizon = "-0:34"
+        tz = pytz.timezone(tz_name)
+        sun = ephem.Sun()
+        try:
+            rise = obs.next_rising(sun).datetime().replace(tzinfo=pytz.utc).astimezone(tz)
+            return rise.hour * 60 + rise.minute + 24 * 60
+        except (ephem.AlwaysUpError, ephem.NeverUpError, Exception):
+            return 24 * 60 + 6 * 60
+
+    def _compute_choghadiya(
+        self, date_obj: date, latitude: float, longitude: float, tz_name: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Compute 16 Choghadiya periods (8 day + 8 night) for the date.
+        Day: sunrise → sunset divided into 8 equal parts.
+        Night: sunset → next sunrise divided into 8 equal parts.
+        """
+        times = self._sunrise_sunset_local_mins(date_obj, latitude, longitude, tz_name)
+        if times is None:
+            return []
+        rise_mins, set_mins = times
+        rise_next_mins = self._next_sunrise_local_mins(date_obj, latitude, longitude, tz_name)
+
+        day_chg_len = (set_mins - rise_mins) / 8
+        night_chg_len = (rise_next_mins - set_mins) / 8
+
+        wd = date_obj.weekday()
+        day_start_idx = _CHG_DAY_START[wd]
+        night_start_idx = _CHG_NIGHT_START[wd]
+
+        result: List[Dict[str, Any]] = []
+        for i in range(8):
+            idx = (day_start_idx + i) % 7
+            q = _CHG_CYCLE[idx]
+            start_m = rise_mins + i * day_chg_len
+            result.append({
+                "period": i + 1, "type": "day",
+                "name": q[0], "name_sa": q[1],
+                "quality": q[2], "planet": q[3],
+                "start": self._minutes_to_hhmm(start_m),
+                "end": self._minutes_to_hhmm(start_m + day_chg_len),
+            })
+        for i in range(8):
+            idx = (night_start_idx + i) % 7
+            q = _CHG_CYCLE[idx]
+            start_m = set_mins + i * night_chg_len
+            result.append({
+                "period": i + 1, "type": "night",
+                "name": q[0], "name_sa": q[1],
+                "quality": q[2], "planet": q[3],
+                "start": self._minutes_to_hhmm(start_m % (24 * 60)),
+                "end": self._minutes_to_hhmm((start_m + night_chg_len) % (24 * 60)),
+            })
+        return result
+
+    def _compute_hora(
+        self, date_obj: date, latitude: float, longitude: float, tz_name: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Compute 24 planetary Horas for the date.
+        Day horas: sunrise → sunset in 12 equal parts.
+        Night horas: sunset → next sunrise in 12 equal parts.
+        Each successive hora advances 5 steps in HORA_LORDS (verified by weekday cycle).
+        """
+        times = self._sunrise_sunset_local_mins(date_obj, latitude, longitude, tz_name)
+        if times is None:
+            return []
+        rise_mins, set_mins = times
+        rise_next_mins = self._next_sunrise_local_mins(date_obj, latitude, longitude, tz_name)
+
+        day_hora_len = (set_mins - rise_mins) / 12
+        night_hora_len = (rise_next_mins - set_mins) / 12
+
+        wd = date_obj.weekday()
+        first_idx = _HORA_DAY_LORD[wd]
+
+        result: List[Dict[str, Any]] = []
+        for i in range(12):
+            lord_idx = (first_idx + i * 5) % 7
+            lord = HORA_LORDS[lord_idx]
+            start_m = rise_mins + i * day_hora_len
+            result.append({
+                "hora": i + 1, "type": "day",
+                "lord": lord[0], "lord_sa": lord[1], "color": lord[2],
+                "start": self._minutes_to_hhmm(start_m),
+                "end": self._minutes_to_hhmm(start_m + day_hora_len),
+            })
+        night_first_idx = (first_idx + 12 * 5) % 7
+        for i in range(12):
+            lord_idx = (night_first_idx + i * 5) % 7
+            lord = HORA_LORDS[lord_idx]
+            start_m = set_mins + i * night_hora_len
+            result.append({
+                "hora": i + 1, "type": "night",
+                "lord": lord[0], "lord_sa": lord[1], "color": lord[2],
+                "start": self._minutes_to_hhmm(start_m % (24 * 60)),
+                "end": self._minutes_to_hhmm((start_m + night_hora_len) % (24 * 60)),
+            })
+        return result
+
+    def _compute_durmuhurtam(
+        self, date_obj: date, latitude: float, longitude: float, tz_name: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Compute Durmuhurtam (inauspicious windows) for the date.
+        Day (sunrise → sunset) is divided into 30 equal muhurtas.
+        Traditional positions per weekday from _DURM_POS.
+        """
+        times = self._sunrise_sunset_local_mins(date_obj, latitude, longitude, tz_name)
+        if times is None:
+            return []
+        rise_mins, set_mins = times
+        day_span = set_mins - rise_mins
+        muhurta_len = day_span / 30
+
+        wd = date_obj.weekday()
+        result: List[Dict[str, Any]] = []
+        for start_pos, end_pos in _DURM_POS.get(wd, []):
+            start_m = rise_mins + (start_pos - 1) * muhurta_len
+            end_m = rise_mins + end_pos * muhurta_len
+            result.append({
+                "start": self._minutes_to_hhmm(start_m),
+                "end": self._minutes_to_hhmm(end_m),
+                "warning": AVOID_AUSPICIOUS,
+            })
+        return result
+
+    def _compute_varjyam(
+        self, date_obj: date, latitude: float, longitude: float, tz_name: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Compute Varjyam (nakshatra-based inauspicious period, ~1.5h).
+        Each nakshatra has a fixed offset after its start; see _VARJYAM_OFFSET_H.
+        """
+        if not TZ_AVAILABLE:
+            return None
+        _, moon_lon = self._sun_moon_longitudes(date_obj, latitude, longitude)
+        nak_span = 360.0 / 27
+        nak_num = min(int(moon_lon / nak_span) + 1, 27)
+
+        # How far Moon has travelled into the current nakshatra at 06:00 UTC
+        degrees_into_nak = moon_lon - (nak_num - 1) * nak_span
+        if degrees_into_nak < 0:
+            degrees_into_nak += nak_span
+        moon_speed_deg_per_hr = 13.18 / 24
+        elapsed_hours = degrees_into_nak / moon_speed_deg_per_hr
+
+        ref_dt = datetime(
+            date_obj.year, date_obj.month, date_obj.day, 6, 0, 0, tzinfo=pytz.utc
+        )
+        nak_start_dt = ref_dt - timedelta(hours=elapsed_hours)
+        offset_h = _VARJYAM_OFFSET_H.get(nak_num, 8.0)
+        vs_dt = nak_start_dt + timedelta(hours=offset_h)
+        ve_dt = vs_dt + timedelta(hours=1.5)
+
+        tz = pytz.timezone(tz_name)
+        vs_local = vs_dt.astimezone(tz)
+        ve_local = ve_dt.astimezone(tz)
+        # Only report if Varjyam falls on this date in local tz
+        if vs_local.date() != date_obj and ve_local.date() != date_obj:
+            return None
+        nak_name = NAKSHATRA_NAMES.get(nak_num, ("Unknown", ""))[0]
+        return {
+            "start": vs_local.strftime("%H:%M"),
+            "end": ve_local.strftime("%H:%M"),
+            "nakshatra": nak_name,
+            "warning": "Avoid auspicious activities during Varjyam",
+        }
+
+    def _compute_tithi_end_time(
+        self, date_obj: date, latitude: float, longitude: float, tz_name: str
+    ) -> str:
+        """
+        Estimate when the current Tithi ends.
+        Uses Moon–Sun elongation rate ≈ 0.507°/hr (synodic month = 29.53 days).
+        Returns HH:MM in local tz, or 'Tomorrow'.
+        """
+        sun_lon, moon_lon = self._sun_moon_longitudes(date_obj, latitude, longitude)
+        elongation = (moon_lon - sun_lon) % 360
+        tithi_num = int(elongation / 12) + 1
+        tithi_end_elong = tithi_num * 12
+        remaining_deg = tithi_end_elong - elongation
+        if remaining_deg <= 0:
+            remaining_deg += 12
+        rate = 360 / (29.53 * 24)  # degrees / hour
+        remaining_hours = remaining_deg / rate
+        ref_dt = datetime(
+            date_obj.year, date_obj.month, date_obj.day, 6, 0, 0, tzinfo=pytz.utc
+        )
+        end_dt = ref_dt + timedelta(hours=remaining_hours)
+        if TZ_AVAILABLE:
+            tz = pytz.timezone(tz_name)
+            end_local = end_dt.astimezone(tz)
+            if end_local.date() > date_obj:
+                return "Tomorrow"
+            return end_local.strftime("%H:%M")
+        return self._minutes_to_hhmm((end_dt.hour * 60 + end_dt.minute) % (24 * 60))
+
+    def _compute_nakshatra_end_time(
+        self, date_obj: date, latitude: float, longitude: float, tz_name: str
+    ) -> str:
+        """
+        Estimate when the current Nakshatra ends.
+        Uses Moon sidereal speed ≈ 0.549°/hr (sidereal month = 27.32 days).
+        Returns HH:MM in local tz, or 'Tomorrow'.
+        """
+        _, moon_lon = self._sun_moon_longitudes(date_obj, latitude, longitude)
+        nak_span = 360.0 / 27
+        nak_num = min(int(moon_lon / nak_span) + 1, 27)
+        nak_end_lon = nak_num * nak_span
+        remaining_deg = nak_end_lon - moon_lon
+        if remaining_deg <= 0:
+            remaining_deg += nak_span
+        rate = 360 / (27.32 * 24)
+        remaining_hours = remaining_deg / rate
+        ref_dt = datetime(
+            date_obj.year, date_obj.month, date_obj.day, 6, 0, 0, tzinfo=pytz.utc
+        )
+        end_dt = ref_dt + timedelta(hours=remaining_hours)
+        if TZ_AVAILABLE:
+            tz = pytz.timezone(tz_name)
+            end_local = end_dt.astimezone(tz)
+            if end_local.date() > date_obj:
+                return "Tomorrow"
+            return end_local.strftime("%H:%M")
+        return self._minutes_to_hhmm((end_dt.hour * 60 + end_dt.minute) % (24 * 60))
 
     # ------------------------------------------------------------------
     # Daily Panchanga — main public interface
@@ -662,6 +1151,21 @@ class PanchangaService:
             muhurat  = self.get_auspicious_muhurat(date_obj, latitude, longitude, tz_name)
             festivals = self.get_festivals_for_date(date_obj)
 
+            # Extended elements
+            samvatsara = self._compute_samvatsara(date_obj)
+            eras = self._compute_eras(date_obj)
+            ayana = self._compute_ayana(date_obj, latitude, longitude)
+            ritu = self._compute_ritu(date_obj, latitude, longitude)
+            surya_rashi = self._compute_surya_rashi(date_obj, latitude, longitude)
+            chandra_rashi = self._compute_chandra_rashi(date_obj, latitude, longitude)
+            moonrise_set = self._compute_moonrise_moonset(date_obj, latitude, longitude, tz_name)
+            choghadiya = self._compute_choghadiya(date_obj, latitude, longitude, tz_name)
+            hora = self._compute_hora(date_obj, latitude, longitude, tz_name)
+            durmuhurtam = self._compute_durmuhurtam(date_obj, latitude, longitude, tz_name)
+            varjyam = self._compute_varjyam(date_obj, latitude, longitude, tz_name)
+            tithi_end_time = self._compute_tithi_end_time(date_obj, latitude, longitude, tz_name)
+            nakshatra_end_time = self._compute_nakshatra_end_time(date_obj, latitude, longitude, tz_name)
+
             # --- Panchanga-type-specific month information ---
             sun_lon, _ = self._sun_moon_longitudes(date_obj, latitude, longitude)
 
@@ -697,10 +1201,26 @@ class PanchangaService:
                 "day_of_week_sa": HINDI_DAYS.get(date_obj.weekday(), ""),
                 "sunrise": sunrise,
                 "sunset": sunset,
+                "moonrise": moonrise_set["moonrise"],
+                "moonset": moonrise_set["moonset"],
                 "tithi": tithi,
+                "tithi_end_time": tithi_end_time,
                 "nakshatra": nakshatra,
+                "nakshatra_end_time": nakshatra_end_time,
                 "yoga": yoga,
                 "karana": karana,
+                "samvatsara": samvatsara,
+                "vikrama_samvat": eras["vikrama_samvat"],
+                "shaka_samvat": eras["shaka_samvat"],
+                "kali_yuga": eras["kali_yuga"],
+                "ayana": ayana,
+                "ritu": ritu,
+                "surya_rashi": surya_rashi,
+                "chandra_rashi": chandra_rashi,
+                "choghadiya": choghadiya,
+                "hora": hora,
+                "durmuhurtam": durmuhurtam,
+                "varjyam": varjyam,
                 "rahu_kalam": rahu_kalam,
                 "festivals": festivals,
                 "muhurat": muhurat,

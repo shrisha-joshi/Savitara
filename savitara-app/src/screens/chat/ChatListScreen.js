@@ -12,6 +12,50 @@ import { getRelativeTime } from '../../utils/dateTime';
 // ─────────────────────────────────────────────────────────────────────────────
 // Module-level sub-components (avoids S6478 nested component definitions)
 
+const renderConversationAvatar = (otherUser) => (props) => {
+  const avatarUri = otherUser.profile_picture || otherUser.profile_image;
+  if (avatarUri) {
+    return (
+      <Avatar.Image
+        {...props}
+        size={50}
+        source={{ uri: avatarUri }}
+      />
+    );
+  }
+
+  return (
+    <Avatar.Text
+      {...props}
+      size={50}
+      label={getInitials(otherUser.name || 'U')}
+      style={{ backgroundColor: getAvatarColor(otherUser.id || otherUser._id) }}
+    />
+  );
+};
+
+const renderConversationMeta = (item, userTimezone, openMenu) => () => {
+  const lastMsg = item.last_message || {};
+
+  return (
+    <View style={styles.rightContainer}>
+      <Text style={styles.timestamp}>
+        {getRelativeTime(item.updated_at || lastMsg.created_at, userTimezone)}
+      </Text>
+      <View style={styles.rightBottom}>
+        {item.unread_count > 0 && (
+          <Badge style={styles.badge} size={24}>{item.unread_count}</Badge>
+        )}
+        <IconButton
+          icon="dots-vertical"
+          size={20}
+          onPress={(e) => openMenu(item, e)}
+        />
+      </View>
+    </View>
+  );
+};
+
 function ConversationItem({
   item,
   userTimezone,
@@ -26,44 +70,14 @@ function ConversationItem({
   handleDelete,
 }) {
   const otherUser = item.other_user || {};
-  const lastMsg = item.last_message || {};
   const convId = item.id || item._id;
   return (
     <View>
       <List.Item
         title={otherUser.name || 'Unknown User'}
-        description={lastMsg.content || 'No messages yet'}
-        left={() => (
-          otherUser.profile_picture || otherUser.profile_image ? (
-            <Avatar.Image
-              size={50}
-              source={{ uri: otherUser.profile_picture || otherUser.profile_image }}
-            />
-          ) : (
-            <Avatar.Text
-              size={50}
-              label={getInitials(otherUser.name || 'U')}
-              style={{ backgroundColor: getAvatarColor(otherUser.id || otherUser._id) }}
-            />
-          )
-        )}
-        right={() => (
-          <View style={styles.rightContainer}>
-            <Text style={styles.timestamp}>
-              {getRelativeTime(item.updated_at || lastMsg.created_at, userTimezone)}
-            </Text>
-            <View style={styles.rightBottom}>
-              {item.unread_count > 0 && (
-                <Badge style={styles.badge} size={24}>{item.unread_count}</Badge>
-              )}
-              <IconButton
-                icon="dots-vertical"
-                size={20}
-                onPress={(e) => openMenu(item, e)}
-              />
-            </View>
-          </View>
-        )}
+        description={item.last_message?.content || 'No messages yet'}
+        left={renderConversationAvatar(otherUser)}
+        right={renderConversationMeta(item, userTimezone, openMenu)}
         titleStyle={item.unread_count > 0 ? styles.unreadTitle : undefined}
         descriptionStyle={item.unread_count > 0 ? styles.unreadDescription : undefined}
         onPress={() => onNavigate(convId, otherUser)}

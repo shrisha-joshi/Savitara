@@ -16,6 +16,7 @@
  */
 
 import { Alert } from 'react-native';
+import logger from '../utils/logger';
 import api from './api';
 
 /* 
@@ -142,12 +143,6 @@ export const initiateUPIPayment = async (options) => {
   // Destructure required payment options
   const {
     razorpay_order_id,
-    amount,
-    currency = 'INR',
-    name = 'Savitara',
-    description,
-    contact,
-    email,
   } = options;
   
   // Validate required parameters
@@ -221,7 +216,7 @@ const handlePaymentSuccess = async (paymentData) => {
       razorpay_signature,
     });
     
-    console.log('Payment verification successful:', response.data);
+    logger.log('Payment verification successful:', response.data);
     
     return {
       success: true,
@@ -275,7 +270,7 @@ export const processBookingPayment = async (paymentDetails) => {
   
   try {
     // Step 1: Create Razorpay order via backend
-    console.log('Creating payment order for booking:', booking_id);
+    logger.log('Creating payment order for booking:', booking_id);
     const orderResponse = await createPaymentOrder({
       booking_id,
       amount,
@@ -300,7 +295,7 @@ export const processBookingPayment = async (paymentDetails) => {
       contact: user.phone,
       email: user.email,
       onSuccess: (result) => {
-        console.log('Payment flow completed successfully');
+        logger.log('Payment flow completed successfully');
         if (onSuccess) {
           onSuccess(result);
         }

@@ -2,6 +2,7 @@
  * WebSocket Service for Real-time Communication
  */
 import { API_CONFIG } from '../config/api.config';
+import logger from '../utils/logger';
 import api from './api';
 
 class WebSocketService {
@@ -16,12 +17,12 @@ class WebSocketService {
 
   async connect(userId, token) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      console.log('WebSocket already connected');
+      logger.log('WebSocket already connected');
       return;
     }
 
     if (this.isConnecting) {
-      console.log('WebSocket connection in progress');
+      logger.log('WebSocket connection in progress');
       return;
     }
 
@@ -51,7 +52,7 @@ class WebSocketService {
       this.ws = new WebSocket(`${wsBase}/ws/${userId}?${authParam}`);
 
       this.ws.onopen = () => {
-        console.log('WebSocket connected');
+        logger.log('WebSocket connected');
         this.reconnectAttempts = 0;
         this.isConnecting = false;
         this.emit('connected', { userId });
@@ -61,7 +62,7 @@ class WebSocketService {
       this.ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          console.log('WebSocket message received:', message.type);
+          logger.log('WebSocket message received:', message.type);
           this.handleMessage(message);
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
@@ -75,7 +76,7 @@ class WebSocketService {
       };
 
       this.ws.onclose = () => {
-        console.log('WebSocket disconnected');
+        logger.log('WebSocket disconnected');
         this.isConnecting = false;
         this.emit('disconnected');
         this.stopHeartbeat();
@@ -84,7 +85,7 @@ class WebSocketService {
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
           const delay = this.reconnectDelay * this.reconnectAttempts;
-          console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+          logger.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
           
           setTimeout(() => {
             this.connect(userId, token);

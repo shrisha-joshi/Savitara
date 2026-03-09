@@ -3,8 +3,23 @@
  * Provides meta tags, Open Graph, JSON-LD Schema markup
  * WCAG 2.1 AA and Google SEO compliant
  */
-import React from 'react';
 import PropTypes from 'prop-types';
+import React from 'react';
+
+/**
+ * Serialize a JSON-LD schema object for safe inline use in <script> tags.
+ * Escapes '<', '>' and '&' so the JSON cannot break out of the <script> block
+ * (XSS-SEC-01).
+ */
+const ESC_LT = String.raw`\u003c`;
+const ESC_GT = String.raw`\u003e`;
+const ESC_AMP = String.raw`\u0026`;
+
+const safeJsonLd = (obj) =>
+  JSON.stringify(obj)
+    .replaceAll('<', ESC_LT)
+    .replaceAll('>', ESC_GT)
+    .replaceAll('&', ESC_AMP);
 
 /**
  * SEO Head Component
@@ -135,7 +150,7 @@ export const OrganizationSchema = () => {
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      dangerouslySetInnerHTML={{ __html: safeJsonLd(schema) }}
     />
   );
 };
@@ -174,7 +189,7 @@ export const ServiceSchema = ({
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      dangerouslySetInnerHTML={{ __html: safeJsonLd(schema) }}
     />
   );
 };
@@ -223,15 +238,26 @@ export const PersonSchema = ({
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      dangerouslySetInnerHTML={{ __html: safeJsonLd(schema) }}
     />
   );
+};
+
+PersonSchema.propTypes = {
+  name: PropTypes.string.isRequired,
+  description: PropTypes.string,
+  image: PropTypes.string,
+  jobTitle: PropTypes.string,
+  expertise: PropTypes.arrayOf(PropTypes.string),
+  rating: PropTypes.number,
+  reviewCount: PropTypes.number,
 };
 
 /**
  * JSON-LD Schema for BreadcrumbList
  */
 export const BreadcrumbSchema = ({ items }) => {
+  const origin = globalThis.location?.origin || '';
   const schema = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -239,16 +265,23 @@ export const BreadcrumbSchema = ({ items }) => {
       '@type': 'ListItem',
       position: index + 1,
       name: item.name,
-      item: `${window.location.origin}${item.url}`,
+      item: `${origin}${item.url}`,
     })),
   };
   
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      dangerouslySetInnerHTML={{ __html: safeJsonLd(schema) }}
     />
   );
+};
+
+BreadcrumbSchema.propTypes = {
+  items: PropTypes.arrayOf(PropTypes.shape({
+    name: PropTypes.string.isRequired,
+    url: PropTypes.string.isRequired,
+  })).isRequired,
 };
 
 /**
@@ -271,9 +304,16 @@ export const FAQSchema = ({ questions }) => {
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      dangerouslySetInnerHTML={{ __html: safeJsonLd(schema) }}
     />
   );
+};
+
+FAQSchema.propTypes = {
+  questions: PropTypes.arrayOf(PropTypes.shape({
+    question: PropTypes.string.isRequired,
+    answer: PropTypes.string.isRequired,
+  })).isRequired,
 };
 
 /**
@@ -311,9 +351,18 @@ export const ReviewSchema = ({
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      dangerouslySetInnerHTML={{ __html: safeJsonLd(schema) }}
     />
   );
+};
+
+ReviewSchema.propTypes = {
+  itemName: PropTypes.string.isRequired,
+  itemType: PropTypes.string,
+  authorName: PropTypes.string.isRequired,
+  reviewBody: PropTypes.string.isRequired,
+  ratingValue: PropTypes.number.isRequired,
+  datePublished: PropTypes.string.isRequired,
 };
 
 /**
@@ -334,6 +383,16 @@ export const SEOPage = ({
       {children}
     </>
   );
+};
+
+SEOPage.propTypes = {
+  children: PropTypes.node.isRequired,
+  title: PropTypes.string.isRequired,
+  description: PropTypes.string.isRequired,
+  breadcrumbs: PropTypes.arrayOf(PropTypes.shape({
+    name: PropTypes.string.isRequired,
+    url: PropTypes.string.isRequired,
+  })),
 };
 
 export default {

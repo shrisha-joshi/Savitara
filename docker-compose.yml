@@ -50,7 +50,9 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=true
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-changeme}
+      # SEC-06: Require explicit ELASTIC_PASSWORD — no insecure fallback.
+      # Set ELASTIC_PASSWORD in your .env file before running docker compose up.
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD must be set in .env — see .env.example}
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
     ports:
       - "127.0.0.1:9200:9200"

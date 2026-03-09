@@ -90,16 +90,27 @@ export const chatAPI = {
   
   // Single conversation settings (avoids N+1 fetch-all-and-filter)
   getConversation: (conversationId) => api.get(`/chat/conversations/${conversationId}`),
+  getConversationSettings: (conversationId) => api.get(`/conversations/${conversationId}/settings`),
+  updateConversationSettings: (conversationId, data) => api.patch(`/conversations/${conversationId}/settings`, data),
 
-  // Conversation settings
-  pinConversation: (conversationId) => api.post(`/chat/conversations/${conversationId}/pin`),
-  archiveConversation: (conversationId) => api.post(`/chat/conversations/${conversationId}/archive`),
-  muteConversation: (conversationId, data) => api.patch(`/chat/conversations/${conversationId}/settings`, data),
+  // Conversation settings — use the dedicated conversation_settings router
+  pinConversation: (conversationId) => api.post(`/conversations/${conversationId}/pin`),
+  unpinConversation: (conversationId) => api.delete(`/conversations/${conversationId}/pin`),
+  archiveConversation: (conversationId) => api.post(`/conversations/${conversationId}/archive`),
+  unarchiveConversation: (conversationId) => api.delete(`/conversations/${conversationId}/archive`),
+  muteConversation: (conversationId, duration) => api.post(`/conversations/${conversationId}/mute`, { duration }),
+  unmuteConversation: (conversationId) => api.delete(`/conversations/${conversationId}/mute`),
   deleteConversation: (conversationId) => api.delete(`/chat/conversations/${conversationId}`),
 
-  // User safety
-  blockUser: (userId) => api.post('/chat/block', { blocked_user_id: userId }),
-  reportUser: (userId, reason) => api.post('/chat/report', { reported_user_id: userId, reason }),
+  // User safety — use the moderation router
+  blockUser: (userId, reason) => api.post(`/moderation/block/${userId}`, { reason: reason || null }),
+  unblockUser: (userId) => api.delete(`/moderation/block/${userId}`),
+  reportUser: (userId, reason, description, messageId) => api.post('/moderation/reports', {
+    reported_user_id: userId,
+    reason,
+    description: description || reason,
+    message_id: messageId || null,
+  }),
   
   // Message forwarding
   forwardMessage: (messageId, data) => api.post(`/messages/${messageId}/forward`, data),

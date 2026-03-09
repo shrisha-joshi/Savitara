@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { View, StyleSheet, ScrollView, Image } from 'react-native';
-import { Text, Card, Button, Chip, Searchbar, Avatar } from 'react-native-paper';
+import React, { useEffect, useState } from 'react';
+import { Image, ScrollView, StyleSheet, View } from 'react-native';
+import { Avatar, Button, Card, Chip, Searchbar, Text } from 'react-native-paper';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import Skeleton from '../../components/common/Skeleton';
+import HeroSection from '../../components/HeroSection';
+import PanchangaWidget from '../../components/PanchangaWidget';
 import { useAuth } from '../../context/AuthContext';
 import { userAPI } from '../../services/api';
-import Skeleton from '../../components/common/Skeleton';
-import PanchangaWidget from '../../components/PanchangaWidget';
-import HeroSection from '../../components/HeroSection';
 
 const HomeScreen = ({ navigation }) => {
   const { user } = useAuth();
@@ -47,7 +47,7 @@ const HomeScreen = ({ navigation }) => {
           </Text>
         </View>
 
-        <PanchangaWidget />
+        <PanchangaWidget navigation={navigation} />
 
         <Searchbar
           placeholder="Search for rituals, poojas..."

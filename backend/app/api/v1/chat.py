@@ -574,7 +574,7 @@ async def _send_message_notification(
         )
 
         if receiver and receiver.get("fcm_token"):
-            notification_service.send_notification(
+            await notification_service.send_notification_async(
                 token=receiver["fcm_token"],
                 title=f"Message from {current_user['full_name']}",
                 body=content[:100],

@@ -12,6 +12,31 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# MON-02: Prometheus metrics for active WebSocket connections
+try:
+    from prometheus_client import Counter, Gauge, Histogram
+
+    WS_ACTIVE_CONNECTIONS = Gauge(
+        "savitara_ws_active_connections",
+        "Number of currently active WebSocket connections",
+    )
+    WS_CONNECT_TOTAL = Counter(
+        "savitara_ws_connect_total",
+        "Total WebSocket connection attempts",
+    )
+    WS_DISCONNECT_TOTAL = Counter(
+        "savitara_ws_disconnect_total",
+        "Total WebSocket disconnections",
+    )
+    WS_MESSAGES_SENT = Counter(
+        "savitara_ws_messages_sent_total",
+        "Total WebSocket messages sent to clients",
+    )
+    _METRICS_ENABLED = True
+except ImportError:  # pragma: no cover
+    _METRICS_ENABLED = False
+    logger.warning("prometheus_client not installed — WS metrics disabled")
+
 
 class ConnectionManager:
     """
@@ -116,6 +141,10 @@ class ConnectionManager:
         await websocket.accept()
         self.active_connections[user_id] = websocket
 
+        if _METRICS_ENABLED:
+            WS_CONNECT_TOTAL.inc()
+            WS_ACTIVE_CONNECTIONS.set(len(self.active_connections))
+
         if self.pubsub:
             # Subscribe to this user's channel on Redis
             await self.pubsub.subscribe(f"user:{user_id}")
@@ -171,6 +200,10 @@ class ConnectionManager:
             logger.info(f"User {user_id} disconnected.")
             self._log_event("disconnect", user_id=user_id, connections=len(self.active_connections))
 
+            if _METRICS_ENABLED:
+                WS_DISCONNECT_TOTAL.inc()
+                WS_ACTIVE_CONNECTIONS.set(len(self.active_connections))
+
         if self.pubsub:
             # Unsubscribe in background
             try:
@@ -222,6 +255,8 @@ class ConnectionManager:
 
             logger.debug(f"WS delivered to {user_id} via Redis pubsub")
             self._log_event("delivered", user_id=user_id, channel=channel)
+            if _METRICS_ENABLED:
+                WS_MESSAGES_SENT.inc()
             return "delivered"
 
         except Exception as e:

@@ -7,6 +7,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 from fastapi import Request
 
+from app.core.config import settings
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
@@ -16,6 +18,18 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app: ASGIApp):
         super().__init__(app)
+        # Build connect-src from configured ALLOWED_ORIGINS so we never hardcode
+        # localhost in production (SEC-05).
+        allowed = settings.ALLOWED_ORIGINS if isinstance(settings.ALLOWED_ORIGINS, list) else [settings.ALLOWED_ORIGINS]
+        ws_origins = [
+            o.replace("https://", "wss://").replace("http://", "ws://")
+            for o in allowed
+        ]
+        connect_origins = " ".join(allowed + ws_origins)
+        self._csp_connect_src = (
+            f"'self' {connect_origins} "
+            "https://*.googleapis.com https://api.razorpay.com"
+        )
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
@@ -40,7 +54,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
         # Content Security Policy (CSP) — SonarQube: S5122
-        # Removed 'unsafe-eval' (XSS risk). 'unsafe-inline' kept for style compatibility;
+        # connect-src is built from settings.ALLOWED_ORIGINS (no hardcoded localhost).
+        # 'unsafe-inline' kept for style compatibility;
         # migrate to nonce-based CSP when frontend supports it.
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
@@ -48,7 +63,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "script-src 'self' https://apis.google.com https://checkout.razorpay.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' data: https://fonts.gstatic.com; "
-            "connect-src 'self' http://localhost:8000 ws://localhost:8000 https://*.googleapis.com https://api.razorpay.com; "
+            f"connect-src {self._csp_connect_src}; "
             "frame-src 'self' https://api.razorpay.com;"
         )
 

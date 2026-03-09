@@ -123,7 +123,7 @@ async def create_review(
                 u.get("fcm_token") for u in admin_users if u.get("fcm_token")
             ]
             if admin_tokens:
-                notification_service.send_multicast(
+                await notification_service.send_multicast_async(
                     tokens=admin_tokens,
                     title="New Review for Moderation",
                     body=f"New {review_data.review_type} review submitted",

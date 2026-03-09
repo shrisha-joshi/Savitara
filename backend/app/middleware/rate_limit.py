@@ -8,6 +8,7 @@ from slowapi.util import get_remote_address  # type: ignore
 from slowapi.errors import RateLimitExceeded  # type: ignore
 import redis.asyncio as redis
 from typing import Optional
+import collections
 import logging
 import time
 import uuid
@@ -46,13 +47,17 @@ limiter = Limiter(
 
 class RateLimitMiddleware:
     """
-    Custom rate limiting middleware with Redis backend
+    Custom rate limiting middleware with Redis backend.
+    Falls back to an in-memory sliding-window counter when Redis is unavailable
+    so rate limiting is never disabled during Redis outages (SEC-04).
     SonarQube: S4790 - DoS protection
     """
 
     def __init__(self):
         self.redis_client: Optional[redis.Redis] = None
         self._lua_sha: Optional[str] = None
+        # In-memory fallback: key -> deque of timestamps
+        self._memory_windows: dict = collections.defaultdict(collections.deque)
 
     async def connect_redis(self):
         """Connect to Redis for distributed rate limiting"""
@@ -82,8 +87,8 @@ class RateLimitMiddleware:
             True if allowed, False if rate limit exceeded
         """
         if not self.redis_client:
-            # Fallback to allowing request if Redis unavailable
-            return True
+            # SEC-04: Use in-memory sliding-window instead of failing open.
+            return self._check_memory_rate_limit(key, limit, window)
 
         try:
             now = int(time.time())
@@ -118,7 +123,21 @@ class RateLimitMiddleware:
 
         except Exception as e:
             logger.error(f"Rate limit check failed: {e}")
-            return True  # Allow on error
+            # SEC-04: Fall back to in-memory counter, not open access
+            return self._check_memory_rate_limit(key, limit, window)
+
+    def _check_memory_rate_limit(self, key: str, limit: int, window: int) -> bool:
+        """Sliding-window rate limiter using an in-memory deque (Redis fallback)."""
+        now = time.time()
+        window_start = now - window
+        timestamps = self._memory_windows[key]
+        # Drop timestamps outside the window
+        while timestamps and timestamps[0] < window_start:
+            timestamps.popleft()
+        if len(timestamps) >= limit:
+            return False
+        timestamps.append(now)
+        return True
 
     async def close(self):
         """Close Redis connection"""

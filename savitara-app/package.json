@@ -8,7 +8,7 @@
     "ios": "expo start --ios --clear",
     "web": "expo start --web",
     "test": "echo 'No tests configured yet' && exit 0",
-    "lint": "echo 'No linting configured yet' && exit 0"
+    "lint": "eslint src --ext .js,.jsx --max-warnings 0"
   },
   "overrides": {
     "react-native-worklets": "0.5.1",
@@ -68,9 +68,14 @@
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
+    "@babel/eslint-parser": "^7.23.0",
     "@tootallnate/once": "^3.0.1",
     "@types/react": "~18.3.12",
     "babel-preset-expo": "~54.0.9",
+    "eslint": "^8.57.0",
+    "eslint-config-expo": "^7.0.0",
+    "eslint-plugin-react": "^7.34.0",
+    "eslint-plugin-react-native": "^4.1.0",
     "expo-module-scripts": "^5.0.8",
     "typescript": "^5.1.3"
   },

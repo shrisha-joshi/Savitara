@@ -1,7 +1,7 @@
 import re
 import pathlib
 
-files = list(pathlib.Path('app/api/v1').glob('*.py'))
+files = list(pathlib.Path('app/api/v1').rglob('*.py'))
 for f in files:
     text = f.read_text(encoding='utf-8')
     # Fix: Annotated[str, Query("default", rest...)]  -> Annotated[str, Query(rest)] = "default"

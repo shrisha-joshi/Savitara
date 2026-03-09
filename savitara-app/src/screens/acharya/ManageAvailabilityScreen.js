@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { Text } from 'react-native-paper';
+import { StyleSheet, View } from 'react-native';
 import { Calendar } from 'react-native-calendars';
+import { Text } from 'react-native-paper';
+import logger from '../../utils/logger';
 
 const ManageAvailabilityScreen = () => {
   return (
@@ -13,7 +14,7 @@ const ManageAvailabilityScreen = () => {
       <Calendar
         markedDates={{}}
         onDayPress={(day) => {
-          console.log('Selected day:', day);
+          logger.log('Selected day:', day);
         }}
         theme={{
           selectedDayBackgroundColor: '#FF6B35',

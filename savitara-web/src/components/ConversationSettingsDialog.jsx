@@ -1,23 +1,34 @@
-import { useState, useEffect, useCallback } from 'react';
-import PropTypes from 'prop-types';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  List,
-  ListItem,
-  ListItemText,
-  Switch,
-  Avatar,
-  Typography,
-  Box,
-  Divider,
-  Alert,
-  CircularProgress,
+    Alert,
+    Avatar,
+    Box,
+    Button,
+    CircularProgress,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    Divider,
+    List,
+    ListItem,
+    ListItemText,
+    Menu,
+    MenuItem,
+    Switch,
+    Typography,
 } from '@mui/material';
+import { addDays, addHours, addWeeks } from 'date-fns';
+import PropTypes from 'prop-types';
+import { useCallback, useEffect, useState } from 'react';
 import api from '../services/api';
+
+const MUTE_DURATION_OPTIONS = [
+  { label: '1 hour', getValue: () => addHours(new Date(), 1).toISOString() },
+  { label: '8 hours', getValue: () => addHours(new Date(), 8).toISOString() },
+  { label: '1 day', getValue: () => addDays(new Date(), 1).toISOString() },
+  { label: '1 week', getValue: () => addWeeks(new Date(), 1).toISOString() },
+  { label: 'Indefinitely', getValue: () => null },
+];
 
 /**
  * ConversationSettingsDialog Component
@@ -35,6 +46,7 @@ const ConversationSettingsDialog = ({ open, onClose, conversationId, otherUser }
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState('');
+  const [muteMenuAnchor, setMuteMenuAnchor] = useState(null);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -47,6 +59,7 @@ const ConversationSettingsDialog = ({ open, onClose, conversationId, otherUser }
       if (conv) {
         setSettings({
           is_muted: conv.is_muted || false,
+          muted_until: conv.muted_until || null,
           is_pinned: conv.is_pinned || false,
           is_archived: conv.is_archived || false,
         });
@@ -66,27 +79,56 @@ const ConversationSettingsDialog = ({ open, onClose, conversationId, otherUser }
   }, [open, conversationId, loadSettings]);
 
   const handleToggleMute = async () => {
+    if (!settings) return;
+    if (!settings.is_muted) {
+      // Open duration picker instead of toggling directly
+      return; // handled by button click opening menu
+    }
+    // Unmute directly
     try {
       setUpdating(true);
       setError('');
       await api.patch(`/chat/conversations/${conversationId}/settings`, {
-        is_muted: !settings.is_muted,
+        is_muted: false,
+        muted_until: null,
       });
-      setSettings((prev) => ({ ...prev, is_muted: !prev.is_muted }));
+      setSettings((prev) => ({ ...prev, is_muted: false, muted_until: null }));
     } catch (err) {
+      console.error('Failed to unmute conversation:', err);
       setError('Failed to update notification settings');
     } finally {
       setUpdating(false);
     }
   };
 
+  const handleMuteWithDuration = async (option) => {
+    setMuteMenuAnchor(null);
+    try {
+      setUpdating(true);
+      setError('');
+      const mutedUntil = option.getValue();
+      await api.patch(`/chat/conversations/${conversationId}/settings`, {
+        is_muted: true,
+        muted_until: mutedUntil,
+      });
+      setSettings((prev) => ({ ...prev, is_muted: true, muted_until: mutedUntil }));
+    } catch (err) {
+      console.error('Failed to mute conversation:', err);
+      setError('Failed to mute conversation');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const handleTogglePin = async () => {
+    if (!settings) return;
     try {
       setUpdating(true);
       setError('');
       await api.post(`/chat/conversations/${conversationId}/pin`);
       setSettings((prev) => ({ ...prev, is_pinned: !prev.is_pinned }));
     } catch (err) {
+      console.error('Failed to pin/unpin conversation:', err);
       setError('Failed to pin/unpin conversation');
     } finally {
       setUpdating(false);
@@ -94,12 +136,14 @@ const ConversationSettingsDialog = ({ open, onClose, conversationId, otherUser }
   };
 
   const handleToggleArchive = async () => {
+    if (!settings) return;
     try {
       setUpdating(true);
       setError('');
       await api.post(`/chat/conversations/${conversationId}/archive`);
       setSettings((prev) => ({ ...prev, is_archived: !prev.is_archived }));
     } catch (err) {
+      console.error('Failed to archive/unarchive conversation:', err);
       setError('Failed to archive/unarchive conversation');
     } finally {
       setUpdating(false);
@@ -107,7 +151,7 @@ const ConversationSettingsDialog = ({ open, onClose, conversationId, otherUser }
   };
 
   const handleDeleteConversation = async () => {
-    if (!window.confirm('Are you sure you want to delete this conversation? This cannot be undone.')) {
+    if (!globalThis.confirm('Are you sure you want to delete this conversation? This cannot be undone.')) {
       return;
     }
 
@@ -117,9 +161,18 @@ const ConversationSettingsDialog = ({ open, onClose, conversationId, otherUser }
       await api.delete(`/chat/conversations/${conversationId}`);
       onClose(true); // Pass true to indicate successful deletion
     } catch (err) {
+      console.error('Failed to delete conversation:', err);
       setError('Failed to delete conversation');
       setUpdating(false);
     }
+  };
+
+  const getMuteStatusLabel = () => {
+    if (!settings?.is_muted) return 'Notifications are enabled';
+    if (settings?.muted_until) {
+      return `Muted until ${new Date(settings.muted_until).toLocaleString()}`;
+    }
+    return 'Muted indefinitely';
   };
 
   return (
@@ -158,14 +211,41 @@ const ConversationSettingsDialog = ({ open, onClose, conversationId, otherUser }
               <ListItem>
                 <ListItemText
                   primary="Mute Notifications"
-                  secondary={settings?.is_muted ? 'Notifications are muted' : 'Notifications are enabled'}
+                  secondary={getMuteStatusLabel()}
                 />
-                <Switch
-                  checked={settings?.is_muted || false}
-                  onChange={handleToggleMute}
-                  disabled={updating}
-                />
+                {settings?.is_muted ? (
+                  <Switch
+                    checked
+                    onChange={() => { void handleToggleMute(); }}
+                    disabled={updating}
+                    inputProps={{ 'aria-label': 'unmute notifications' }}
+                  />
+                ) : (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={(e) => setMuteMenuAnchor(e.currentTarget)}
+                    disabled={updating}
+                    aria-haspopup="true"
+                    aria-expanded={Boolean(muteMenuAnchor)}
+                  >
+                    Mute
+                  </Button>
+                )}
               </ListItem>
+
+              {/* Mute duration picker */}
+              <Menu
+                anchorEl={muteMenuAnchor}
+                open={Boolean(muteMenuAnchor)}
+                onClose={() => setMuteMenuAnchor(null)}
+              >
+                {MUTE_DURATION_OPTIONS.map((option) => (
+                  <MenuItem key={option.label} onClick={() => { void handleMuteWithDuration(option); }}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Menu>
 
               <ListItem>
                 <ListItemText
@@ -174,7 +254,7 @@ const ConversationSettingsDialog = ({ open, onClose, conversationId, otherUser }
                 />
                 <Switch
                   checked={settings?.is_pinned || false}
-                  onChange={handleTogglePin}
+                  onChange={() => { void handleTogglePin(); }}
                   disabled={updating}
                 />
               </ListItem>
@@ -186,7 +266,7 @@ const ConversationSettingsDialog = ({ open, onClose, conversationId, otherUser }
                 />
                 <Switch
                   checked={settings?.is_archived || false}
-                  onChange={handleToggleArchive}
+                  onChange={() => { void handleToggleArchive(); }}
                   disabled={updating}
                 />
               </ListItem>
@@ -203,7 +283,7 @@ const ConversationSettingsDialog = ({ open, onClose, conversationId, otherUser }
                 variant="outlined"
                 color="error"
                 fullWidth
-                onClick={handleDeleteConversation}
+                onClick={() => { void handleDeleteConversation(); }}
                 disabled={updating}
               >
                 Delete Conversation

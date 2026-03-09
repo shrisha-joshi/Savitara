@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, Card } from 'react-native-paper';
-import { bookingAPI } from '../../services/api';
-import PanchangaWidget from '../../components/PanchangaWidget';
+import PropTypes from 'prop-types';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { Card, Text } from 'react-native-paper';
 import EmptyState from '../../components/EmptyState';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import ErrorScreen from '../../components/ErrorScreen';
 import LoadingScreen from '../../components/LoadingScreen';
+import PanchangaWidget from '../../components/PanchangaWidget';
+import { bookingAPI } from '../../services/api';
 
-const DashboardScreen = () => {
+const DashboardScreen = ({ navigation }) => {
   const [stats, setStats] = useState({
     pending: 0,
     confirmed: 0,
@@ -61,7 +62,7 @@ const DashboardScreen = () => {
         Dashboard
       </Text>
 
-      <PanchangaWidget />
+      <PanchangaWidget navigation={navigation} />
 
       <View style={styles.statsGrid}>
         <Card style={styles.statCard}>
@@ -183,5 +184,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
+
+DashboardScreen.propTypes = {
+  navigation: PropTypes.shape({ navigate: PropTypes.func }).isRequired,
+};
 
 export default DashboardScreen;

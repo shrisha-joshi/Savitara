@@ -1,41 +1,42 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createStackNavigator } from '@react-navigation/stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
+import React from 'react';
 import { useAuth } from '../context/AuthContext';
 
 // Grihasta Screens
-import HomeScreen from '../screens/grihasta/HomeScreen';
-import SearchAcharyasScreen from '../screens/grihasta/SearchAcharyasScreen';
-import AcharyaDetailsScreen from '../screens/grihasta/AcharyaDetailsScreen';
-import BookingScreen from '../screens/grihasta/BookingScreen';
-import PaymentScreen from '../screens/grihasta/PaymentScreen';
-import MyBookingsScreen from '../screens/grihasta/MyBookingsScreen';
-import BookingDetailsScreen from '../screens/grihasta/BookingDetailsScreen';
-import ReviewScreen from '../screens/grihasta/ReviewScreen';
 import ChatListScreen from '../screens/chat/ChatListScreen';
 import ConversationScreen from '../screens/chat/ConversationScreen';
-import ProfileScreen from '../screens/common/ProfileScreen';
 import OnboardingScreen from '../screens/common/OnboardingScreen';
-import SettingsScreen from '../screens/common/SettingsScreen';
-import ServicesScreen from '../screens/common/ServicesScreen';
+import PanchangaScreen from '../screens/common/PanchangaScreen';
+import ProfileScreen from '../screens/common/ProfileScreen';
 import ServiceDetailScreen from '../screens/common/ServiceDetailScreen';
+import ServicesScreen from '../screens/common/ServicesScreen';
+import SettingsScreen from '../screens/common/SettingsScreen';
 import WalletScreen from '../screens/common/WalletScreen';
+import AcharyaDetailsScreen from '../screens/grihasta/AcharyaDetailsScreen';
+import BookingDetailsScreen from '../screens/grihasta/BookingDetailsScreen';
+import BookingScreen from '../screens/grihasta/BookingScreen';
+import HomeScreen from '../screens/grihasta/HomeScreen';
+import MyBookingsScreen from '../screens/grihasta/MyBookingsScreen';
+import PaymentScreen from '../screens/grihasta/PaymentScreen';
+import ReviewScreen from '../screens/grihasta/ReviewScreen';
+import SearchAcharyasScreen from '../screens/grihasta/SearchAcharyasScreen';
 
 // Auth Screens
 import LanguageSelectorScreen from '../screens/auth/LanguageSelectorScreen';
 
 // Acharya Screens
-import DashboardScreen from '../screens/acharya/DashboardScreen';
+import AttendanceConfirmScreen from '../screens/acharya/AttendanceConfirmScreen';
+import BookingRequestsScreen from '../screens/acharya/BookingRequestsScreen';
 import CalendarScreen from '../screens/acharya/CalendarScreen';
+import DashboardScreen from '../screens/acharya/DashboardScreen';
+import EarningsScreen from '../screens/acharya/EarningsScreen';
 import ManageAvailabilityScreen from '../screens/acharya/ManageAvailabilityScreen';
 import ManagePoojaScreen from '../screens/acharya/ManagePoojaScreen';
-import BookingRequestsScreen from '../screens/acharya/BookingRequestsScreen';
-import EarningsScreen from '../screens/acharya/EarningsScreen';
-import StartBookingScreen from '../screens/acharya/StartBookingScreen';
-import AttendanceConfirmScreen from '../screens/acharya/AttendanceConfirmScreen';
 import ReviewsScreen from '../screens/acharya/ReviewsScreen';
+import StartBookingScreen from '../screens/acharya/StartBookingScreen';
 import TrustScoreScreen from '../screens/acharya/TrustScoreScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
 
@@ -153,6 +154,7 @@ const renderNavigationScreens = (user, isOnboarded, userRole) => {
         <Stack.Screen name="WriteReview" component={ReviewScreen} options={{ title: 'Write a Review' }} />
         <Stack.Screen name="Conversation" component={ConversationScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen name="Panchanga" component={PanchangaScreen} options={{ title: 'Panchanga' }} />
       </>
     );
   }
@@ -174,6 +176,7 @@ const renderNavigationScreens = (user, isOnboarded, userRole) => {
       <Stack.Screen name="TrustScore" component={TrustScoreScreen} options={{ title: 'Trust Score' }} />
       <Stack.Screen name="Conversation" component={ConversationScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="Panchanga" component={PanchangaScreen} options={{ title: 'Panchanga' }} />
     </>
   );
 };

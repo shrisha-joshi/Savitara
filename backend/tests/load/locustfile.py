@@ -221,6 +221,110 @@ class SavitaraUser(HttpUser):
             else:
                 response.failure(f"Get audit log failed: {response.status_code}")
 
+    # ------------------------------------------------------------------ #
+    # Real-time chat feature load tests (reactions + message forwarding)  #
+    # ------------------------------------------------------------------ #
+
+    @task(3)
+    def list_conversations(self):
+        """Test listing chat conversations (common chat entry point)"""
+        with self.client.get(
+            "/api/v1/chat/conversations",
+            params={"page": 1, "limit": 20},
+            headers=self.headers,
+            catch_response=True,
+            name="/api/v1/chat/conversations [GET]"
+        ) as response:
+            if response.status_code in [200, 401]:
+                response.success()
+            else:
+                response.failure(f"List conversations failed: {response.status_code}")
+
+    @task(2)
+    def fetch_messages(self):
+        """Test fetching messages for a conversation (cursor-based pagination)"""
+        conversation_id = f"conv_{random.randint(1, 50)}"
+        with self.client.get(
+            f"/api/v1/chat/conversations/{conversation_id}/messages",
+            params={"limit": 50},
+            headers=self.headers,
+            catch_response=True,
+            name="/api/v1/chat/conversations/{id}/messages [GET]"
+        ) as response:
+            if response.status_code in [200, 403, 404]:
+                response.success()
+            else:
+                response.failure(f"Fetch messages failed: {response.status_code}")
+
+    @task(2)
+    def add_reaction(self):
+        """Test adding an emoji reaction to a message"""
+        message_id = f"msg_{random.randint(1, 500)}"
+        emoji = random.choice(["👍", "❤️", "😂", "😮", "😢", "🙏"])
+        with self.client.post(
+            f"/api/v1/chat/messages/{message_id}/reactions",
+            json={"emoji": emoji},
+            headers=self.headers,
+            catch_response=True,
+            name="/api/v1/chat/messages/{id}/reactions [POST]"
+        ) as response:
+            if response.status_code in [200, 201, 400, 404]:
+                response.success()
+            else:
+                response.failure(f"Add reaction failed: {response.status_code}")
+
+    @task(1)
+    def remove_reaction(self):
+        """Test removing an emoji reaction from a message"""
+        message_id = f"msg_{random.randint(1, 500)}"
+        emoji = random.choice(["👍", "❤️", "😂", "😮", "😢", "🙏"])
+        with self.client.delete(
+            f"/api/v1/chat/messages/{message_id}/reactions/{emoji}",
+            headers=self.headers,
+            catch_response=True,
+            name="/api/v1/chat/messages/{id}/reactions/{emoji} [DELETE]"
+        ) as response:
+            if response.status_code in [200, 204, 404]:
+                response.success()
+            else:
+                response.failure(f"Remove reaction failed: {response.status_code}")
+
+    @task(1)
+    def forward_message(self):
+        """Test forwarding a message to multiple recipients (max 5)"""
+        message_id = f"msg_{random.randint(1, 500)}"
+        # Pick 1–5 recipients (spec max = 5)
+        count = random.randint(1, 5)
+        recipient_ids = [f"user_{random.randint(1, 200)}" for _ in range(count)]
+        # Deduplicate
+        recipient_ids = list(dict.fromkeys(recipient_ids))[:5]
+        with self.client.post(
+            f"/api/v1/chat/messages/{message_id}/forward",
+            json={"recipient_ids": recipient_ids},
+            headers=self.headers,
+            catch_response=True,
+            name="/api/v1/chat/messages/{id}/forward [POST]"
+        ) as response:
+            if response.status_code in [200, 201, 400, 404]:
+                response.success()
+            else:
+                response.failure(f"Forward message failed: {response.status_code}")
+
+    @task(1)
+    def get_conversation_settings(self):
+        """Test fetching pin/mute conversation settings"""
+        conversation_id = f"conv_{random.randint(1, 50)}"
+        with self.client.get(
+            f"/api/v1/chat/conversations/{conversation_id}/settings",
+            headers=self.headers,
+            catch_response=True,
+            name="/api/v1/chat/conversations/{id}/settings [GET]"
+        ) as response:
+            if response.status_code in [200, 403, 404]:
+                response.success()
+            else:
+                response.failure(f"Get conv settings failed: {response.status_code}")
+
 
 # Custom event handlers for detailed metrics
 @events.request.add_listener

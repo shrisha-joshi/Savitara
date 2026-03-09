@@ -15,6 +15,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
+import logger from '../utils/logger';
 
 const QUEUE_KEY = '@savitara:offline_message_queue';
 const MAX_QUEUE_SIZE = 1000;
@@ -39,18 +40,18 @@ class OfflineQueueService {
       const wasOnline = this.isOnline;
       this.isOnline = state.isConnected && state.isInternetReachable;
 
-      console.log('Network state changed:', {
+      logger.log('Network state changed:', {
         isConnected: state.isConnected,
         isInternetReachable: state.isInternetReachable,
         type: state.type,
       });
 
       if (!wasOnline && this.isOnline) {
-        console.log('Network: Online - draining queue');
+        logger.log('Network: Online - draining queue');
         this.notifyListeners('online');
         this.drainQueue();
       } else if (wasOnline && !this.isOnline) {
-        console.log('Network: Offline');
+        logger.log('Network: Offline');
         this.notifyListeners('offline');
       }
     });
@@ -157,7 +158,7 @@ class OfflineQueueService {
     queue.push(queueItem);
     await this.saveQueue(queue);
 
-    console.log('Message queued:', queueItem.id);
+    logger.log('Message queued:', queueItem.id);
     return queueItem;
   }
 
@@ -187,7 +188,7 @@ class OfflineQueueService {
     const queue = await this.loadQueue();
     const filteredQueue = queue.filter((msg) => msg.id !== messageId);
     await this.saveQueue(filteredQueue);
-    console.log('Message removed from queue:', messageId);
+    logger.log('Message removed from queue:', messageId);
   }
 
   /**
@@ -217,7 +218,7 @@ class OfflineQueueService {
   async clearQueue() {
     try {
       await AsyncStorage.removeItem(QUEUE_KEY);
-      console.log('Queue cleared');
+      logger.log('Queue cleared');
     } catch (error) {
       console.error('Failed to clear queue:', error);
       throw error;
@@ -232,18 +233,18 @@ class OfflineQueueService {
    */
   async drainQueue(sendFunction) {
     if (this.isDraining) {
-      console.log('Already draining queue');
+      logger.log('Already draining queue');
       return;
     }
 
     const networkState = await this.getNetworkState();
     if (!networkState.isOnline) {
-      console.log('Cannot drain queue - offline');
+      logger.log('Cannot drain queue - offline');
       return;
     }
 
     this.isDraining = true;
-    console.log('Starting queue drain...');
+    logger.log('Starting queue drain...');
 
     const results = {
       sent: 0,
@@ -254,7 +255,7 @@ class OfflineQueueService {
 
     try {
       const queue = await this.loadQueue();
-      console.log(`Draining ${queue.length} messages from queue`);
+      logger.log(`Draining ${queue.length} messages from queue`);
 
       // Sort by timestamp (oldest first)
       queue.sort((a, b) => a.timestamp - b.timestamp);
@@ -308,7 +309,7 @@ class OfflineQueueService {
         }
       }
 
-      console.log('Queue drain complete:', results);
+      logger.log('Queue drain complete:', results);
       return results;
 
     } finally {
@@ -335,7 +336,7 @@ class OfflineQueueService {
           await sendFunction(message);
         }
         await this.removeFromQueue(message.id);
-        console.log('Retry successful:', message.id);
+        logger.log('Retry successful:', message.id);
       } catch (error) {
         console.error('Retry failed:', message.id, error);
         await this.updateMessageStatus(message.id, 'retrying', {

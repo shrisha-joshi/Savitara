@@ -1,6 +1,22 @@
 # Savitara Platform .gitignore
 
 # ===========================
+# GitHub / Copilot config (keep .github/ in git — prompts & workflows)
+# Exclude only sensitive copilot session/runtime files if needed
+# ===========================
+# .github/  ← intentionally NOT ignored (workflows, prompts, instructions are source-controlled)
+
+# ===========================
+# Docs folder (keep in git for onboarding/reference)
+# ===========================
+# docs/  ← intentionally NOT ignored
+
+# ===========================
+# PDF / binary documents
+# ===========================
+*.pdf
+
+# ===========================
 # Node.js / NPM
 # ===========================
 node_modules/
@@ -67,6 +83,32 @@ MANIFEST
 /deploy.py
 /test-*.ps1
 /test-*.sh
+
+# ===========================
+# CI / Build Output & Test Artifact .txt files
+# (audit_out.txt, build_output.txt, *-tests.txt, etc.)
+# Real docs (README, CHANGELOG) use .md — .txt files at root are noise
+# ===========================
+audit_out.txt
+install_out.txt
+audit.json
+build_output.txt
+admin_build.txt
+admin_build2.txt
+*-tests.txt
+*-test.txt
+*tests.txt
+authtest.txt
+fwd-test.txt
+full-final.txt
+mr2.txt
+remaining-tests.txt
+test-results*.txt
+test-all.txt
+final-tests.txt
+
+# Platform audit report (generated output — check in only when deliberately updating)
+PLATFORM_AUDIT_REPORT.md
 
 .env
 .env.local

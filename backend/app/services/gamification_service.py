@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Tuple
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
-import random
+import secrets
 import string
 
 from app.models.gamification import (
@@ -594,8 +594,8 @@ class GamificationService:
 
     async def generate_referral_code(self, user_id: str) -> str:
         """Generate unique referral code for user"""
-        # Generate random 8-char code
-        code = "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        # SonarQube: S2245 — use secrets (CSPRNG) to prevent referral code enumeration
+        code = secrets.token_urlsafe(6).upper()[:8]
 
         # Update user
         await self.db.users.update_one(

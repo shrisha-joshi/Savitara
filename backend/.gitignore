@@ -80,3 +80,15 @@ firebase-key.json
 *.tmp
 *.temp
 .cache/
+
+# ===========================
+# Temporary / One-off scripts at backend root
+# (fix_*.py, reorder_*.py, test_cors_config.py etc.)
+# Real tests live in backend/tests/ and are tracked.
+# ===========================
+/fix_*.py
+/reorder_*.py
+/test_cors_config.py
+/test_panchanga_smoke.py
+/debug_*.py
+/check_*.py

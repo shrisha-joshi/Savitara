@@ -49,6 +49,23 @@ class ProductionSettings(BaseAppSettings):
 
     # ── Validators ────────────────────────────────────────────────────────
 
+    @field_validator("ENCRYPTION_PASSWORD", "ENCRYPTION_SALT", mode="before")
+    @classmethod
+    def reject_insecure_encryption_keys(cls, v: str | None, info: ValidationInfo) -> str | None:
+        """Prevent placeholder encryption credentials reaching production."""
+        if not v:
+            raise ValueError(
+                f"{info.field_name} must be set in production. "
+                "Unencrypted PII is not acceptable."
+            )
+        insecure = ("savitara-default", "change-this", "default", "placeholder", "example")
+        if any(d in str(v).lower() for d in insecure):
+            raise ValueError(
+                f"{info.field_name} appears to be a placeholder value. "
+                "Set a strong random value in your production .env file."
+            )
+        return v
+
     @field_validator("SECRET_KEY", "JWT_SECRET_KEY", mode="before")
     @classmethod
     def reject_insecure_secrets(cls, v: str, info: ValidationInfo) -> str:

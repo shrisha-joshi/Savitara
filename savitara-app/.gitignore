@@ -13,3 +13,12 @@ web-build/
 .env.local
 google-services.json
 GoogleService-Info.plist
+
+# Logs
+*.log
+
+# Temp build/audit artifacts
+install_out.txt
+audit_out.txt
+audit.json
+

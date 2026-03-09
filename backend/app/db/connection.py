@@ -421,6 +421,57 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             cls.db.message_reactions, [("conversation_id", 1), ("created_at", -1)]
         )
 
+        # DB-01: OTP TTL indexes — MongoDB auto-purges expired documents
+        await cls._create_index_safe(
+            cls.db.phone_otps, "expires_at", expireAfterSeconds=0
+        )
+        await cls._create_index_safe(
+            cls.db.email_otps, "expires_at", expireAfterSeconds=0
+        )
+        await cls._create_index_safe(
+            cls.db.password_reset_otps, "expires_at", expireAfterSeconds=0
+        )
+
+        # DB-02: Gamification — missing indexes for vouchers and coupon usage
+        await cls._create_index_safe(
+            cls.db.user_vouchers, [("user_id", 1), ("created_at", -1)]
+        )
+        await cls._create_index_safe(
+            cls.db.vouchers, [("is_active", 1), ("valid_until", 1)]
+        )
+        await cls._create_index_safe(
+            cls.db.coupon_usage, [("user_id", 1), ("coupon_id", 1)], unique=True
+        )
+
+        # Blocked users indexes
+        await cls._create_index_safe(
+            cls.db.blocked_users,
+            [("blocker_id", 1), ("blocked_user_id", 1)],
+            unique=True,
+        )
+        await cls._create_index_safe(cls.db.blocked_users, "blocker_id")
+        await cls._create_index_safe(cls.db.blocked_users, "blocked_user_id")
+        await cls._create_index_safe(cls.db.blocked_users, "created_at")
+
+        # User reports indexes
+        await cls._create_index_safe(
+            cls.db.user_reports, [("status", 1), ("created_at", -1)]
+        )
+        await cls._create_index_safe(cls.db.user_reports, "reporter_id")
+        await cls._create_index_safe(cls.db.user_reports, "reported_user_id")
+        await cls._create_index_safe(
+            cls.db.user_reports, [("reporter_id", 1), ("created_at", -1)]
+        )
+        await cls._create_index_safe(
+            cls.db.user_reports, [("reported_user_id", 1), ("created_at", -1)]
+        )
+        await cls._create_index_safe(
+            cls.db.user_reports, "message_id", sparse=True
+        )
+
+        # Message reactions — index on embedded array field for reaction queries
+        await cls._create_index_safe(cls.db.messages, "reactions.user_id")
+
         logger.info("Database indexes created successfully")
 
     @classmethod

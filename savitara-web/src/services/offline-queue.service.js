@@ -1,3 +1,5 @@
+import logger from '../utils/logger';
+
 /**
  * Offline Message Queue Service (Web)
  * 
@@ -18,6 +20,7 @@ const DB_VERSION = 1;
 const STORE_NAME = 'pending_messages';
 const MAX_QUEUE_SIZE = 1000;
 const RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000]; // ms
+
 
 class OfflineQueueService {
   db = null;
@@ -51,7 +54,7 @@ class OfflineQueueService {
 
       request.onsuccess = () => {
         this.db = request.result;
-        console.log('IndexedDB initialized');
+        logger.log('IndexedDB initialized');
         resolve(this.db);
       };
 
@@ -80,14 +83,14 @@ class OfflineQueueService {
    */
   setupNetworkListeners() {
     globalThis.addEventListener('online', () => {
-      console.log('Network: Online');
+      logger.log('Network: Online');
       this.isOnline = true;
       this.notifyListeners('online');
       this.drainQueue();
     });
 
     globalThis.addEventListener('offline', () => {
-      console.log('Network: Offline');
+      logger.log('Network: Offline');
       this.isOnline = false;
       this.notifyListeners('offline');
     });
@@ -189,7 +192,7 @@ class OfflineQueueService {
       const request = store.add(queueItem);
 
       request.onsuccess = () => {
-        console.log('Message queued:', queueItem.id);
+        logger.log('Message queued:', queueItem.id);
         resolve(queueItem);
       };
 
@@ -254,7 +257,7 @@ class OfflineQueueService {
       const request = store.delete(messageId);
 
       request.onsuccess = () => {
-        console.log('Message removed from queue:', messageId);
+        logger.log('Message removed from queue:', messageId);
         resolve();
       };
 
@@ -311,7 +314,7 @@ class OfflineQueueService {
       const request = store.clear();
 
       request.onsuccess = () => {
-        console.log('Queue cleared');
+        logger.log('Queue cleared');
         resolve();
       };
 
@@ -330,17 +333,17 @@ class OfflineQueueService {
    */
   async drainQueue(sendFunction) {
     if (this.isDraining) {
-      console.log('Already draining queue');
+      logger.log('Already draining queue');
       return;
     }
 
     if (!this.isOnline) {
-      console.log('Cannot drain queue - offline');
+      logger.log('Cannot drain queue - offline');
       return;
     }
 
     this.isDraining = true;
-    console.log('Starting queue drain...');
+    logger.log('Starting queue drain...');
 
     const results = {
       sent: 0,
@@ -351,7 +354,7 @@ class OfflineQueueService {
 
     try {
       const queue = await this.getQueue();
-      console.log(`Draining ${queue.length} messages from queue`);
+      logger.log(`Draining ${queue.length} messages from queue`);
 
       // Sort by timestamp (oldest first)
       queue.sort((a, b) => a.timestamp - b.timestamp);
@@ -405,7 +408,7 @@ class OfflineQueueService {
         }
       }
 
-      console.log('Queue drain complete:', results);
+      logger.log('Queue drain complete:', results);
       return results;
 
     } finally {
@@ -431,7 +434,7 @@ class OfflineQueueService {
           await sendFunction(message);
         }
         await this.removeFromQueue(message.id);
-        console.log('Retry successful:', message.id);
+        logger.log('Retry successful:', message.id);
       } catch (error) {
         console.error('Retry failed:', message.id, error);
         await this.updateMessageStatus(message.id, 'retrying', {

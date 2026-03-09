@@ -2,18 +2,19 @@
  * Offline Service for React Native App
  * Handles offline data caching and sync
  */
-import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
+import logger from '../utils/logger';
 
 const OFFLINE_QUEUE_KEY = 'offline_request_queue';
 const CACHE_PREFIX = 'cache:';
 
 class OfflineService {
+  isOnline = true;
+  queue = [];
+  listeners = [];
+
   constructor() {
-    this.isOnline = true;
-    this.queue = [];
-    this.listeners = [];
-    
     this.init();
   }
 
@@ -76,7 +77,7 @@ class OfflineService {
   }
 
   async processQueue() {
-    console.log(`Processing ${this.queue.length} offline requests...`);
+    logger.log(`Processing ${this.queue.length} offline requests...`);
     
     const processed = [];
     const failed = [];
@@ -85,7 +86,7 @@ class OfflineService {
       try {
         // Note: In production, you'd need a way to serialize/deserialize functions
         // For now, this is a simplified version
-        console.log('Processing queued request:', request.metadata);
+        logger.log('Processing queued request:', request.metadata);
         processed.push(request.id);
       } catch (error) {
         console.error('Failed to process queued request:', error);
@@ -97,7 +98,7 @@ class OfflineService {
     this.queue = this.queue.filter(r => !processed.includes(r.id));
     await this.saveQueue();
     
-    console.log(`Processed ${processed.length} requests, ${failed.length} failed`);
+    logger.log(`Processed ${processed.length} requests, ${failed.length} failed`);
   }
 
   addNetworkListener(callback) {

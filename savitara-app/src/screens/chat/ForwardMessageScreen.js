@@ -1,30 +1,93 @@
-import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Alert,
+    Alert,
+    FlatList,
+    StyleSheet,
+    View
 } from 'react-native';
 import {
-  Appbar,
-  List,
-  Avatar,
-  Checkbox,
-  Searchbar,
-  Button,
-  Text,
-  Chip,
-  ActivityIndicator,
-  Portal,
-  Dialog,
+    ActivityIndicator,
+    Appbar,
+    Avatar,
+    Checkbox,
+    Chip,
+    Dialog,
+    List,
+    Portal,
+    Searchbar,
+    Text
 } from 'react-native-paper';
-import { chatAPI } from '../../services/api';
-import { getInitials, getAvatarColor } from '../../constants/avatars';
+import { getAvatarColor, getInitials } from '../../constants/avatars';
 import { BRAND } from '../../constants/theme';
+import { chatAPI } from '../../services/api';
 
-const MAX_FORWARD_TARGETS = 50;
+const MAX_FORWARD_TARGETS = 5; // Max per spec
+
+const renderForwardAvatar = (otherUser) => (props) => {
+  const avatarUri = otherUser.profile_picture || otherUser.profile_image;
+  if (avatarUri) {
+    return (
+      <Avatar.Image
+        {...props}
+        size={50}
+        source={{ uri: avatarUri }}
+      />
+    );
+  }
+
+  return (
+    <Avatar.Text
+      {...props}
+      size={50}
+      label={getInitials(otherUser.name)}
+      style={{ backgroundColor: getAvatarColor(otherUser.id || otherUser._id) }}
+    />
+  );
+};
+
+const renderForwardCheckbox = (isSelected) => () => {
+  let status = 'unchecked';
+  if (isSelected) {
+    status = 'checked';
+  }
+
+  return <Checkbox status={status} />;
+};
+
+const getMessagePreview = (message) => {
+  if (!message) return '';
+  if (message.message_type === 'voice') return '🎤 Voice message';
+  if (message.message_type === 'image') return '🖼️ Image';
+  if (message.message_type === 'video') return '🎥 Video';
+  if (message.message_type === 'file') return '📎 File';
+  const text = message.content || '';
+  if (text.length > 100) {
+    return `${text.substring(0, 100)}...`;
+  }
+  return text;
+};
+
+function ForwardConversationItem({ item, isSelected, onToggle }) {
+  const otherUser = item.other_user || {};
+  const convId = item.id || item._id;
+
+  return (
+    <List.Item
+      title={otherUser.name || 'Unknown User'}
+      description={item.last_message?.content || 'No messages yet'}
+      left={renderForwardAvatar(otherUser)}
+      right={renderForwardCheckbox(isSelected)}
+      onPress={() => onToggle(convId)}
+    />
+  );
+}
+
+ForwardConversationItem.propTypes = {
+  item: PropTypes.object.isRequired,
+  isSelected: PropTypes.bool.isRequired,
+  onToggle: PropTypes.func.isRequired,
+};
 
 const ForwardMessageScreen = ({ navigation, route }) => {
   const { message } = route.params;
@@ -126,44 +189,42 @@ const ForwardMessageScreen = ({ navigation, route }) => {
     return userName.includes(query);
   });
 
-  const getMessagePreview = () => {
-    if (!message) return '';
-    if (message.message_type === 'voice') return '🎤 Voice message';
-    if (message.message_type === 'image') return '🖼️ Image';
-    if (message.message_type === 'video') return '🎥 Video';
-    if (message.message_type === 'file') return '📎 File';
-    const text = message.content || '';
-    return text.length > 100 ? `${text.substring(0, 100)}...` : text;
-  };
+  const messagePreview = getMessagePreview(message);
+  let emptyLabel = 'No conversations available';
+  if (searchQuery) {
+    emptyLabel = 'No conversations found';
+  }
 
-  const renderConversation = ({ item }) => {
-    const otherUser = item.other_user || {};
-    const convId = item.id || item._id;
-    const isSelected = selectedConversations.includes(convId);
-
-    return (
-      <List.Item
-        title={otherUser.name || 'Unknown User'}
-        description={item.last_message?.content || 'No messages yet'}
-        left={() => (
-          otherUser.profile_picture || otherUser.profile_image ? (
-            <Avatar.Image
-              size={50}
-              source={{ uri: otherUser.profile_picture || otherUser.profile_image }}
-            />
-          ) : (
-            <Avatar.Text
-              size={50}
-              label={getInitials(otherUser.name)}
-              style={{ backgroundColor: getAvatarColor(otherUser.id || otherUser._id) }}
-            />
-          )
+  let listContent = null;
+  if (isLoading) {
+    listContent = (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={BRAND.primary} />
+      </View>
+    );
+  } else if (filteredConversations.length === 0) {
+    listContent = (
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyText}>
+          {emptyLabel}
+        </Text>
+      </View>
+    );
+  } else {
+    listContent = (
+      <FlatList
+        data={filteredConversations}
+        renderItem={({ item }) => (
+          <ForwardConversationItem
+            item={item}
+            isSelected={selectedConversations.includes(item.id || item._id)}
+            onToggle={handleToggleConversation}
+          />
         )}
-        right={() => <Checkbox status={isSelected ? 'checked' : 'unchecked'} />}
-        onPress={() => handleToggleConversation(convId)}
+        keyExtractor={(item) => item.id || item._id}
       />
     );
-  };
+  }
 
   return (
     <View style={styles.container}>
@@ -180,7 +241,7 @@ const ForwardMessageScreen = ({ navigation, route }) => {
       <View style={styles.previewContainer}>
         <Text style={styles.previewLabel}>Forwarding:</Text>
         <Text style={styles.previewText} numberOfLines={2}>
-          {getMessagePreview()}
+          {messagePreview}
         </Text>
       </View>
 
@@ -199,29 +260,13 @@ const ForwardMessageScreen = ({ navigation, route }) => {
         style={styles.searchBar}
       />
 
-      {error && (
+      {Boolean(error) && (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
       )}
 
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={BRAND.primary} />
-        </View>
-      ) : filteredConversations.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>
-            {searchQuery ? 'No conversations found' : 'No conversations available'}
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredConversations}
-          renderItem={renderConversation}
-          keyExtractor={(item) => item.id || item._id}
-        />
-      )}
+      {listContent}
 
       <Portal>
         <Dialog visible={isSending} dismissable={false}>

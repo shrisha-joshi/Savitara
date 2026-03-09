@@ -80,6 +80,8 @@ pip-audit>=2.7.0
 # sentry-sdk>=2.8.0 fixes CVE-2024-40647 (env var leakage)
 sentry-sdk[fastapi]>=2.8.0
 python-json-logger>=2.0.7
+# MON-02: Prometheus metrics for WebSocket connection tracking
+prometheus-client>=0.20.0
 
 # --- Caching -----------------------------------------------------------------
 redis[hiredis]>=5.0.1

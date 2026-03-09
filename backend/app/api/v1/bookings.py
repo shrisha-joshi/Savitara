@@ -89,6 +89,27 @@ import string
 from bson import ObjectId
 from pydantic import BaseModel, Field
 
+
+# ARCH-04: Typed Pydantic model for payment verification body — replaces raw dict.
+# Ensures OpenAPI docs accurately reflect required fields and enables automatic
+# FastAPI validation before the handler runs.
+class PaymentVerificationData(BaseModel):
+    """Razorpay payment verification payload."""
+
+    razorpay_payment_id: str = Field(
+        ...,
+        min_length=1,
+        description="Razorpay payment ID returned by the checkout widget (e.g. pay_xxx)",
+        examples=["pay_OFj3xNv8C7w5Rd"],
+    )
+    razorpay_signature: str = Field(
+        ...,
+        min_length=1,
+        description="HMAC-SHA256 signature for verifying payment authenticity",
+        examples=["abc123def456"],
+    )
+
+
 from app.schemas.requests import (
     BookingCreateRequest,
     BookingStatusUpdateRequest,
@@ -210,7 +231,7 @@ async def refer_booking(
         from app.services.notification_service import NotificationService
         notification_service = NotificationService()
         if new_acharya.get("fcm_token"):
-            notification_service.send_notification(
+            await notification_service.send_notification_async(
                 token=new_acharya["fcm_token"],
                 title="New Booking Assigned",
                 body="A booking has been referred to you.",
@@ -409,7 +430,7 @@ def _send_booking_notification(
         notification_service = NotificationService()
         if acharya.get("fcm_token"):
             pooja_name = pooja.get("name") if pooja else "custom service"
-            notification_service.send_notification(
+            await notification_service.send_notification_async(
                 token=acharya["fcm_token"],
                 title="New Booking Request",
                 body=f"Request from {current_user.get('full_name', 'a user')} for {pooja_name}",
@@ -1176,23 +1197,18 @@ async def create_payment_order_for_request(
 )
 async def verify_payment(
     booking_id: str,
-    payment_data: Annotated[dict, Body(..., example={"razorpay_payment_id": "pay_xxx", "razorpay_signature": "sig_xxx"})],
+    payment_data: PaymentVerificationData,  # ARCH-04: typed model replaces raw dict
     current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
-    Verify Razorpay payment signature and update booking
+    Verify Razorpay payment signature and update booking.
     Payment credentials sent in request body (not URL) for security.
 
     SonarQube: S4502 - Webhook signature verification
     """
-    razorpay_payment_id = payment_data.get("razorpay_payment_id")
-    razorpay_signature = payment_data.get("razorpay_signature")
-    if not razorpay_payment_id or not razorpay_signature:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="razorpay_payment_id and razorpay_signature are required",
-        )
+    razorpay_payment_id = payment_data.razorpay_payment_id
+    razorpay_signature = payment_data.razorpay_signature
     try:
         # Get booking and validate ownership
         booking_doc = await _fetch_and_validate_booking(booking_id, current_user, db)
@@ -1244,7 +1260,7 @@ async def verify_payment(
             # Notify Grihasta
             grihasta = await db.users.find_one({"_id": ObjectId(booking_doc["grihasta_id"])} )
             if grihasta and grihasta.get("fcm_token"):
-                notification_service.send_notification(
+                await notification_service.send_notification_async(
                     token=grihasta["fcm_token"],
                     title="Booking Confirmed",
                     body="Your booking is confirmed. Check the app for details.",
@@ -1255,7 +1271,7 @@ async def verify_payment(
             if acharya_profile:
                 acharya = await db.users.find_one({"_id": acharya_profile.get("user_id")} )
                 if acharya and acharya.get("fcm_token"):
-                    notification_service.send_notification(
+                    await notification_service.send_notification_async(
                         token=acharya["fcm_token"],
                         title="New Booking Confirmed",
                         body="Booking confirmed with payment",
@@ -1416,7 +1432,7 @@ async def _complete_booking_with_notifications(db, booking_id: str, booking_doc:
             {"_id": ObjectId(booking_doc["grihasta_id"])}
         )
         if grihasta and grihasta.get("fcm_token"):
-            notification_service.send_notification(
+            await notification_service.send_notification_async(
                 token=grihasta["fcm_token"],
                 title=BOOKING_COMPLETED,
                 body="Your booking has been completed successfully",
@@ -1426,7 +1442,7 @@ async def _complete_booking_with_notifications(db, booking_id: str, booking_doc:
         # Notify Acharya
         acharya = await db.users.find_one({"_id": ObjectId(booking_doc["acharya_id"])})
         if acharya and acharya.get("fcm_token"):
-            notification_service.send_notification(
+            await notification_service.send_notification_async(
                 token=acharya["fcm_token"],
                 title=BOOKING_COMPLETED,
                 body="Booking completed. Payment will be transferred.",

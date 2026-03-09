@@ -3,6 +3,7 @@ Firebase Cloud Messaging Service
 Handles push notification sending and FCM token management
 SonarQube: S6437 - Firebase credentials from secure file
 """
+import asyncio
 import firebase_admin  # type: ignore
 from firebase_admin import credentials, messaging  # type: ignore
 import logging
@@ -613,6 +614,36 @@ class NotificationService(INotificationService):
         except Exception as e:
             logger.error(f"Failed to send role change notification: {e}")
             return None
+
+    # ============ Async wrappers (PERF-02) ============
+    # These run blocking Firebase SDK calls in a thread pool so the event
+    # loop is never stalled.  All FastAPI endpoint callers should use these.
+
+    async def send_notification_async(
+        self,
+        token: str,
+        title: str,
+        body: str,
+        data: Optional[Dict[str, str]] = None,
+        image_url: Optional[str] = None,
+    ) -> str:
+        """Async wrapper — offloads blocking Firebase call to thread pool."""
+        return await asyncio.to_thread(
+            self.send_notification, token, title, body, data, image_url
+        )
+
+    async def send_multicast_async(
+        self,
+        tokens: List[str],
+        title: str,
+        body: str,
+        data: Optional[Dict[str, str]] = None,
+        image_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Async wrapper — offloads blocking Firebase multicast call to thread pool."""
+        return await asyncio.to_thread(
+            self.send_multicast, tokens, title, body, data, image_url
+        )
 
 
 # Singleton instance

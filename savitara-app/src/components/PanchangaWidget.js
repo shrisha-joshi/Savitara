@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import {
     ActivityIndicator,
     Card,
@@ -12,7 +12,28 @@ import {
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
-export default function PanchangaWidget() {
+// ── helpers ─────────────────────────────────────────────────────────────────
+const CHG_QUALITY_BG = {
+  excellent:    'rgba(26,188,156,0.3)',
+  auspicious:   'rgba(46,204,113,0.3)',
+  good:         'rgba(88,214,141,0.3)',
+  neutral:      'rgba(52,152,219,0.3)',
+  caution:      'rgba(243,156,18,0.3)',
+  inauspicious: 'rgba(231,76,60,0.3)',
+};
+
+const nowMins = () => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); };
+const toMins = (t) => { if (!t) return null; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+
+const getActivePeriod = (periods) => {
+  const now = nowMins();
+  return (periods || []).find(p => {
+    const s = toMins(p.start), e = toMins(p.end);
+    return s !== null && e !== null && now >= s && now < e;
+  }) || null;
+};
+
+export default function PanchangaWidget({ navigation }) {
   const { user } = useAuth();
   const [panchanga, setPanchanga] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -78,12 +99,19 @@ export default function PanchangaWidget() {
               Panchanga
             </Text>
           </View>
+        <IconButton
+          icon={expanded ? 'chevron-up' : 'chevron-down'}
+          iconColor="#fff"
+          onPress={() => setExpanded(!expanded)}
+        />
+        {navigation && (
           <IconButton
-            icon={expanded ? 'chevron-up' : 'chevron-down'}
+            icon="arrow-expand"
             iconColor="#fff"
-            onPress={() => setExpanded(!expanded)}
+            size={18}
+            onPress={() => navigation.navigate('Panchanga')}
           />
-        </View>
+        )}
 
         <Text style={styles.date}>{today}</Text>
 
@@ -95,6 +123,18 @@ export default function PanchangaWidget() {
             icon="calendar-clock"
           >
             {panchanga.panchanga_type_name}
+          </Chip>
+        )}
+
+        {/* Samvatsara */}
+        {panchanga.samvatsara?.name && (
+          <Chip
+            mode="flat"
+            style={[styles.chip, { marginBottom: 10, alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.28)' }]}
+            textStyle={[styles.chipText, { fontSize: 11 }]}
+            icon="star-four-points"
+          >
+            {panchanga.samvatsara.name} · VS {panchanga.vikrama_samvat}
           </Chip>
         )}
 
@@ -172,9 +212,35 @@ export default function PanchangaWidget() {
                 </View>
               </View>
             )}
+
+            {/* Active Choghadiya period */}
+            {(() => {
+              const active = getActivePeriod(panchanga.choghadiya);
+              if (!active) return null;
+              return (
+                <View style={[styles.section, { backgroundColor: CHG_QUALITY_BG[active.quality] || 'rgba(255,255,255,0.15)', borderRadius: 8, padding: 8 }]}>
+                  <View style={styles.sectionTitleRow}>
+                    <MaterialCommunityIcons name="clock-outline" size={16} color="#fff" />
+                    <Text style={styles.sectionTitle}>Current Choghadiya</Text>
+                  </View>
+                  <Text style={styles.sectionText}>
+                    {active.name} ({active.quality}) · {active.start}–{active.end}
+                  </Text>
+                </View>
+              );
+            })()}
           </>
         )}
       </Card.Content>
+
+      {navigation && (
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Panchanga')}
+          style={styles.viewFullBtn}
+        >
+          <Text style={styles.viewFullText}>View Full Panchanga →</Text>
+        </TouchableOpacity>
+      )}
     </Card>
   );
 }
@@ -261,5 +327,17 @@ const styles = StyleSheet.create({
   },
   festivalChip: {
     backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  viewFullBtn: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
+  },
+  viewFullText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
 });

@@ -1,5 +1,6 @@
-import { Chip, Tooltip, Box, Typography } from '@mui/material';
-import { FaCheckCircle, FaShieldAlt, FaLock, FaStar, FaAward } from 'react-icons/fa';
+import { Box, Chip, Tooltip, Typography } from '@mui/material';
+import PropTypes from 'prop-types';
+import { FaAward, FaCheckCircle, FaLock, FaShieldAlt, FaStar } from 'react-icons/fa';
 
 /**
  * TrustBadge Component
@@ -155,6 +156,13 @@ export default function TrustBadge({
   return null;
 }
 
+TrustBadge.propTypes = {
+  type: PropTypes.oneOf(Object.keys(BADGE_TYPES)),
+  size: PropTypes.oneOf(['small', 'medium', 'large']),
+  showTooltip: PropTypes.bool,
+  variant: PropTypes.oneOf(['chip', 'inline', 'banner']),
+};
+
 /**
  * TrustBadgeGroup - Display multiple trust badges in a row
  */
@@ -173,3 +181,11 @@ export function TrustBadgeGroup({ badges = [], size = 'small', showTooltip = tru
     </Box>
   );
 }
+
+TrustBadgeGroup.propTypes = {
+  badges: PropTypes.arrayOf(PropTypes.oneOf(Object.keys(BADGE_TYPES))),
+  size: PropTypes.oneOf(['small', 'medium', 'large']),
+  showTooltip: PropTypes.bool,
+  variant: PropTypes.oneOf(['chip', 'inline', 'banner']),
+  spacing: PropTypes.number,
+};

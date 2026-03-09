@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import ErrorBoundary from '../ErrorBoundary';
 
 const PrivateRoute = () => {
   const { user, loading } = useAuth();
@@ -24,8 +25,9 @@ const PrivateRoute = () => {
     return <Navigate to="/onboarding" replace />;
   }
 
-  // If logged in and onboarded, render child routes
-  return <Outlet />;
+  // If logged in and onboarded, render child routes inside an error boundary
+  // so a single route crash does not unmount the entire app (FE-07).
+  return <ErrorBoundary><Outlet /></ErrorBoundary>;
 };
 
 export default PrivateRoute;

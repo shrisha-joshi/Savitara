@@ -1,6 +1,6 @@
 import { addDays, addHours, addWeeks } from 'date-fns';
 import PropTypes from 'prop-types';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
     Alert,
     Modal,
@@ -20,7 +20,6 @@ import {
     Text,
 } from 'react-native-paper';
 import { getAvatarColor, getInitials } from '../../constants/avatars';
-import { BRAND } from '../../constants/theme';
 import { chatAPI } from '../../services/api';
 
 const MUTE_DURATION_OPTIONS = [
@@ -35,13 +34,17 @@ const renderBellOffIcon = (props) => <List.Icon {...props} icon="bell-off" />;
 const renderPinIcon = (props) => <List.Icon {...props} icon="pin" />;
 const renderArchiveIcon = (props) => <List.Icon {...props} icon="package-down" />;
 
-const renderToggleSwitch = (value, onToggle, disabled) => () => (
-  <Switch
-    value={value}
-    onValueChange={() => { onToggle(); }}
-    disabled={disabled}
-  />
-);
+const renderToggleSwitch = (value, onToggle, disabled) => {
+  const ToggleSwitch = () => (
+    <Switch
+      value={value}
+      onValueChange={() => { onToggle(); }}
+      disabled={disabled}
+    />
+  );
+  ToggleSwitch.displayName = 'ToggleSwitch';
+  return ToggleSwitch;
+};
 
 const ConversationSettingsScreen = ({ navigation, route }) => {
   const { conversationId, otherUserName, otherUserAvatar, otherUserId } = route.params;
@@ -50,11 +53,7 @@ const ConversationSettingsScreen = ({ navigation, route }) => {
   const [updating, setUpdating] = useState(false);
   const [showMutePicker, setShowMutePicker] = useState(false);
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       setLoading(true);
       // Direct lookup — avoids fetching all conversations and filtering client-side
@@ -75,11 +74,15 @@ const ConversationSettingsScreen = ({ navigation, route }) => {
     } catch (error) {
       console.error('Failed to load settings:', error);
       Alert.alert('Error', 'Failed to load conversation settings');
-      setSettings({ is_muted: false, is_pinned: false, is_archived: false });
+        setSettings({ is_muted: false, muted_until: null, is_pinned: false, is_archived: false });
     } finally {
       setLoading(false);
     }
-  };
+  }, [conversationId]);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   const handleToggleMute = async () => {
     if (!settings) return;
@@ -348,7 +351,7 @@ const ConversationSettingsScreen = ({ navigation, route }) => {
               icon="account-cancel"
               onPress={handleBlockUser}
               textColor="#d32f2f"
-              style={[styles.dangerButton, { marginBottom: 12 }]}
+              style={[styles.dangerButton, styles.dangerButtonMargin]}
             >
               Block {otherUserName || 'User'}
             </Button>
@@ -357,7 +360,7 @@ const ConversationSettingsScreen = ({ navigation, route }) => {
               icon="flag"
               onPress={handleReportUser}
               textColor="#e65100"
-              style={[styles.dangerButton, { marginBottom: 12 }]}
+              style={[styles.dangerButton, styles.dangerButtonMargin]}
             >
               Report {otherUserName || 'User'}
             </Button>
@@ -378,36 +381,39 @@ const ConversationSettingsScreen = ({ navigation, route }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  userInfo: {
-    alignItems: 'center',
-    padding: 24,
-  },
-  userName: {
-    fontSize: 20,
-    fontWeight: '600',
+  cancelBtn: {
     marginTop: 12,
   },
-  dangerZone: {
-    padding: 16,
+  container: {
+    backgroundColor: '#fff',
+    flex: 1,
   },
   dangerButton: {
     borderColor: '#d32f2f',
   },
-  avatarText: {
-    backgroundColor: BRAND.primary,
+  dangerButtonMargin: {
+    marginBottom: 12,
+  },
+  dangerZone: {
+    padding: 16,
+  },
+  durationLabel: {
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  durationOption: {
+    borderBottomColor: '#f0f0f0',
+    borderBottomWidth: 1,
+    paddingVertical: 14,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
   },
   modalOverlay: {
-    flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
+    flex: 1,
     justifyContent: 'flex-end',
   },
   modalSheet: {
@@ -423,16 +429,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'center',
   },
-  durationOption: {
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+  userInfo: {
+    alignItems: 'center',
+    padding: 24,
   },
-  durationLabel: {
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  cancelBtn: {
+  userName: {
+    fontSize: 20,
+    fontWeight: '600',
     marginTop: 12,
   },
 });

@@ -83,7 +83,7 @@ class TestTrustScoreAPI:
         
         assert response.status_code == 200
         data = response.json()
-        assert data["trust_score"]["overall_score"] == 85.5
+        assert abs(data["trust_score"]["overall_score"] - 85.5) < 0.001  # S1244: avoid float equality
         assert data["verification_level"] == "savitara_verified"
         
     def test_get_trust_score_invalid_acharya(self, client):

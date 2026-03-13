@@ -102,7 +102,7 @@ class FestivalPrediction(BaseModel):
     
     # Notification Status
     notification_sent: bool = False
-    notification_sent_at: Optional[datetime]
+    notification_sent_at: Optional[datetime] = None
     target_user_segments: List[str] = []  # ["lapsed_users", "high_ltv", "new_users"]
     
     created_at: datetime = Field(default_factory=utcnow)
@@ -133,7 +133,6 @@ class PersonalizedRecommendation(BaseModel):
     
     # Panchanga Context
     panchanga_trigger: Dict[str, Any] = {}
-    # {"event": "ekadashi", "date": "2024-02-15", "significance": "Mokshada Ekadashi"}
     
     # Suggested Services
     recommended_poojas: List[str] = []
@@ -145,11 +144,11 @@ class PersonalizedRecommendation(BaseModel):
     
     # Engagement
     shown_to_user: bool = False
-    shown_at: Optional[datetime]
+    shown_at: Optional[datetime] = None
     clicked: bool = False
-    clicked_at: Optional[datetime]
+    clicked_at: Optional[datetime] = None
     resulted_in_booking: bool = False
-    booking_id: Optional[str]
+    booking_id: Optional[str] = None
     
     created_at: datetime = Field(default_factory=utcnow)
     
@@ -177,19 +176,19 @@ class UserBehaviorProfile(BaseModel):
     # Booking Preferences (Grihastas)
     preferred_pooja_categories: List[str] = []
     preferred_time_slots: List[str] = []  # ["morning", "evening"]
-    preferred_budget_range: Optional[Dict[str, float]]  # {"min": 500, "max": 2000}
+    preferred_budget_range: Optional[Dict[str, float]] = None  # {"min": 500, "max": 2000}
     preferred_acharya_characteristics: List[str] = []  # ["verified", "high_rating", "fast_response"]
     
     # Behavioral Signals
-    avg_booking_frequency_days: Optional[float]  # Books every X days
-    churn_risk_score: float = Field(ge=0.0, le=1.0, default=0.0)  # 0 = low, 1 = high
+    avg_booking_frequency_days: Optional[float] = None  # Books every X days
+    churn_risk_score: float = Field(ge=0.0, le=1.0, default=0.0)
     price_sensitivity: str = "medium"  # "low", "medium", "high"
     quality_sensitivity: str = "high"  # "low", "medium", "high"
     
     # Engagement
-    avg_session_duration_minutes: Optional[float]
-    last_active_at: Optional[datetime]
-    days_since_last_booking: Optional[int]
+    avg_session_duration_minutes: Optional[float] = None
+    last_active_at: Optional[datetime] = None
+    days_since_last_booking: Optional[int] = None
     
     # Seasonality
     books_on_festivals: bool = False
@@ -203,7 +202,7 @@ class UserBehaviorProfile(BaseModel):
     # Model Metadata
     model_version: str = "v1.0"
     last_updated: datetime = Field(default_factory=utcnow)
-    features_hash: Optional[str]  # For model versioning
+    features_hash: Optional[str] = None  # For model versioning
     
     model_config = ConfigDict(populate_by_name=True)
 
@@ -247,7 +246,7 @@ class AcharyaRankingScore(BaseModel):
     # Context
     search_query: str
     user_id: str
-    user_location: Optional[Dict[str, float]]  # {"lat": 12.9716, "lng": 77.5946}
+    user_location: Optional[Dict[str, float]] = None  # {"lat": 12.9716, "lng": 77.5946}
     
     calculated_at: datetime = Field(default_factory=utcnow)
     
@@ -272,17 +271,16 @@ class SearchQuery(BaseModel):
     
     # Filters Applied
     filters: Dict[str, Any] = {}
-    # {"city": "Bangalore", "price_max": 2000, "rating_min": 4.0}
     
     # Results
     total_results: int
     results_shown: List[str] = []  # Acharya IDs
     
     # Engagement
-    result_clicked: Optional[str]  # Acharya ID
-    click_position: Optional[int]  # 1-based
+    result_clicked: Optional[str] = None  # Acharya ID
+    click_position: Optional[int] = None  # 1-based
     resulted_in_booking: bool = False
-    booking_id: Optional[str]
+    booking_id: Optional[str] = None
     
     # Metadata
     session_id: str
@@ -337,16 +335,15 @@ class ABTestVariant(BaseModel):
     
     # Metrics
     primary_metric: str  # "conversion_rate", "avg_booking_value", "retention_rate"
-    primary_metric_value: Optional[float]
+    primary_metric_value: Optional[float] = None
     
     secondary_metrics: Dict[str, float] = {}
-    # {"time_to_booking": 120.5, "search_queries": 3}
     
     # Engagement
     feature_used: bool = False
-    feature_used_at: Optional[datetime]
+    feature_used_at: Optional[datetime] = None
     resulted_in_conversion: bool = False
-    conversion_value: Optional[float]
+    conversion_value: Optional[float] = None
     
     model_config = ConfigDict(populate_by_name=True)
 
@@ -373,28 +370,27 @@ class PersonalizedNotification(BaseModel):
     # Message
     title: str
     body: str
-    image_url: Optional[str]
-    deep_link: Optional[str]  # "savitara://acharyas/123"
+    image_url: Optional[str] = None
+    deep_link: Optional[str] = None  # "savitara://acharyas/123"
     
     # Personalization Context
     personalization_type: str
     # "festival_reminder", "dormant_reactivation", "price_drop", "new_acharya_nearby"
     
     context_data: Dict[str, Any] = {}
-    # {"festival": "Diwali", "days_until": 7, "recommended_pooja": "Lakshmi Pooja"}
     
     # Sending
     scheduled_for: datetime
-    sent_at: Optional[datetime]
+    sent_at: Optional[datetime] = None
     delivery_status: str = "scheduled"  # "scheduled", "sent", "failed", "clicked"
     
     # Engagement
     opened: bool = False
-    opened_at: Optional[datetime]
+    opened_at: Optional[datetime] = None
     clicked: bool = False
-    clicked_at: Optional[datetime]
+    clicked_at: Optional[datetime] = None
     conversion: bool = False
-    booking_id: Optional[str]
+    booking_id: Optional[str] = None
     
     created_at: datetime = Field(default_factory=utcnow)
     
@@ -436,7 +432,7 @@ class DynamicPricingRecommendation(BaseModel):
     # Recommendation Status
     shown_to_acharya: bool = False
     acharya_accepted: bool = False
-    price_updated_at: Optional[datetime]
+    price_updated_at: Optional[datetime] = None
     
     created_at: datetime = Field(default_factory=utcnow)
     
@@ -463,7 +459,7 @@ class TrendingService(BaseModel):
     
     # Context
     trending_reason: str  # "festival", "seasonal", "viral", "organic"
-    related_festival: Optional[str]
+    related_festival: Optional[str] = None
     
     # Display
     display_title: str  # "🔥 Trending: Lakshmi Pooja"

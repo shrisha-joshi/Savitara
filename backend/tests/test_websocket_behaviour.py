@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
@@ -13,6 +15,7 @@ class DummyWebSocket:
         self.sent = []
 
     async def send_json(self, data):
+        await asyncio.sleep(0)  # yield to event loop so this is a proper coroutine
         self.sent.append(data)
 
 
@@ -36,6 +39,10 @@ def test_ws_ping_pong_with_token_in_dev(monkeypatch):
 
     client = TestClient(app)
     with client.websocket_connect("/ws/user1?token=fake") as websocket:
+        # Consume the initial connection_established message sent by the server on connect
+        initial = websocket.receive_json()
+        assert initial["type"] == "connection_established"
+
         websocket.send_json({"type": "ping"})
         data = websocket.receive_json()
         assert data["type"] == "pong"
@@ -46,7 +53,8 @@ def test_ws_token_blocked_in_production(monkeypatch):
     monkeypatch.setattr(settings, "APP_ENV", "production")
     client = TestClient(app)
     with pytest.raises(WebSocketDisconnect) as excinfo:
-        client.websocket_connect("/ws/user1?token=fake")
+        with client.websocket_connect("/ws/user1?token=fake") as ws:
+            _ = ws.receive_json()  # Server closes immediately; triggers disconnect
     assert excinfo.value.code == 1008
 
 

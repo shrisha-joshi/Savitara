@@ -47,7 +47,7 @@ import {
 /** Generate and trigger download of a CSV file */
 function downloadCSV(rows, filename) {
   const csvContent = rows
-    .map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+    .map((r) => r.map((c) => `"${String(c ?? '').replaceAll('"', '""')}"`).join(','))
     .join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -60,6 +60,25 @@ function downloadCSV(rows, filename) {
 import Layout from '../src/components/Layout';
 import withAuth from '../src/hoc/withAuth';
 import { adminAPI } from '../src/services/api';
+
+function getRoleChipColor(role) {
+  if (role === 'acharya') return 'primary';
+  if (role === 'admin') return 'secondary';
+  return 'default';
+}
+
+function getStatusChipColor(status, isSuspended) {
+  if (status === 'suspended' || isSuspended) return 'error';
+  if (status === 'pending') return 'warning';
+  if (status === 'active') return 'success';
+  return 'default';
+}
+
+function getStatusChipLabel(status, isSuspended) {
+  if (status === 'suspended' || isSuspended) return 'Suspended';
+  if (status === 'pending') return 'Pending';
+  return 'Active';
+}
 
 function Users() {
   const [users, setUsers] = useState([]);
@@ -121,16 +140,16 @@ function Users() {
 
   const calculateStats = useCallback(() => {
     setStats({
-      total:     totalUsers,                                            // server total
-      acharyas:  users.filter((u) => u.role === 'acharya').length,
-      grihastas: users.filter((u) => u.role === 'grihasta').length,
-      admins:    users.filter((u) => u.role === 'admin').length,
-      pending:   users.filter((u) => u.status === 'pending').length,
-      active:    users.filter((u) => u.status === 'active').length,
+      total:         totalUsers,                                            // server total
+      pageAcharyas:  users.filter((u) => u.role === 'acharya').length,
+      pageGrihastas: users.filter((u) => u.role === 'grihasta').length,
+      pageAdmins:    users.filter((u) => u.role === 'admin').length,
+      pagePending:   users.filter((u) => u.status === 'pending').length,
+      pageActive:    users.filter((u) => u.status === 'active').length,
     });
   }, [users, totalUsers]);
 
-  const exportUsersCSV = () => {
+  const exportCurrentPageCSV = () => {
     const headers = ['Name', 'Email', 'Role', 'Phone', 'City', 'Status', 'Created At'];
     const rows = filteredUsers.map((u) => [
       u.name || u.full_name || '',
@@ -141,7 +160,7 @@ function Users() {
       u.status || '',
       u.created_at ? new Date(u.created_at).toLocaleString() : '',
     ]);
-    downloadCSV([headers, ...rows], `users_${new Date().toISOString().slice(0, 10)}.csv`);
+    downloadCSV([headers, ...rows], `users_page_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
@@ -210,10 +229,10 @@ function Users() {
             <Button
               variant="outlined"
               startIcon={<FileDownload />}
-              onClick={exportUsersCSV}
+              onClick={exportCurrentPageCSV}
               disabled={filteredUsers.length === 0}
             >
-              Export CSV
+              Export Current Page
             </Button>
             <Button
               variant="outlined"
@@ -239,40 +258,40 @@ function Users() {
           <Grid item xs={12} sm={6} md={2}>
             <Card sx={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
               <CardContent>
-                <Typography variant="h4" fontWeight={700}>{stats.acharyas}</Typography>
-                <Typography variant="body2">Acharyas</Typography>
+                <Typography variant="h4" fontWeight={700}>{stats.pageAcharyas}</Typography>
+                <Typography variant="body2">Acharyas (this page)</Typography>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
             <Card sx={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', color: 'white' }}>
               <CardContent>
-                <Typography variant="h4" fontWeight={700}>{stats.grihastas}</Typography>
-                <Typography variant="body2">Grihastas</Typography>
+                <Typography variant="h4" fontWeight={700}>{stats.pageGrihastas}</Typography>
+                <Typography variant="body2">Grihastas (this page)</Typography>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
             <Card sx={{ background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', color: 'white' }}>
               <CardContent>
-                <Typography variant="h4" fontWeight={700}>{stats.admins}</Typography>
-                <Typography variant="body2">Admins</Typography>
+                <Typography variant="h4" fontWeight={700}>{stats.pageAdmins}</Typography>
+                <Typography variant="body2">Admins (this page)</Typography>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
             <Card sx={{ background: 'linear-gradient(135deg, #ffa726 0%, #fb8c00 100%)', color: 'white' }}>
               <CardContent>
-                <Typography variant="h4" fontWeight={700}>{stats.pending}</Typography>
-                <Typography variant="body2">Pending</Typography>
+                <Typography variant="h4" fontWeight={700}>{stats.pagePending}</Typography>
+                <Typography variant="body2">Pending (this page)</Typography>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
             <Card sx={{ background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', color: 'white' }}>
               <CardContent>
-                <Typography variant="h4" fontWeight={700}>{stats.active}</Typography>
-                <Typography variant="body2">Active</Typography>
+                <Typography variant="h4" fontWeight={700}>{stats.pageActive}</Typography>
+                <Typography variant="body2">Active (this page)</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -286,9 +305,9 @@ function Users() {
             sx={{ borderBottom: 1, borderColor: 'divider' }}
           >
             <Tab label={`All (${totalUsers})`} value="all" />
-            <Tab label={`Acharyas (${stats.acharyas})`} value="acharya" />
-            <Tab label={`Grihastas (${stats.grihastas})`} value="grihasta" />
-            <Tab label={`Admins (${stats.admins})`} value="admin" />
+            <Tab label={`Acharyas (${stats.pageAcharyas})`} value="acharya" />
+            <Tab label={`Grihastas (${stats.pageGrihastas})`} value="grihasta" />
+            <Tab label={`Admins (${stats.pageAdmins})`} value="admin" />
           </Tabs>
           <Box sx={{ p: 2 }}>
             <TextField
@@ -322,13 +341,14 @@ function Users() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {loading ? (
+              {loading && (
                 <TableRow>
                   <TableCell colSpan={7} align="center">
                     <CircularProgress />
                   </TableCell>
                 </TableRow>
-              ) : filteredUsers.length === 0 ? (
+              )}
+              {!loading && filteredUsers.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} align="center">
                     <Typography variant="body2" color="text.secondary">
@@ -336,8 +356,8 @@ function Users() {
                     </Typography>
                   </TableCell>
                 </TableRow>
-              ) : (
-                filteredUsers.map((user) => (
+              )}
+              {!loading && filteredUsers.map((user) => (
                   <TableRow key={user._id || user.id} hover>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -354,7 +374,7 @@ function Users() {
                       <Chip
                         label={user.role?.toUpperCase()}
                         size="small"
-                        color={user.role === 'acharya' ? 'primary' : user.role === 'admin' ? 'secondary' : 'default'}
+                        color={getRoleChipColor(user.role)}
                       />
                     </TableCell>
                     <TableCell>{user.phone || user.phone_number || '-'}</TableCell>
@@ -364,13 +384,11 @@ function Users() {
                         : '-'}
                     </TableCell>
                     <TableCell>
-                      {user.status === 'suspended' || user.is_suspended ? (
-                        <Chip label="Suspended" color="error" size="small" />
-                      ) : user.status === 'pending' ? (
-                        <Chip label="Pending" color="warning" size="small" />
-                      ) : (
-                        <Chip label="Active" color="success" size="small" />
-                      )}
+                      <Chip
+                        label={getStatusChipLabel(user.status, user.is_suspended)}
+                        color={getStatusChipColor(user.status, user.is_suspended)}
+                        size="small"
+                      />
                     </TableCell>
                     <TableCell align="center">
                       <Tooltip title="View Details">
@@ -408,8 +426,7 @@ function Users() {
                       )}
                     </TableCell>
                   </TableRow>
-                ))
-              )}
+                ))}
             </TableBody>
           </Table>
         </TableContainer>
@@ -421,7 +438,7 @@ function Users() {
           page={usersPage}
           onPageChange={(e, newPage) => setUsersPage(newPage)}
           rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setUsersPage(0); }}
+          onRowsPerPageChange={(e) => { setRowsPerPage(Number.parseInt(e.target.value, 10)); setUsersPage(0); }}
           rowsPerPageOptions={[10, 25, 50, 100]}
           labelRowsPerPage="Users per page:"
         />
@@ -477,7 +494,7 @@ function Users() {
                   <Typography variant="body2" color="text.secondary" gutterBottom>Status:</Typography>
                   <Chip
                     label={selectedUser.status?.toUpperCase() || 'UNKNOWN'}
-                    color={selectedUser.status === 'active' ? 'success' : selectedUser.status === 'pending' ? 'warning' : 'default'}
+                    color={getStatusChipColor(selectedUser.status, selectedUser.is_suspended)}
                   />
                 </Grid>
                 {selectedUser.role === 'acharya' && (

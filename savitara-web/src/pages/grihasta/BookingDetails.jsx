@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import PropTypes from 'prop-types'
 import { useParams, useNavigate } from 'react-router-dom'
 import { 
   Container, 
@@ -62,29 +63,29 @@ function OtpSection({ bookingId, isAcharya }) {
         <FaKey style={{ marginRight: 8, verticalAlign: 'middle' }} />
         Session OTP
       </Typography>
-      {isAcharya ? (
-        otp ? (
-          <Alert severity="success">
-            <Typography variant="h5" fontWeight="bold" letterSpacing={6}>{otp}</Typography>
-            <Typography variant="caption">Share this OTP with the Grihasta to confirm attendance.</Typography>
-          </Alert>
-        ) : (
-          <>
-            {err && <Alert severity="error" sx={{ mb: 1 }}>{err}</Alert>}
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Generate an OTP to start the session. Share it with the Grihasta.
-            </Typography>
-            <Button
-              variant="contained"
-              startIcon={generating ? <CircularProgress size={18} color="inherit" /> : <LockOpenIcon />}
-              onClick={generate}
-              disabled={generating}
-            >
-              {generating ? 'Generating…' : 'Generate Session OTP'}
-            </Button>
-          </>
-        )
-      ) : (
+      {isAcharya && otp && (
+        <Alert severity="success">
+          <Typography variant="h5" fontWeight="bold" letterSpacing={6}>{otp}</Typography>
+          <Typography variant="caption">Share this OTP with the Grihasta to confirm attendance.</Typography>
+        </Alert>
+      )}
+      {isAcharya && !otp && (
+        <>
+          {err && <Alert severity="error" sx={{ mb: 1 }}>{err}</Alert>}
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Generate an OTP to start the session. Share it with the Grihasta.
+          </Typography>
+          <Button
+            variant="contained"
+            startIcon={generating ? <CircularProgress size={18} color="inherit" /> : <LockOpenIcon />}
+            onClick={generate}
+            disabled={generating}
+          >
+            {generating ? 'Generating…' : 'Generate Session OTP'}
+          </Button>
+        </>
+      )}
+      {!isAcharya && (
         <Alert severity="info">
           Waiting for the Acharya to generate a session OTP.
           Once they share it, enter it in the Attendance section below.
@@ -92,6 +93,11 @@ function OtpSection({ bookingId, isAcharya }) {
       )}
     </Box>
   )
+}
+
+OtpSection.propTypes = {
+  bookingId: PropTypes.string.isRequired,
+  isAcharya: PropTypes.bool.isRequired,
 }
 
 function AttendanceSection({ bookingId, isAcharya, onDone }) {
@@ -159,6 +165,12 @@ function AttendanceSection({ bookingId, isAcharya, onDone }) {
       )}
     </Box>
   )
+}
+
+AttendanceSection.propTypes = {
+  bookingId: PropTypes.string.isRequired,
+  isAcharya: PropTypes.bool.isRequired,
+  onDone: PropTypes.func.isRequired,
 }
 
 // ─── Main Component ────────────────────────────────────────────────────────────

@@ -94,7 +94,7 @@ export default function SubmitReview() {
     )
   }
 
-  const displayRating = hoverRating !== -1 ? hoverRating : rating
+  const displayRating = hoverRating === -1 ? rating : hoverRating
 
   return (
     <Layout>

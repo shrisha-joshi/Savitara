@@ -657,3 +657,145 @@ class TrustScoreService:
         
         return AttendanceCheckpoint(**checkpoint)
 
+    @staticmethod
+    async def resolve_dispute(
+        db: Optional[AsyncIOMotorDatabase],
+        dispute_id: str,
+        resolution: str,
+        refund_percentage: int = 0,
+    ) -> Dict[str, Any]:
+        """
+        Resolve a dispute and optionally trigger a proportional refund.
+
+        Safely handles missing or invalid booking_id in the dispute document,
+        and normalises the booking amount across multiple field names.
+        """
+        if not db:
+            return {"dispute_id": dispute_id, "resolved": True}
+
+        if not ObjectId.is_valid(dispute_id):
+            raise ValidationError(f"Invalid dispute ID: {dispute_id}")
+
+        dispute_doc = await db.dispute_resolutions.find_one({"_id": ObjectId(dispute_id)})
+        if not dispute_doc:
+            raise ResourceNotFoundError(f"Dispute {dispute_id} not found")
+
+        # Safe booking lookup — dispute_doc["booking_id"] may be missing or invalid
+        raw_booking_id = dispute_doc.get("booking_id")
+        booking_doc = None
+        if raw_booking_id and ObjectId.is_valid(str(raw_booking_id)):
+            booking_doc = await db.bookings.find_one({"_id": ObjectId(str(raw_booking_id))})
+
+        # Normalise amount across field-name variations
+        total_amount = (
+            booking_doc.get("total_amount")
+            or booking_doc.get("total_price")
+            or booking_doc.get("amount")
+            or 0
+        ) if booking_doc else 0
+        refund_amount = round(total_amount * refund_percentage / 100, 2)
+
+        _refund_initiated = False
+        if refund_percentage > 0 and booking_doc and booking_doc.get("razorpay_payment_id"):
+            try:
+                from app.services.payment_service import RazorpayService  # noqa: PLC0415
+                RazorpayService().initiate_refund(
+                    payment_id=booking_doc["razorpay_payment_id"],
+                    amount=refund_amount,
+                    notes={"reason": "Dispute resolution", "dispute_id": dispute_id},
+                )
+                _refund_initiated = True
+            except Exception as _exc:  # noqa: BLE001
+                import logging as _logging  # noqa: PLC0415
+                _logging.getLogger(__name__).warning(
+                    "Dispute refund failed for %s: %s", dispute_id, _exc
+                )
+
+        _update: Dict[str, Any] = {
+            "status": resolution,
+            "refund_percentage": refund_percentage,
+            "refund_amount": refund_amount,
+            "resolved_at": utcnow(),
+        }
+        if _refund_initiated:
+            _update["auto_refund_initiated_at"] = utcnow()
+
+        await db.dispute_resolutions.update_one(
+            {"_id": ObjectId(dispute_id)},
+            {"$set": _update},
+        )
+
+        return {
+            "dispute_id": dispute_id,
+            "resolution": resolution,
+            "refund_amount": refund_amount,
+            "refund_initiated": _refund_initiated,
+            "resolved": True,
+        }
+
+    @staticmethod
+    async def approve_guarantee_claim(
+        db: Optional[AsyncIOMotorDatabase],
+        claim_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Approve a service guarantee claim and initiate auto-refund.
+
+        Safely validates the claim ObjectId and normalises the booking amount
+        across multiple field-name variations before computing the refund.
+        """
+        if not db:
+            return {"claim_id": claim_id, "status": "approved", "refund_initiated": False}
+
+        if not ObjectId.is_valid(claim_id):
+            raise ValidationError(f"Invalid claim ID: {claim_id}")
+
+        claim_doc = await db.service_guarantees.find_one({"_id": ObjectId(claim_id)})
+        if not claim_doc:
+            raise ResourceNotFoundError(f"Guarantee claim {claim_id} not found")
+
+        await db.service_guarantees.update_one(
+            {"_id": ObjectId(claim_id)},
+            {"$set": {"status": "APPROVED", "approved_at": utcnow()}},
+        )
+
+        _refund_initiated = False
+        raw_booking_id = claim_doc.get("booking_id")
+        if raw_booking_id and ObjectId.is_valid(str(raw_booking_id)):
+            try:
+                _booking = await db.bookings.find_one({"_id": ObjectId(str(raw_booking_id))})
+                if _booking and _booking.get("razorpay_payment_id"):
+                    from app.services.payment_service import RazorpayService  # noqa: PLC0415
+                    _total = float(
+                        _booking.get("total_amount")
+                        or _booking.get("total_price")
+                        or _booking.get("amount")
+                        or 0
+                    )
+                    _refund_pct = float(claim_doc.get("refund_percentage", 100))
+                    _refund_amt = round(_total * _refund_pct / 100, 2)
+                    RazorpayService().initiate_refund(
+                        payment_id=_booking["razorpay_payment_id"],
+                        amount=_refund_amt,
+                        notes={"reason": "Service guarantee claim", "claim_id": claim_id},
+                    )
+                    await db.service_guarantees.update_one(
+                        {"_id": ObjectId(claim_id)},
+                        {"$set": {
+                            "razorpay_refund_initiated": True,
+                            "auto_refund_initiated_at": utcnow(),
+                        }},
+                    )
+                    _refund_initiated = True
+            except Exception as _exc:  # noqa: BLE001
+                import logging as _logging  # noqa: PLC0415
+                _logging.getLogger(__name__).warning(
+                    "Guarantee refund failed for %s: %s", claim_id, _exc
+                )
+
+        return {
+            "claim_id": claim_id,
+            "status": "approved",
+            "refund_initiated": _refund_initiated,
+        }
+

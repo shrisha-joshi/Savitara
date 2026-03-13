@@ -320,7 +320,7 @@ export const SocketProvider = ({ children }) => {
       console.error('[WS] Connection error:', error);
       setConnected(false);
     }
-  }, [getWebSocketUrl, startHeartbeat, stopHeartbeat, processOfflineQueue]);
+  }, [getWebSocketUrl, startHeartbeat, stopHeartbeat, processOfflineQueue, handleWsMessage]);
 
   // Disconnect from WebSocket
   const disconnect = useCallback(() => {

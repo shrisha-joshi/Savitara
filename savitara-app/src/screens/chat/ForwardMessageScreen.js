@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
     Alert,
     FlatList,
@@ -24,35 +24,43 @@ import { chatAPI } from '../../services/api';
 
 const MAX_FORWARD_TARGETS = 5; // Max per spec
 
-const renderForwardAvatar = (otherUser) => (props) => {
-  const avatarUri = otherUser.profile_picture || otherUser.profile_image;
-  if (avatarUri) {
+const renderForwardAvatar = (otherUser) => {
+  const AvatarRenderer = (props) => {
+    const avatarUri = otherUser.profile_picture || otherUser.profile_image;
+    if (avatarUri) {
+      return (
+        <Avatar.Image
+          {...props}
+          size={50}
+          source={{ uri: avatarUri }}
+        />
+      );
+    }
+
     return (
-      <Avatar.Image
+      <Avatar.Text
         {...props}
         size={50}
-        source={{ uri: avatarUri }}
+        label={getInitials(otherUser.name)}
+        style={{ backgroundColor: getAvatarColor(otherUser.id || otherUser._id) }}
       />
     );
-  }
-
-  return (
-    <Avatar.Text
-      {...props}
-      size={50}
-      label={getInitials(otherUser.name)}
-      style={{ backgroundColor: getAvatarColor(otherUser.id || otherUser._id) }}
-    />
-  );
+  };
+  AvatarRenderer.displayName = 'ForwardAvatar';
+  return AvatarRenderer;
 };
 
-const renderForwardCheckbox = (isSelected) => () => {
-  let status = 'unchecked';
-  if (isSelected) {
-    status = 'checked';
-  }
+const renderForwardCheckbox = (isSelected) => {
+  const CheckboxRenderer = () => {
+    let status = 'unchecked';
+    if (isSelected) {
+      status = 'checked';
+    }
 
-  return <Checkbox status={status} />;
+    return <Checkbox status={status} />;
+  };
+  CheckboxRenderer.displayName = 'ForwardCheckbox';
+  return CheckboxRenderer;
 };
 
 const getMessagePreview = (message) => {
@@ -98,11 +106,7 @@ const ForwardMessageScreen = ({ navigation, route }) => {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    loadConversations();
-  }, []);
-
-  const loadConversations = async () => {
+    const loadConversations = useCallback(async () => {
     try {
       setIsLoading(true);
       const response = await chatAPI.getConversations({
@@ -121,7 +125,11 @@ const ForwardMessageScreen = ({ navigation, route }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [message]);
+
+    useEffect(() => {
+      loadConversations();
+    }, [loadConversations]);
 
   const handleToggleConversation = (conversationId) => {
     setSelectedConversations((prev) => {
@@ -160,14 +168,16 @@ const ForwardMessageScreen = ({ navigation, route }) => {
         })
         .filter(Boolean);
 
-      if (selectedUsers.length > 0) {
+        if (selectedUsers.length === 0) {
+          Alert.alert('No Valid Recipients', 'No valid recipients selected. Please select valid conversations.');
+          return;
+      }
+
         // Forward via backend POST /messages/{id}/forward
         await chatAPI.forwardMessage(message.id || message._id, {
           recipient_ids: selectedUsers,
         });
-      }
 
-      // Success
       Alert.alert('Success', 'Message forwarded successfully');
       navigation.goBack();
     } catch (err) {
@@ -284,67 +294,64 @@ const ForwardMessageScreen = ({ navigation, route }) => {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
     backgroundColor: '#fff',
+    flex: 1,
   },
-  previewContainer: {
-    padding: 16,
-    backgroundColor: '#f5f5f5',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  previewLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
-  },
-  previewText: {
-    fontSize: 14,
-    color: '#333',
-  },
-  selectedContainer: {
-    padding: 8,
+  emptyContainer: {
     alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
   },
-  selectedChip: {
-    backgroundColor: '#e3f2fd',
-  },
-  searchBar: {
-    margin: 8,
-    elevation: 0,
+  emptyText: {
+    color: '#999',
+    fontSize: 14,
   },
   errorContainer: {
-    padding: 12,
     backgroundColor: '#ffebee',
+    padding: 12,
   },
   errorText: {
     color: '#c62828',
     textAlign: 'center',
   },
   loadingContainer: {
+    alignItems: 'center',
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
   },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  previewContainer: {
+    backgroundColor: '#f5f5f5',
+    borderBottomColor: '#e0e0e0',
+    borderBottomWidth: 1,
+    padding: 16,
   },
-  emptyText: {
-    color: '#999',
+  previewLabel: {
+    color: '#666',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  previewText: {
+    color: '#333',
     fontSize: 14,
   },
-  sendingContainer: {
-    flexDirection: 'row',
+  searchBar: {
+    elevation: 0,
+    margin: 8,
+  },
+  selectedChip: {
+    backgroundColor: '#e3f2fd',
+  },
+  selectedContainer: {
     alignItems: 'center',
+    padding: 8,
+  },
+  sendingContainer: {
+    alignItems: 'center',
+    flexDirection: 'row',
     gap: 16,
   },
   sendingText: {
     fontSize: 16,
-  },
-  avatarText: {
-    backgroundColor: BRAND.primary,
   },
 });
 

@@ -6,6 +6,7 @@ SonarQube: S5122 - Input validation with Pydantic
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import Annotated, Dict, Any, Optional, Tuple
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from bson import ObjectId
@@ -26,7 +27,6 @@ from app.middleware.block_enforcement import BlockEnforcementMiddleware
 import re
 import os
 import uuid
-import shutil
 import aiofiles
 from pydantic import BaseModel
 
@@ -41,6 +41,8 @@ _FIRST = "$first"
 _SUM = "$sum"
 _TO_STRING = "$toString"
 _CONV_ID_FIELD = "$conversation_id"
+MAX_UPLOAD_SIZE = 25 * 1024 * 1024  # 25 MB
+CHUNK_SIZE = 1024 * 1024  # 1 MB
 
 
 def sanitize_message_content(content: str) -> Tuple[str, bool]:
@@ -57,6 +59,9 @@ def sanitize_message_content(content: str) -> Tuple[str, bool]:
 
     # 2. Indian phone with spaces (catches "98 7654 3210")
     indian_phone_spaced = r"(?<!\d)[6-9]\d[\s\-]\d{4}[\s\-]\d{4}(?!\d)"
+
+    # 2b. Indian phone with 5+5 grouping (catches "+91 98765 43210")
+    indian_phone_grouped_5_5 = r"(?<!\d)(?:\+?91[\s\-]?)?[6-9]\d{4}[\s\-]?\d{5}(?!\d)"
 
     # 3. Indian landlines (optional but recommended)
     indian_landline = r"0\d{2,4}[\s\-]?\d{6,8}"
@@ -119,6 +124,7 @@ def sanitize_message_content(content: str) -> Tuple[str, bool]:
     block_patterns = [
         indian_phone,
         indian_phone_spaced,
+        indian_phone_grouped_5_5,
         indian_landline,
         intl_phone,
         email_pattern,
@@ -236,7 +242,11 @@ async def _get_display_name(db, other_user: dict) -> str:
         return "User"
 
     user_role = other_user.get("role")
-    user_id = str(other_user["_id"])
+    other_user_id = other_user.get("_id")
+    if other_user_id is None:
+        return "User"
+
+    user_id = str(other_user_id)
 
     if user_role == UserRole.ACHARYA.value:
         profile = await db.acharya_profiles.find_one({"user_id": user_id})
@@ -251,16 +261,52 @@ async def _get_display_name(db, other_user: dict) -> str:
 
 async def _count_unread_messages(db, conv_oid, conv_id: str, user_id: str, user_oid) -> int:
     """Count unread messages for a conversation."""
-    unread_count = 0
+    receiver_values = [user_id]
     if user_oid:
-        unread_count = await db.messages.count_documents(
-            {"conversation_id": conv_oid, "receiver_id": user_oid, "read": False}
-        )
-    if unread_count == 0:
-        unread_count = await db.messages.count_documents(
-            {"conversation_id": conv_id, "receiver_id": user_id, "read": False}
-        )
-    return unread_count
+        receiver_values.insert(0, user_oid)
+
+    return await db.messages.count_documents(
+        {
+            "$or": [
+                {"conversation_id": conv_oid, "receiver_id": {"$in": receiver_values}},
+                {"conversation_id": conv_id, "receiver_id": {"$in": receiver_values}},
+            ],
+            "read": False,
+        }
+    )
+
+
+async def _prepare_upload_path(file: UploadFile, message_type: str) -> tuple[str, str, str]:
+    """Create upload directory and determine destination path for an uploaded file."""
+    upload_dir = os.path.join("uploads", "chat")
+    await asyncio.to_thread(os.makedirs, upload_dir, exist_ok=True)
+
+    original_name: str = file.filename or "attachment"
+    ext = os.path.splitext(original_name)[1] or {
+        "voice": ".m4a",
+        "image": ".jpg",
+        "file": ".bin",
+    }.get(message_type, ".bin")
+    filename = f"{uuid.uuid4().hex}{ext}"
+    return original_name, filename, os.path.join(upload_dir, filename)
+
+
+async def _get_upload_file_size(file: UploadFile) -> int:
+    """Return the uploaded file size without loading the whole file into memory."""
+    await asyncio.to_thread(file.file.seek, 0, os.SEEK_END)
+    file_size = await asyncio.to_thread(file.file.tell)
+    await file.seek(0)
+    return file_size
+
+
+async def _write_upload_file(file: UploadFile, filepath: str) -> None:
+    """Persist an uploaded file to disk using async chunked writes."""
+    async with aiofiles.open(filepath, "wb") as f_out:
+        while True:
+            chunk = await file.read(CHUNK_SIZE)
+            if not chunk:
+                break
+            await f_out.write(chunk)
 
 
 # ---------------------------------------------------------------------------
@@ -358,7 +404,10 @@ def _resolve_display_name(
     """Return display name for a user from pre-fetched profile maps."""
     if not other_user:
         return "User"
-    uid = str(other_user["_id"])
+    other_user_id = other_user.get("_id")
+    if other_user_id is None:
+        return "User"
+    uid = str(other_user_id)
     role = other_user.get("role")
     if role == UserRole.ACHARYA.value:
         return acharya_display.get(uid, "Acharya")
@@ -384,12 +433,14 @@ def _assemble_enriched_conversation(
     other_user = users_by_id.get(other_uid) if other_uid else None
     display_name = _resolve_display_name(other_user, acharya_display, grihasta_display)
     settings = settings_by_conv.get(conv_id, {})
+    other_user_id = other_user.get("_id") if other_user else None
+    other_user_id_str = str(other_user_id) if other_user_id is not None else None
     return {
         "id": conv_id,
         "_id": conv_id,
         "other_user": {
-            "id": str(other_user["_id"]),
-            "_id": str(other_user["_id"]),
+            "id": other_user_id_str,
+            "_id": other_user_id_str,
             "name": display_name,
             "role": other_user.get("role"),
             "profile_picture": other_user.get("profile_picture"),
@@ -520,13 +571,15 @@ async def _enrich_conversation(db, conv: dict, user_id: str) -> dict:
     
     # Get display name for other user
     display_name = await _get_display_name(db, other_user)
+    other_user_id = other_user.get("_id") if other_user else None
+    other_user_id_str = str(other_user_id) if other_user_id is not None else None
 
     return {
         "id": conv_id,
         "_id": conv_id,
         "other_user": {
-            "id": str(other_user["_id"]),
-            "_id": str(other_user["_id"]),
+            "id": other_user_id_str,
+            "_id": other_user_id_str,
             "name": display_name,
             "role": other_user.get("role"),
             "profile_picture": other_user.get("profile_picture"),
@@ -589,10 +642,7 @@ def _handle_open_chat_message(
 ) -> Tuple[Message, str]:
     """Handle open chat message creation with permission check"""
     if sender_role != UserRole.ACHARYA.value:
-        raise PermissionDeniedError(
-            action="Post to open chat",
-            details={"message": "Only Acharyas can post to open chat"},
-        )
+        raise PermissionDeniedError(message="Only Acharyas can post to open chat")
     return _create_open_chat_message(sender_id, content)
 
 
@@ -729,9 +779,11 @@ async def _get_other_participant_info(
         return None
 
     display_name = await _get_display_name(db, other_user)
+    other_user_id = other_user.get("_id")
+    other_user_id_str = str(other_user_id) if other_user_id is not None else None
     return {
-        "id": str(other_user["_id"]),
-        "_id": str(other_user["_id"]),
+        "id": other_user_id_str,
+        "_id": other_user_id_str,
         "name": display_name,
         "role": other_user.get("role"),
         "profile_picture": other_user.get("profile_picture"),
@@ -973,21 +1025,17 @@ async def send_media_message(
         sender_id = current_user["id"]
 
         # Save uploaded file
-        upload_dir = os.path.join("uploads", "chat")
-        os.makedirs(upload_dir, exist_ok=True)
-        original_name: str = file.filename or "attachment"
-        ext = os.path.splitext(original_name)[1] or {
-            "voice": ".m4a",
-            "image": ".jpg",
-            "file": ".bin",
-        }.get(message_type, ".bin")
-        filename = f"{uuid.uuid4().hex}{ext}"
-        filepath = os.path.join(upload_dir, filename)
-        contents = await file.read()
-        async with aiofiles.open(filepath, "wb") as f_out:
-            await f_out.write(contents)
+        original_name, filename, filepath = await _prepare_upload_path(
+            file, message_type
+        )
+        file_size = await _get_upload_file_size(file)
+        if file_size > MAX_UPLOAD_SIZE:
+            raise InvalidInputError(
+                message=f"file exceeds max upload size of {MAX_UPLOAD_SIZE} bytes",
+                field="file",
+            )
+        await _write_upload_file(file, filepath)
 
-        file_size = len(contents)
         media_url = f"/uploads/chat/{filename}"
 
         # Build content label
@@ -1130,7 +1178,10 @@ async def verify_conversation(
                     pass
 
         if not receiver:
-            raise ResourceNotFoundError(resource_type="User", resource_id=receiver_id)
+            raise InvalidInputError(
+                message="Recipient user not found",
+                field="recipient_id",
+            )
 
         conversation_id = await _get_or_create_conversation(db, sender_id, receiver_id)
 
@@ -1272,13 +1323,19 @@ async def get_conversation(
         if not conv:
             conv = await db.conversations.find_one({"_id": conversation_id})
         if not conv:
-            raise ResourceNotFoundError("Conversation not found")
+            raise ResourceNotFoundError(
+                message="Conversation not found",
+                resource_type="Conversation",
+                resource_id=conversation_id,
+            )
 
         # Verify user is a participant
         participants = conv.get("participants", [])
         is_participant = user_oid in participants or user_id in participants
         if not is_participant:
-            raise PermissionDeniedError("Not a participant of this conversation")
+            raise PermissionDeniedError(
+                message="Not a participant of this conversation"
+            )
 
         enriched = await _enrich_conversation(db, conv, user_id)
         return StandardResponse(success=True, data={"conversation": enriched})
@@ -1326,8 +1383,7 @@ async def get_conversation_messages(
         participant_strs = [str(p) for p in conversation.get("participants", [])]
         if user_id not in participant_strs:
             raise PermissionDeniedError(
-                action="View conversation",
-                details={"message": "You are not a participant in this conversation"},
+                message="You are not a participant in this conversation"
             )
 
         # Get recipient info using helper
@@ -1504,8 +1560,7 @@ async def delete_message(
         # Verify sender - compare as strings
         if str(message.get("sender_id", "")) != user_id:
             raise PermissionDeniedError(
-                action="Delete message",
-                details={"message": "You can only delete your own messages"},
+                message="You can only delete your own messages"
             )
 
         # Soft delete
@@ -1545,15 +1600,13 @@ async def get_unread_count(
         user_oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
 
         # Count with both ObjectId and string receiver_id
-        unread_count = 0
+        receiver_values = [user_id]
         if user_oid:
-            unread_count = await db.messages.count_documents(
-                {"receiver_id": user_oid, "read": False}
-            )
-        if unread_count == 0:
-            unread_count = await db.messages.count_documents(
-                {"receiver_id": user_id, "read": False}
-            )
+            receiver_values.insert(0, user_oid)
+
+        unread_count = await db.messages.count_documents(
+            {"receiver_id": {"$in": receiver_values}, "read": False}
+        )
 
         return StandardResponse(success=True, data={"unread_count": unread_count})
 

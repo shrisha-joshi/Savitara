@@ -14,6 +14,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.core.config import settings
 
+# ── Shared print constants (SonarQube S1192) ─────────────────────────────────
+_OK_BOOKING_ID = "   \u2705 booking_id"
+
 
 def create_trust_indexes():
     """Create all indexes for trust architecture"""
@@ -62,7 +65,7 @@ def create_trust_indexes():
             [("booking_id", ASCENDING)],
             name="idx_disputes_booking"
         )
-        print("   ✅ booking_id")
+        print(_OK_BOOKING_ID)
         
         db.disputes.create_index(
             [("complainant_id", ASCENDING)],
@@ -105,7 +108,7 @@ def create_trust_indexes():
             [("booking_id", ASCENDING)],
             name="idx_guarantees_booking"
         )
-        print("   ✅ booking_id")
+        print(_OK_BOOKING_ID)
         
         db.service_guarantees.create_index(
             [("claim_id", ASCENDING)],
@@ -208,7 +211,7 @@ def create_trust_indexes():
             [("booking_id", ASCENDING)],
             name="idx_analysis_booking"
         )
-        print("   ✅ booking_id")
+        print(_OK_BOOKING_ID)
         
         db.message_content_analysis.create_index(
             [("analyzed_at", DESCENDING)],
@@ -233,7 +236,7 @@ def create_trust_indexes():
             [("booking_id", ASCENDING)],
             name="idx_offline_booking"
         )
-        print("   ✅ booking_id")
+        print(_OK_BOOKING_ID)
         
         db.offline_transaction_alerts.create_index(
             [("fraud_confidence", DESCENDING)],

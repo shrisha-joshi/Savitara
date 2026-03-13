@@ -1,7 +1,7 @@
 /**
  * TrustScoreScreen.js
  * Display Acharya trust score breakdown with improvement tips
- * 
+ *
  * Features:
  * - 5-component trust score visualization
  * - Verification badge display
@@ -9,35 +9,30 @@
  * - Guarantee & dispute stats
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import PropTypes from 'prop-types';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  RefreshControl,
   TouchableOpacity,
-  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import api from '../../services/api';
 
-const { width } = Dimensions.get('window');
-
-const TrustScoreScreen = ({ navigation, route }) => {
+const TrustScoreScreen = ({ route }) => {
   const [loading, setLoading] = useState(true);
   const [trustScore, setTrustScore] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const acharyaId = route.params?.acharyaId || null;
 
-  useEffect(() => {
-    fetchTrustScore();
-  }, []);
-
-  const fetchTrustScore = async () => {
+  const fetchTrustScore = useCallback(async () => {
     try {
       setLoading(true);
       const response = await api.get(`/trust/acharyas/${acharyaId}/trust-score`);
@@ -52,7 +47,11 @@ const TrustScoreScreen = ({ navigation, route }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [acharyaId]);
+
+  useEffect(() => {
+    fetchTrustScore();
+  }, [fetchTrustScore]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -80,12 +79,6 @@ const TrustScoreScreen = ({ navigation, route }) => {
       default:
         return 'shield-outline';
     }
-  };
-
-  const getScoreColor = (score) => {
-    if (score >= 80) return '#4CAF50'; // Green
-    if (score >= 60) return '#FF9800'; // Orange
-    return '#F44336'; // Red
   };
 
   const getImprovementTips = () => {
@@ -117,8 +110,10 @@ const TrustScoreScreen = ({ navigation, route }) => {
       tips.push({
         icon: 'checkbox-marked-circle',
         title: 'Improve Completion Rate',
-        description: 'Complete all accepted bookings. Current rate: ' + 
-          Math.round((trustScore.completion_score / 25) * 100) + '%',
+        description:
+          'Complete all accepted bookings. Current rate: '
+          + Math.round((trustScore.completion_score / 25) * 100)
+          + '%',
         action: 'View Tips',
         priority: 'high',
       });
@@ -187,9 +182,10 @@ const TrustScoreScreen = ({ navigation, route }) => {
   const improvementTips = getImprovementTips();
 
   return (
-    <ScrollView style={styles.container} refreshControl={
-      <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-    }>
+    <ScrollView
+      style={styles.container}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+    >
       {/* Header Card */}
       <LinearGradient
         colors={['#FF6B35', '#F7931E']}
@@ -201,7 +197,7 @@ const TrustScoreScreen = ({ navigation, route }) => {
           <Text style={styles.scoreValue}>{Math.round(trustScore.composite_score)}</Text>
           <Text style={styles.scoreLabel}>TRUST SCORE</Text>
         </View>
-        
+
         <View style={styles.badgeContainer}>
           <Ionicons
             name={getVerificationBadgeIcon(trustScore.verification_badge)}
@@ -229,7 +225,7 @@ const TrustScoreScreen = ({ navigation, route }) => {
       {/* Component Breakdown */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Score Breakdown</Text>
-        
+
         <ScoreComponent
           icon="shield-checkmark"
           title="Verification"
@@ -237,7 +233,7 @@ const TrustScoreScreen = ({ navigation, route }) => {
           maxScore={30}
           color="#9C27B0"
         />
-        
+
         <ScoreComponent
           icon="checkbox-marked-circle"
           title="Completion Rate"
@@ -245,7 +241,7 @@ const TrustScoreScreen = ({ navigation, route }) => {
           maxScore={25}
           color="#2196F3"
         />
-        
+
         <ScoreComponent
           icon="clock-fast"
           title="Response Time"
@@ -253,7 +249,7 @@ const TrustScoreScreen = ({ navigation, route }) => {
           maxScore={15}
           color="#FF9800"
         />
-        
+
         <ScoreComponent
           icon="account-heart"
           title="Rebooking Rate"
@@ -261,7 +257,7 @@ const TrustScoreScreen = ({ navigation, route }) => {
           maxScore={20}
           color="#4CAF50"
         />
-        
+
         <ScoreComponent
           icon="star"
           title="Review Quality"
@@ -275,9 +271,9 @@ const TrustScoreScreen = ({ navigation, route }) => {
       {improvementTips.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>💡 Improvement Tips</Text>
-          
-          {improvementTips.map((tip, index) => (
-            <TipCard key={index} tip={tip} />
+
+          {improvementTips.map((tip) => (
+            <TipCard key={tip.title} tip={tip} />
           ))}
         </View>
       )}
@@ -285,25 +281,25 @@ const TrustScoreScreen = ({ navigation, route }) => {
       {/* Trust Benefits */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Benefits of High Trust Score</Text>
-        
+
         <BenefitItem
           icon="trending-up"
           title="Higher Search Ranking"
           description="Appear at the top of search results"
         />
-        
+
         <BenefitItem
           icon="cash"
           title="More Bookings"
           description="Grihastas prefer verified, trusted Acharyas"
         />
-        
+
         <BenefitItem
           icon="trophy"
           title="Premium Features"
           description="Unlock exclusive features at 80+ score"
         />
-        
+
         <BenefitItem
           icon="medal"
           title="Featured Listings"
@@ -316,11 +312,9 @@ const TrustScoreScreen = ({ navigation, route }) => {
   );
 };
 
-// Sub-components
-
 const ScoreComponent = ({ icon, title, score, maxScore, color }) => {
   const percentage = (score / maxScore) * 100;
-  
+
   return (
     <View style={styles.scoreComponentCard}>
       <View style={styles.componentHeader}>
@@ -332,7 +326,7 @@ const ScoreComponent = ({ icon, title, score, maxScore, color }) => {
           {score.toFixed(1)}/{maxScore}
         </Text>
       </View>
-      
+
       <View style={styles.progressBarContainer}>
         <View style={styles.progressBarBackground}>
           <View
@@ -366,15 +360,15 @@ const TipCard = ({ tip }) => {
   return (
     <View style={styles.tipCard}>
       <View style={[styles.priorityIndicator, { backgroundColor: getPriorityColor(tip.priority) }]} />
-      
+
       <View style={styles.tipContent}>
         <View style={styles.tipHeader}>
           <MaterialCommunityIcons name={tip.icon} size={24} color="#FF6B35" />
           <Text style={styles.tipTitle}>{tip.title}</Text>
         </View>
-        
+
         <Text style={styles.tipDescription}>{tip.description}</Text>
-        
+
         <TouchableOpacity style={styles.tipAction}>
           <Text style={styles.tipActionText}>{tip.action}</Text>
           <Ionicons name="arrow-forward" size={16} color="#FF6B35" />
@@ -397,82 +391,14 @@ const BenefitItem = ({ icon, title, description }) => (
 );
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    padding: 20,
-  },
-  errorText: {
-    marginTop: 16,
-    fontSize: 18,
-    color: '#666',
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: 24,
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    backgroundColor: '#FF6B35',
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  headerCard: {
-    padding: 24,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    alignItems: 'center',
-  },
-  scoreCircle: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    borderWidth: 4,
-    borderColor: '#FFF',
-  },
-  scoreValue: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  scoreLabel: {
-    fontSize: 12,
-    color: '#FFF',
-    fontWeight: '600',
-    letterSpacing: 1,
-  },
   badgeContainer: {
-    flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
     borderRadius: 20,
+    flexDirection: 'row',
     marginBottom: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
   badgeText: {
     color: '#FFF',
@@ -480,30 +406,157 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 8,
   },
-  statsRow: {
+  benefitDescription: {
+    color: '#666',
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  benefitIconContainer: {
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    borderRadius: 24,
+    height: 48,
+    justifyContent: 'center',
+    marginRight: 16,
+    width: 48,
+  },
+  benefitItem: {
+    alignItems: 'center',
     flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
+    marginBottom: 16,
   },
-  statItem: {
+  benefitTextContainer: {
     flex: 1,
+  },
+  benefitTitle: {
+    color: '#333',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  bottomPadding: {
+    height: 32,
+  },
+  componentHeader: {
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
-  statValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
+  componentScore: {
+    color: '#333',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  componentTitle: {
+    color: '#333',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  componentTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  container: {
+    backgroundColor: '#F5F5F5',
+    flex: 1,
+  },
+  errorContainer: {
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20,
+  },
+  errorText: {
+    color: '#666',
+    fontSize: 18,
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  headerCard: {
+    alignItems: 'center',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    padding: 24,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: '#666',
+    fontSize: 16,
+    marginTop: 16,
+  },
+  percentageText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 12,
+    textAlign: 'right',
+    width: 45,
+  },
+  priorityIndicator: {
+    width: 4,
+  },
+  progressBarBackground: {
+    backgroundColor: '#E0E0E0',
+    borderRadius: 4,
+    flex: 1,
+    height: 8,
+    overflow: 'hidden',
+  },
+  progressBarContainer: {
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  progressBarFill: {
+    borderRadius: 4,
+    height: '100%',
+  },
+  retryButton: {
+    backgroundColor: '#FF6B35',
+    borderRadius: 8,
+    marginTop: 24,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+  },
+  retryButtonText: {
     color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
-  statLabel: {
-    fontSize: 12,
-    color: '#FFF',
-    opacity: 0.9,
-    marginTop: 4,
-  },
-  statDivider: {
-    width: 1,
-    height: 40,
+  scoreCircle: {
+    alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.3)',
+    borderColor: '#FFF',
+    borderRadius: 70,
+    borderWidth: 4,
+    height: 140,
+    justifyContent: 'center',
+    marginBottom: 20,
+    width: 140,
+  },
+  scoreComponentCard: {
+    backgroundColor: '#F9F9F9',
+    borderRadius: 12,
+    marginBottom: 12,
+    padding: 16,
+  },
+  scoreLabel: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 1,
+  },
+  scoreValue: {
+    color: '#FFF',
+    fontSize: 48,
+    fontWeight: 'bold',
   },
   section: {
     backgroundColor: '#FFF',
@@ -511,135 +564,108 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   sectionTitle: {
+    color: '#333',
     fontSize: 18,
     fontWeight: '700',
-    color: '#333',
     marginBottom: 16,
   },
-  scoreComponentCard: {
-    backgroundColor: '#F9F9F9',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+  statDivider: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    height: 40,
+    width: 1,
   },
-  componentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  statItem: {
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  componentTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  componentTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginLeft: 8,
-  },
-  componentScore: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#333',
-  },
-  progressBarContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  progressBarBackground: {
     flex: 1,
-    height: 8,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 4,
-    overflow: 'hidden',
   },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 4,
+  statLabel: {
+    color: '#FFF',
+    fontSize: 12,
+    marginTop: 4,
+    opacity: 0.9,
   },
-  percentageText: {
-    marginLeft: 12,
+  statValue: {
+    color: '#FFF',
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  statsRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    width: '100%',
+  },
+  tipAction: {
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  tipActionText: {
+    color: '#FF6B35',
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
-    width: 45,
-    textAlign: 'right',
+    marginRight: 4,
   },
   tipCard: {
-    flexDirection: 'row',
     backgroundColor: '#FFF',
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
     borderColor: '#E0E0E0',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    marginBottom: 12,
     overflow: 'hidden',
-  },
-  priorityIndicator: {
-    width: 4,
   },
   tipContent: {
     flex: 1,
     padding: 16,
   },
-  tipHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  tipTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginLeft: 8,
-  },
   tipDescription: {
-    fontSize: 14,
     color: '#666',
+    fontSize: 14,
     lineHeight: 20,
     marginBottom: 12,
   },
-  tipAction: {
+  tipHeader: {
+    alignItems: 'center',
     flexDirection: 'row',
-    alignItems: 'center',
+    marginBottom: 8,
   },
-  tipActionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FF6B35',
-    marginRight: 4,
-  },
-  benefitItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  benefitIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FFF3E0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  benefitTextContainer: {
-    flex: 1,
-  },
-  benefitTitle: {
+  tipTitle: {
+    color: '#333',
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
-  },
-  benefitDescription: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 18,
-  },
-  bottomPadding: {
-    height: 32,
+    marginLeft: 8,
   },
 });
 
 export default TrustScoreScreen;
+
+TrustScoreScreen.propTypes = {
+  route: PropTypes.shape({
+    params: PropTypes.shape({
+      acharyaId: PropTypes.string,
+    }),
+  }),
+};
+
+ScoreComponent.propTypes = {
+  icon: PropTypes.string.isRequired,
+  title: PropTypes.string.isRequired,
+  score: PropTypes.number.isRequired,
+  maxScore: PropTypes.number.isRequired,
+  color: PropTypes.string.isRequired,
+};
+
+TipCard.propTypes = {
+  tip: PropTypes.shape({
+    icon: PropTypes.string,
+    title: PropTypes.string,
+    description: PropTypes.string,
+    action: PropTypes.string,
+    priority: PropTypes.string,
+  }).isRequired,
+};
+
+BenefitItem.propTypes = {
+  icon: PropTypes.string.isRequired,
+  title: PropTypes.string.isRequired,
+  description: PropTypes.string.isRequired,
+};

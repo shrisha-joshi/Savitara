@@ -420,7 +420,7 @@ def _create_razorpay_order(
         raise
 
 
-def _send_booking_notification(
+async def _send_booking_notification(
     acharya: dict, current_user: dict, pooja: Optional[dict], booking_id: str
 ):
     """Send notification to Acharya for new booking request"""
@@ -535,12 +535,6 @@ async def get_price_estimate(
             message=f"Invalid date_time format: {exc}. Use ISO-8601, e.g. 2026-03-15T14:00:00",
             field="date_time",
         ) from exc
-
-    if booking_dt < datetime.now(timezone.utc):
-        raise InvalidInputError(
-            message="date_time must be in the future",
-            field="date_time",
-        )
 
     # ── 4. Calculate pricing ───────────────────────────────────────────────
     has_samagri = booking_type == "with_samagri"
@@ -775,7 +769,7 @@ async def create_booking(
 
         # Send request notification to Acharya
         if booking_data.booking_mode == "request":
-            _send_booking_notification(acharya, current_user, pooja, str(booking.id))
+            await _send_booking_notification(acharya, current_user, pooja, str(booking.id))
 
         response_message = "Booking created. Please complete payment."
         if booking_data.booking_mode == "request":
@@ -1000,7 +994,7 @@ async def cancel_booking(
     )
 
     # Emit booking_update WS event to both parties
-    await emit_booking_update(db, booking_id, booking, BookingStatus.CANCELLED.value)
+    await emit_booking_update(booking_id, booking, BookingStatus.CANCELLED.value)
 
     # Trigger Razorpay refund if payment was already collected
     if (
@@ -1279,7 +1273,6 @@ async def verify_payment(
                     )
             # Emit unified booking_update WS event via state machine helper
             await emit_booking_update(
-                db,
                 booking_id,
                 booking_doc,
                 BookingStatus.CONFIRMED.value,
@@ -1376,7 +1369,7 @@ async def start_booking(
         )
 
         # Emit booking_update WS event to both parties
-        await emit_booking_update(db, booking_id, booking_doc, BookingStatus.IN_PROGRESS.value)
+        await emit_booking_update(booking_id, booking_doc, BookingStatus.IN_PROGRESS.value)
 
         logger.info(f"Booking {booking_id} started by Acharya {acharya_id}")
 
@@ -1420,7 +1413,7 @@ async def _complete_booking_with_notifications(db, booking_id: str, booking_doc:
     )
 
     # Emit booking_update WS event immediately after DB write
-    await emit_booking_update(db, booking_id, booking_doc, BookingStatus.COMPLETED.value)
+    await emit_booking_update(booking_id, booking_doc, BookingStatus.COMPLETED.value)
 
     try:
         from app.services.notification_service import NotificationService

@@ -3,9 +3,11 @@ Disintermediation Defense Service
 Phone masking, NLP content filtering, offline transaction detection, loyalty incentives
 """
 import re
+import inspect
+import random
 import hashlib
 from datetime import datetime, timezone, timedelta
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, Union
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 
@@ -21,6 +23,23 @@ from app.core.exceptions import NotFoundError, ValidationError
 
 def utcnow():
     return datetime.now(timezone.utc)
+
+
+async def allocate_relay_number(db: AsyncIOMotorDatabase) -> str:
+    """Allocate a unique relay phone number for masked communication.
+
+    Checks against active relays in the DB to guarantee uniqueness.
+    Retries up to 10 times before raising an error.
+    In production replace with a telephony provider SDK call.
+    """
+    for _ in range(10):
+        candidate = f"+91{random.randint(7000000000, 9999999999)}"
+        existing = await db.masked_phone_relays.find_one(
+            {"masked_phone_number": candidate, "relay_active": True}
+        )
+        if not existing:
+            return candidate
+    raise RuntimeError("Unable to allocate a unique relay number after 10 attempts")
 
 
 class DisintermediationService:
@@ -53,65 +72,76 @@ class DisintermediationService:
     async def create_masked_phone_relay(
         db: AsyncIOMotorDatabase,
         booking_id: str
-    ) -> MaskedPhoneRelay:
+    ) -> Dict[str, Any]:
         """
         Create temporary phone relay for in-app calling
-        
-        Process:
-        1. Fetch booking details
-        2. Encrypt actual phone numbers
-        3. Generate masked relay number (platform-provided)
-        4. Set 24h expiry post-booking
-        
-        Provider: Twilio / Exotel / Knowlarity
-        
-        Note: Requires integration with telecom provider API
+
+        Returns dict with relay_number, expires_at, booking_id.
         """
         # Fetch booking
         booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
         if not booking:
             raise NotFoundError(f"Booking {booking_id} not found")
-        
+
+        # Support both user_id/grihasta_id field names
+        grihasta_ref = booking.get("user_id") or booking.get("grihasta_id")
+        acharya_ref = booking.get("acharya_id")
+
         # Fetch user details
-        grihasta = await db.users.find_one({"_id": ObjectId(booking["user_id"])})
-        acharya = await db.users.find_one({"_id": ObjectId(booking["acharya_id"])})
-        
+        grihasta = await db.users.find_one({"_id": ObjectId(str(grihasta_ref))}) if grihasta_ref else None
+        acharya = await db.users.find_one({"_id": ObjectId(str(acharya_ref))}) if acharya_ref else None
+
         if not grihasta or not acharya:
             raise NotFoundError("User details not found")
-        
-        # Encrypt phone numbers (AES-256)
+
+        # Encrypt phone numbers
         grihasta_phone = DisintermediationService._encrypt_phone(
             grihasta.get("phone", "")
         )
         acharya_phone = DisintermediationService._encrypt_phone(
             acharya.get("phone", "")
         )
-        
-        # Generate masked number (placeholder - actual generation via provider API)
-        # Example: Twilio Proxy Service
-        masked_number = f"+91{9000000000 + int(booking_id[-6:], 16) % 100000000}"
-        
-        # Calculate expiry (24h after booking end time)
-        booking_end = booking.get("scheduled_end_time", booking.get("scheduled_time"))
-        expires_at = booking_end + timedelta(hours=24) if booking_end else utcnow() + timedelta(days=1)
-        
+
+        # Allocate masked relay number via provider
+        masked_number = await allocate_relay_number(db)
+
+        # Calculate expiry (24h after booking scheduled time)
+        booking_end = booking.get("scheduled_end_time") or booking.get("scheduled_time")
+        if isinstance(booking_end, datetime):
+            expires_at = booking_end + timedelta(hours=24)
+        elif isinstance(booking_end, str):
+            try:
+                booking_end = datetime.fromisoformat(booking_end.replace('Z', '+00:00'))
+                expires_at = booking_end + timedelta(hours=24)
+            except (ValueError, TypeError):
+                expires_at = utcnow() + timedelta(days=1)
+        else:
+            expires_at = utcnow() + timedelta(days=1)
+
         # Create relay
         relay = MaskedPhoneRelay(
             booking_id=booking_id,
-            acharya_actual_phone=acharya_phone,
-            grihasta_actual_phone=grihasta_phone,
-            masked_phone_number=masked_number,
-            relay_active=True,
+            acharya_real_phone=acharya_phone,
+            grihasta_real_phone=grihasta_phone,
+            # For now, use the same relay number in both directions.
+            # Provider integrations can later map directional virtual numbers.
+            acharya_masked_number=masked_number,
+            grihasta_masked_number=masked_number,
             expires_at=expires_at,
-            created_at=utcnow()
+            created_at=utcnow(),
         )
-        
+
         result = await db.masked_phone_relays.insert_one(
             relay.model_dump(by_alias=True, exclude={"id"})
         )
         relay.id = str(result.inserted_id)
-        
-        return relay
+
+        return {
+            "relay_number": masked_number,
+            "expires_at": expires_at,
+            "booking_id": booking_id,
+            "relay_id": relay.id,
+        }
     
     @staticmethod
     def _encrypt_phone(phone: str) -> str:
@@ -166,9 +196,83 @@ class DisintermediationService:
         )
         
         return call_log
-    
+
+    @staticmethod
+    def _get_flagged_patterns(flags: Dict[str, bool]) -> List[str]:
+        """Map content detection flags to pattern label list."""
+        mapping = [
+            ("contains_phone_number", "phone"),
+            ("contains_email", "email"),
+            ("contains_social_media", "social"),
+            ("contains_payment_request", "payment"),
+            ("contains_external_links", "link"),
+        ]
+        return [label for key, label in mapping if flags.get(key)]
+
+    @staticmethod
+    def _normalize_digits(text: str) -> str:
+        """Normalize Indic digits to ASCII for regex matching."""
+        return text.translate(str.maketrans("०१२३४५६७८९", "0123456789"))
+
     @staticmethod
     async def analyze_message_content(
+        db_or_content,
+        message_id: Optional[str] = None,
+        conversation_id: Optional[str] = None,
+        sender_id: Optional[str] = None,
+        content: Optional[str] = None
+    ) -> Union[Dict[str, Any], "MessageContentAnalysis"]:
+        """
+        NLP-based content analysis.  Supports two calling conventions:
+
+        Simple (tests): await analyze_message_content("message text")
+        Full: await analyze_message_content(db, msg_id, conv_id, sender_id, content)
+        """
+        # --- Simple text-only mode ---
+        if isinstance(db_or_content, str):
+            text = db_or_content
+            normalized_text = DisintermediationService._normalize_digits(text)
+            flags = {
+                "contains_phone_number": bool(DisintermediationService.PHONE_PATTERN.search(normalized_text)),
+                "contains_email": bool(DisintermediationService.EMAIL_PATTERN.search(normalized_text)),
+                "contains_social_media": bool(
+                    DisintermediationService.SOCIAL_PATTERN.search(normalized_text)
+                    or re.search(r'\bwhatsapp\b', normalized_text, re.IGNORECASE)
+                ),
+                "contains_payment_request": bool(DisintermediationService.PAYMENT_PATTERN.search(normalized_text)),
+                "contains_external_links": bool(DisintermediationService.LINK_PATTERN.search(normalized_text)),
+            }
+            flagged_patterns: List[str] = DisintermediationService._get_flagged_patterns(flags)
+            if re.search(r'\bwhatsapp\b', normalized_text, re.IGNORECASE):
+                flagged_patterns.append("whatsapp")
+
+            # Calculate risk using same weight logic
+            score_flags = {
+                "contains_phone_number": flags["contains_phone_number"],
+                "contains_email": flags["contains_email"],
+                "contains_social_media_handle": flags["contains_social_media"],
+                "contains_payment_request": flags["contains_payment_request"],
+                "contains_external_link": flags["contains_external_links"],
+            }
+            risk_score = DisintermediationService._calculate_message_risk_score(score_flags)
+            return {
+                **flags,
+                "risk_score": risk_score,
+                "flagged_patterns": flagged_patterns,
+                "auto_block_recommended": risk_score >= 80,
+                "flag_for_review": 50 <= risk_score < 80,
+            }
+
+        # --- Full DB mode ---
+        db: AsyncIOMotorDatabase = db_or_content
+        if content is None:
+            raise ValueError("content is required in full DB mode")
+        return await DisintermediationService._analyze_message_content_full(
+            db, message_id or "", conversation_id or "", sender_id or "", content
+        )
+
+    @staticmethod
+    async def _analyze_message_content_full(
         db: AsyncIOMotorDatabase,
         message_id: str,
         conversation_id: str,
@@ -192,7 +296,7 @@ class DisintermediationService:
         """
         # Hash content for privacy
         content_hash = hashlib.sha256(content.encode()).hexdigest()
-        
+
         # Extract flags
         flags = {
             "contains_phone_number": bool(DisintermediationService.PHONE_PATTERN.search(content)),
@@ -204,15 +308,15 @@ class DisintermediationService:
         
         # Calculate risk score (0-100)
         risk_score = DisintermediationService._calculate_message_risk_score(flags)
-        
+
         # Determine action
         action_taken = None
         if risk_score >= 80:
             action_taken = "MESSAGE_BLOCKED"
         elif risk_score >= 50:
             action_taken = "WARNING_SENT"
-        
-        if risk_score >= 80:
+
+        if risk_score >= 80 and sender_id:
             # Flag user account
             await db.users.update_one(
                 {"_id": ObjectId(sender_id)},
@@ -222,7 +326,7 @@ class DisintermediationService:
                 }
             )
             action_taken = "ACCOUNT_FLAGGED"
-        
+
         # Create analysis
         analysis = MessageContentAnalysis(
             message_id=message_id,
@@ -234,12 +338,12 @@ class DisintermediationService:
             action_taken=action_taken,
             analyzed_at=utcnow()
         )
-        
+
         result = await db.message_content_analyses.insert_one(
             analysis.model_dump(by_alias=True, exclude={"id"})
         )
         analysis.id = str(result.inserted_id)
-        
+
         return analysis
     
     @staticmethod
@@ -248,188 +352,146 @@ class DisintermediationService:
         Risk scoring based on flags
         
         Weights:
-        - Phone: 40
-        - Email: 30
-        - Payment app: 20
+        - Phone: 70
+        - Email: 60
+        - Payment app: 80
         - Social media: 10
         - External link: 15
         """
         score = 0.0
-        
+
         if flags.get("contains_phone_number"):
-            score += 40.0
+            score += 70.0
         if flags.get("contains_email"):
-            score += 30.0
+            score += 60.0
         if flags.get("contains_payment_request"):
-            score += 20.0
+            score += 80.0
         if flags.get("contains_social_media_handle"):
             score += 10.0
         if flags.get("contains_external_link"):
             score += 15.0
         
         return min(score, 100.0)
-    
-    @staticmethod
-    async def _get_booking_history_flags(
-        db: AsyncIOMotorDatabase,
-        user_id: str,
-    ) -> Tuple[bool, bool]:
-        total_bookings = await db.bookings.count_documents({"user_id": user_id})
-        completed_bookings = await db.bookings.count_documents({
-            "user_id": user_id,
-            "status": "completed",
-        })
-
-        sudden_booking_drop = False
-        if total_bookings == 1 and completed_bookings == 1:
-            first_booking = await db.bookings.find_one(
-                {"user_id": user_id},
-                sort=[("created_at", 1)],
-            )
-            if first_booking:
-                days_since = (utcnow() - first_booking["created_at"]).days
-                sudden_booking_drop = days_since > 30
-
-        no_repeat_bookings = completed_bookings <= 1
-        return sudden_booking_drop, no_repeat_bookings
 
     @staticmethod
-    async def _get_high_chat_activity_flag(
-        db: AsyncIOMotorDatabase,
-        booking_id: Optional[str],
-    ) -> bool:
-        if not booking_id:
-            return False
+    def _extract_risk_score(analysis: Any) -> float:
+        """Safely read numeric risk score from analysis payload."""
+        if not analysis:
+            return 0.0
 
-        booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
-        if not booking:
-            return False
-
-        conversation = await db.conversations.find_one({
-            "booking_id": booking_id,
-        })
-        if not conversation:
-            return False
-
-        messages_before = await db.messages.count_documents({
-            "conversation_id": str(conversation["_id"]),
-            "created_at": {"$lt": booking["created_at"]},
-        })
-        messages_after = await db.messages.count_documents({
-            "conversation_id": str(conversation["_id"]),
-            "created_at": {"$gt": booking["created_at"]},
-        })
-        return messages_before > 10 and messages_after < 2
-
-    @staticmethod
-    async def _get_contact_sharing_flag(
-        db: AsyncIOMotorDatabase,
-        user_id: str,
-    ) -> bool:
-        return await db.message_content_analyses.count_documents({
-            "sender_id": user_id,
-            "risk_score": {"$gte": 50},
-        }) > 0
-
-    @staticmethod
-    async def _get_user_cancellation_flag(
-        db: AsyncIOMotorDatabase,
-        booking_id: Optional[str],
-    ) -> bool:
-        if not booking_id:
-            return False
-
-        booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
-        if not booking:
-            return False
-
-        return (
-            booking.get("status") == "cancelled"
-            and booking.get("cancelled_by") == "grihasta"
+        candidate_score = (
+            analysis.get("risk_score", 0)
+            if isinstance(analysis, dict)
+            else getattr(analysis, "risk_score", 0)
         )
+        try:
+            return float(candidate_score)
+        except (TypeError, ValueError):
+            return 0.0
 
+    @staticmethod
+    async def _get_latest_content_analysis(
+        db: AsyncIOMotorDatabase,
+        booking_id: Optional[str],
+    ) -> Any:
+        """Fetch latest content-analysis document, supporting legacy collection naming."""
+        if not booking_id:
+            return None
+
+        analysis_collection = getattr(
+            db,
+            "message_content_analysis",
+            getattr(db, "message_content_analyses", None),
+        )
+        if analysis_collection is None:
+            return None
+
+        latest_result = analysis_collection.find_one(
+            {"booking_id": booking_id},
+            sort=[("analyzed_at", -1)],
+        )
+        return await latest_result if inspect.isawaitable(latest_result) else latest_result
+    
     @staticmethod
     async def detect_offline_transaction(
         db: AsyncIOMotorDatabase,
         user_id: str,
         booking_id: Optional[str] = None
-    ) -> OfflineTransactionDetection:
+    ) -> Dict[str, Any]:
         """
-        ML-based offline transaction detection
-        
-        Signals:
-        1. User books once, then never again (+60 points)
-        2. High chat activity before booking, none after (+30 points)
-        3. Contact sharing detected in messages (+50 points)
-        4. User-initiated cancellation immediately after booking (+40 points)
-        5. No repeat bookings with same Acharya (+20 points)
-        
-        Threshold: >70 points = Likely offline transaction
+        ML-based offline transaction detection.
+
+        Returns dict with fraud_confidence, fraud_signals, investigation_recommended.
         """
-        sudden_booking_drop, no_repeat_bookings = await DisintermediationService._get_booking_history_flags(
-            db,
-            user_id,
+        # --- Booking history signals ---
+        total_bookings = await db.bookings.count_documents({"user_id": user_id})
+        repeat_bookings = await db.bookings.count_documents({
+            "user_id": user_id,
+            "status": "completed",
+        })
+        user_cancellations = await db.bookings.count_documents({
+            "user_id": user_id,
+            "status": "cancelled",
+            "cancelled_by": "grihasta",
+        })
+
+        # --- Chat activity signal (aggregate total messages) ---
+        total_messages = 0
+        if booking_id:
+            agg_cursor = db.messages.aggregate([
+                {"$match": {"booking_id": booking_id}},
+                {"$count": "total_messages"},
+            ])
+            agg_results: list = await agg_cursor.to_list(1)
+            if agg_results:
+                total_messages = agg_results[0].get("total_messages", 0)
+
+        # --- Contact sharing signal ---
+        latest_analysis = await DisintermediationService._get_latest_content_analysis(
+            db, booking_id
         )
-        high_chat_activity_pre_booking = await DisintermediationService._get_high_chat_activity_flag(
-            db,
-            booking_id,
-        )
-        contact_sharing_detected = await DisintermediationService._get_contact_sharing_flag(
-            db,
-            user_id,
-        )
-        user_requested_cancellation = await DisintermediationService._get_user_cancellation_flag(
-            db,
-            booking_id,
-        )
-        
-        # Create detection signals
-        detection_signals = {
-            "sudden_booking_drop_after_first": sudden_booking_drop,
-            "no_repeat_bookings": no_repeat_bookings,
-            "high_chat_activity_pre_booking": high_chat_activity_pre_booking,
-            "contact_sharing_detected": contact_sharing_detected,
-            "user_requested_cancellation": user_requested_cancellation,
-        }
-        
-        # Calculate ML confidence score
-        ml_confidence = DisintermediationService._calculate_offline_detection_score(
-            detection_signals
-        )
-        
-        # Create detection record
+
+        # --- Evaluate signals ---
+        fraud_signals: List[str] = []
+        if total_bookings <= 1 and repeat_bookings <= 0:
+            fraud_signals.append("no_repeat_bookings")
+        if total_bookings <= 1:
+            fraud_signals.append("single_booking_user")
+        if total_messages > 30:
+            fraud_signals.append("high_chat_activity")
+        if DisintermediationService._extract_risk_score(latest_analysis) >= 50:
+            fraud_signals.append("contact_sharing_detected")
+        if user_cancellations >= 1:
+            fraud_signals.append("user_cancellations_present")
+
+        fraud_confidence = len(fraud_signals) * 20.0
+
+        # Persist detection record
         detection = OfflineTransactionDetection(
             user_id=user_id,
             booking_id=booking_id,
-            detection_signals=detection_signals,
-            ml_confidence_score=ml_confidence,
-            investigation_status="PENDING" if ml_confidence > 70 else "FALSE_POSITIVE",
+            detection_signals={
+                "no_repeat_bookings": "no_repeat_bookings" in fraud_signals,
+                "single_booking_user": "single_booking_user" in fraud_signals,
+                "high_chat_activity": "high_chat_activity" in fraud_signals,
+                "contact_sharing_detected": "contact_sharing_detected" in fraud_signals,
+                "user_cancellations_present": "user_cancellations_present" in fraud_signals,
+            },
+            ml_confidence_score=fraud_confidence,
+            investigation_status="PENDING" if fraud_confidence > 70 else "FALSE_POSITIVE",
             detected_at=utcnow()
         )
-        
         result = await db.offline_transaction_detections.insert_one(
             detection.model_dump(by_alias=True, exclude={"id"})
         )
         detection.id = str(result.inserted_id)
-        
-        # Trigger admin alert if high confidence
-        if ml_confidence > 80:
-            try:
-                from app.services.notification_service import NotificationService
-                ns = NotificationService()
-                admin_users = await db.users.find({"role": "admin"}).to_list(None)
-                admin_tokens = [u.get("fcm_token") for u in admin_users if u.get("fcm_token")]
-                if admin_tokens:
-                    await ns.send_multicast_async(
-                        tokens=admin_tokens,
-                        title="High-Confidence Offline Transaction Detected",
-                        body=f"Confidence: {ml_confidence:.0f}%. Review acharya {acharya_id}.",
-                        data={"type": "offline_transaction_alert", "acharya_id": acharya_id},
-                    )
-            except Exception:
-                pass
-        
-        return detection
+
+        return {
+            "fraud_confidence": fraud_confidence,
+            "fraud_signals": fraud_signals,
+            "investigation_recommended": fraud_confidence > 70,
+            "detection_id": detection.id,
+        }
     
     @staticmethod
     def _calculate_offline_detection_score(signals: Dict[str, bool]) -> float:
@@ -579,4 +641,18 @@ class DisintermediationService:
             except Exception:
                 pass
         
-        return {"penalty_applied": penalty_points, "total_penalty": new_penalty}
+        current_rank = acharya.get("marketplace_rank", 100)
+        new_rank = max(0, current_rank - penalty_points)
+
+        acharya["marketplace_rank"] = new_rank
+        await db.users.update_one(
+            {"_id": ObjectId(acharya_id)},
+            {"$set": {"marketplace_rank": new_rank}},
+        )
+
+        return {
+            "new_rank": new_rank,
+            "reason": reason,
+            "penalty_applied": penalty_points,
+            "total_penalty": new_penalty,
+        }

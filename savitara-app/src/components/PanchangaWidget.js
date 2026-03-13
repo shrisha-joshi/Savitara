@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import PropTypes from 'prop-types';
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import {
@@ -23,7 +24,7 @@ const CHG_QUALITY_BG = {
 };
 
 const nowMins = () => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); };
-const toMins = (t) => { if (!t) return null; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+const toMins = (t) => { if (!t) { return null; } const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 
 const getActivePeriod = (periods) => {
   const now = nowMins();
@@ -113,6 +114,7 @@ export default function PanchangaWidget({ navigation }) {
           />
         )}
 
+        </View>
         <Text style={styles.date}>{today}</Text>
 
         {panchanga.panchanga_type_name && (
@@ -244,6 +246,12 @@ export default function PanchangaWidget({ navigation }) {
     </Card>
   );
 }
+
+PanchangaWidget.propTypes = {
+  navigation: PropTypes.shape({
+    navigate: PropTypes.func,
+  }),
+};
 
 const styles = StyleSheet.create({
   card: {

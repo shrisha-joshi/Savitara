@@ -313,3 +313,5 @@ def create_http_exception(exc: SavitaraException) -> HTTPException:
 NotFoundException = ResourceNotFoundError
 ForbiddenException = PermissionDeniedError
 ValidationException = ValidationError
+
+NotFoundError = ResourceNotFoundError

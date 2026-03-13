@@ -93,18 +93,21 @@ class BlockEnforcementMiddleware:
         if not other_participants:
             return
 
-        block_exists = await self.db.blocked_users.find_one(
+        participant_blocks_sender = await self.db.blocked_users.find_one(
             {
-                "$or": [
-                    # Any participant blocked the sender
-                    {"blocker_id": {"$in": other_participants}, "blocked_user_id": sender_oid},
-                    # Sender blocked any participant
-                    {"blocker_id": sender_oid, "blocked_user_id": {"$in": other_participants}},
-                ]
+                "blocker_id": {"$in": other_participants},
+                "blocked_user_id": sender_oid,
             }
         )
 
-        if block_exists:
+        sender_blocks_participant = await self.db.blocked_users.find_one(
+            {
+                "blocker_id": sender_oid,
+                "blocked_user_id": {"$in": other_participants},
+            }
+        )
+
+        if participant_blocks_sender or sender_blocks_participant:
             raise PermissionDeniedError(
                 "Cannot send message: blocked interaction with a conversation participant"
             )

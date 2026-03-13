@@ -130,62 +130,62 @@ ReviewScreen.propTypes = {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  content: {
-    padding: 24,
-    paddingBottom: 40,
-  },
-  title: {
-    fontWeight: 'bold',
-    marginBottom: 4,
-    color: '#333',
-  },
   acharyaName: {
     color: '#666',
     marginBottom: 24,
   },
-  label: {
-    marginTop: 20,
-    marginBottom: 10,
-    fontWeight: '600',
-    color: '#333',
-  },
-  starsRow: {
-    flexDirection: 'row',
+  cancelButton: {
     marginBottom: 8,
   },
-  star: {
-    fontSize: 42,
-    color: '#ddd',
-    marginRight: 6,
-  },
-  starFilled: {
-    color: '#FF6B35',
+  charCount: {
+    color: '#aaa',
+    fontSize: 12,
+    marginBottom: 24,
+    marginTop: 4,
+    textAlign: 'right',
   },
   commentInput: {
     backgroundColor: '#fff',
     fontSize: 15,
   },
-  charCount: {
-    fontSize: 12,
-    color: '#aaa',
-    textAlign: 'right',
-    marginTop: 4,
-    marginBottom: 24,
+  container: {
+    backgroundColor: '#fff',
+    flex: 1,
+  },
+  content: {
+    padding: 24,
+    paddingBottom: 40,
+  },
+  label: {
+    color: '#333',
+    fontWeight: '600',
+    marginBottom: 10,
+    marginTop: 20,
   },
   spinner: {
     marginVertical: 16,
   },
+  star: {
+    color: '#ddd',
+    fontSize: 42,
+    marginRight: 6,
+  },
+  starFilled: {
+    color: '#FF6B35',
+  },
+  starsRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
   submitButton: {
     borderRadius: 24,
-    paddingVertical: 4,
     marginBottom: 12,
+    paddingVertical: 4,
   },
-  cancelButton: {
-    marginBottom: 8,
+  title: {
+    color: '#333',
+    fontWeight: 'bold',
+    marginBottom: 4,
   },
 });
 

@@ -67,7 +67,7 @@ const ProfileScreen = () => {
         bio: profileData.bio || '',
         preferences: profileData.preferences || {},
         panchanga_type: profileData.panchanga_type || 'lunar',
-        location_approved: Object.prototype.hasOwnProperty.call(profileData, 'location_approved') ? profileData.location_approved : false,
+        location_approved: Object.hasOwn(profileData, 'location_approved') ? profileData.location_approved : false,
       });
     } catch (error) {
       console.error('Failed to load profile:', error);
@@ -89,7 +89,7 @@ const ProfileScreen = () => {
         bio: user?.bio || '',
         preferences: user?.preferences || {},
         panchanga_type: user?.panchanga_type || 'lunar',
-        location_approved: Object.prototype.hasOwnProperty.call(user || {}, 'location_approved') ? user.location_approved : false,
+        location_approved: Object.hasOwn(user || {}, 'location_approved') ? user.location_approved : false,
       });
     } finally {
       setLoading(false);

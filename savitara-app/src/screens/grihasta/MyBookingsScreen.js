@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import PropTypes from 'prop-types';
 import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Card, Chip, SegmentedButtons, Snackbar, Text } from 'react-native-paper';
 import { useSocket } from '../../context/SocketContext';
@@ -26,7 +27,7 @@ const MyBookingsScreen = ({ navigation }) => {
   // Listen for WebSocket booking updates
   useEffect(() => {
     if (bookingUpdates.length > 0) {
-      const latestUpdate = bookingUpdates[bookingUpdates.length - 1];
+      const latestUpdate = bookingUpdates.at(-1);
       // Refresh bookings when update received
       loadBookings();
       
@@ -42,7 +43,7 @@ const MyBookingsScreen = ({ navigation }) => {
     if (paymentNotifications.length > 0) {
       const unreadNotifs = paymentNotifications.filter(n => !n.read);
       if (unreadNotifs.length > 0) {
-        const latest = unreadNotifs[unreadNotifs.length - 1];
+        const latest = unreadNotifs.at(-1);
         Alert.alert(
           'Booking Approved!',
           `Amount: ₹${latest.amount}. Please complete payment.`,
@@ -87,7 +88,7 @@ const MyBookingsScreen = ({ navigation }) => {
     try {
       setLoading(true);
       setError(null);
-      const params = filter !== 'all' ? { status: filter } : {};
+      const params = filter === 'all' ? {} : { status: filter };
       const response = await bookingAPI.getMyBookings(params);
       const raw = response.data?.data;
       const bookingData = Array.isArray(raw) ? raw : (raw?.bookings || response.data?.bookings || []);
@@ -125,9 +126,8 @@ const MyBookingsScreen = ({ navigation }) => {
       />
 
       <ScrollView style={styles.list}>
-        {loading ? (
-          <LoadingScreen text="Loading bookings…" style={{ minHeight: 200 }} />
-        ) : bookings.length === 0 ? (
+        {loading && <LoadingScreen text="Loading bookings…" style={{ minHeight: 200 }} />}
+        {!loading && bookings.length === 0 && (
           <EmptyState
             icon="calendar-blank-outline"
             title="No bookings found"
@@ -135,8 +135,8 @@ const MyBookingsScreen = ({ navigation }) => {
             iconSize={48}
             iconColor="#ccc"
           />
-        ) : (
-          bookings.map((booking) => (
+        )}
+        {!loading && bookings.length > 0 && bookings.map((booking) => (
             <Card 
               key={booking._id} 
               style={styles.card}
@@ -186,8 +186,7 @@ const MyBookingsScreen = ({ navigation }) => {
                 )}
               </Card.Content>
             </Card>
-          ))
-        )}
+          ))}
       </ScrollView>
       
       <Snackbar
@@ -248,3 +247,9 @@ const styles = StyleSheet.create({
 });
 
 export default MyBookingsScreen;
+
+MyBookingsScreen.propTypes = {
+  navigation: PropTypes.shape({
+    navigate: PropTypes.func.isRequired,
+  }).isRequired,
+};

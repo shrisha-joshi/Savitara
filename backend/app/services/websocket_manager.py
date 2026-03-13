@@ -236,6 +236,20 @@ class ConnectionManager:
                     self.disconnect(user_id)
             return "queued"
 
+    async def emit_to_user(
+        self,
+        user_id: str,
+        event: str,
+        payload: Optional[dict] = None,
+    ) -> str:
+        """Backward-compatible event emitter wrapper for legacy services/tests."""
+        message = {
+            "type": event,
+            **(payload or {}),
+            "timestamp": datetime.now().isoformat(),
+        }
+        return await self.send_personal_message(user_id, message)
+
         channel = f"user:{user_id}"
         message_str = json.dumps(message)
 

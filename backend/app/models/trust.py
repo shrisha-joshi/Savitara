@@ -22,6 +22,7 @@ class VerificationLevel(str, Enum):
     IDENTITY_VERIFIED = "identity_verified"  # KYC documents verified
     CREDENTIAL_VERIFIED = "credential_verified"  # Educational certificates verified
     SAVITARA_CERTIFIED = "savitara_certified"  # Full verification + background check
+    PREMIUM = "premium"  # Alias for backwards-compat / high-performer badge
     ELITE = "elite"  # Top 5% performers with perfect record
 
 
@@ -107,9 +108,9 @@ class TrustBadge(BaseModel):
     acharya_id: str
     badge_type: str  # "verified_savitara", "top_rated", "elite_performer", "quick_responder"
     badge_name: str
-    badge_icon_url: Optional[str]
+    badge_icon_url: Optional[str] = None
     awarded_at: datetime = Field(default_factory=utcnow)
-    expires_at: Optional[datetime]  # Some badges expire and need renewal
+    expires_at: Optional[datetime] = None  # Some badges expire and need renewal
     is_active: bool = True
     
     model_config = ConfigDict(populate_by_name=True)
@@ -184,35 +185,35 @@ class AuditLog(BaseModel):
     # Event Identification
     event_type: AuditEventType
     event_category: str  # "user", "booking", "payment", "trust", "admin"
-    trace_id: Optional[str]  # Distributed tracing ID
+    trace_id: Optional[str] = None  # Distributed tracing ID
     
     # Actor
-    actor_id: Optional[str]  # User/Admin who triggered the event
-    actor_role: Optional[str]  # "grihasta", "acharya", "admin", "system"
-    actor_ip: Optional[str]
-    actor_user_agent: Optional[str]
+    actor_id: Optional[str] = None  # User/Admin who triggered the event
+    actor_role: Optional[str] = None  # "grihasta", "acharya", "admin", "system"
+    actor_ip: Optional[str] = None
+    actor_user_agent: Optional[str] = None
     
     # Target
-    target_id: Optional[str]  # Resource affected (booking_id, user_id, etc.)
-    target_type: Optional[str]  # "booking", "user", "payment", "review"
+    target_id: Optional[str] = None  # Resource affected (booking_id, user_id, etc.)
+    target_type: Optional[str] = None  # "booking", "user", "payment", "review"
     
     # Event Details
     description: str
-    old_value: Optional[Dict[str, Any]]  # State before change
-    new_value: Optional[Dict[str, Any]]  # State after change
+    old_value: Optional[Dict[str, Any]] = None  # State before change
+    new_value: Optional[Dict[str, Any]] = None  # State after change
     metadata: Dict[str, Any] = {}  # Additional context
     
     # System Context
     service_name: str = "savitara-backend"
-    service_version: Optional[str]
+    service_version: Optional[str] = None
     environment: str = "production"  # "development", "staging", "production"
     
     # Timestamp (immutable)
     timestamp: datetime = Field(default_factory=utcnow)
     
     # Tamper Detection (optional)
-    previous_log_id: Optional[str]  # Create hash chain
-    log_hash: Optional[str]  # Hash of this log entry
+    previous_log_id: Optional[str] = None  # Create hash chain
+    log_hash: Optional[str] = None  # Hash of this log entry
     
     model_config = ConfigDict(populate_by_name=True, use_enum_values=True)
 
@@ -243,6 +244,7 @@ class DisputeStatus(str, Enum):
     EVIDENCE_REQUESTED = "evidence_requested"
     PENDING_RESPONSE = "pending_response"
     MEDIATION = "mediation"
+    RESOLVED = "resolved"
     RESOLVED_REFUND = "resolved_refund"
     RESOLVED_NO_REFUND = "resolved_no_refund"
     RESOLVED_PARTIAL_REFUND = "resolved_partial_refund"
@@ -292,31 +294,31 @@ class Dispute(BaseModel):
     # Status
     status: DisputeStatus = DisputeStatus.OPEN
     priority: str = "medium"  # "low", "medium", "high", "critical"
-    assigned_to: Optional[str]  # Admin user_id handling the dispute
+    assigned_to: Optional[str] = None  # Admin user_id handling the dispute
     
     # Resolution
-    resolution_action: Optional[DisputeResolutionAction]
-    resolution_notes: Optional[str]
-    refund_amount: Optional[float]
-    compensation_voucher_id: Optional[str]
+    resolution_action: Optional[DisputeResolutionAction] = None
+    resolution_notes: Optional[str] = None
+    refund_amount: Optional[float] = None
+    compensation_voucher_id: Optional[str] = None
     
     # Timeline
     created_at: datetime = Field(default_factory=utcnow)
-    first_response_at: Optional[datetime]
-    resolved_at: Optional[datetime]
-    closed_at: Optional[datetime]
+    first_response_at: Optional[datetime] = None
+    resolved_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
     
     # SLA Tracking
     sla_breached: bool = False
-    response_time_minutes: Optional[int]
-    resolution_time_hours: Optional[float]
+    response_time_minutes: Optional[int] = None
+    resolution_time_hours: Optional[float] = None
     
     # Communication Thread
     messages: List[Dict[str, Any]] = []  # [{from: "admin", message: "...", timestamp: "..."}]
     
     # Auto-Refund Eligibility
     auto_refund_eligible: bool = False
-    auto_refund_reason: Optional[str]
+    auto_refund_reason: Optional[str] = None
     
     model_config = ConfigDict(populate_by_name=True, use_enum_values=True)
 
@@ -361,7 +363,7 @@ class RefundRequest(BaseModel):
     
     # Reference
     booking_id: str
-    dispute_id: Optional[str]  #Link to dispute if initiated via dispute
+    dispute_id: Optional[str] = None  # Link to dispute if initiated via dispute
     
     # Refund Details
     refund_reason: RefundReason
@@ -376,17 +378,17 @@ class RefundRequest(BaseModel):
     # Auto vs Manual
     is_auto_refund: bool = False  # True if triggered automatically
     requires_approval: bool = True  # False for auto-refunds
-    approved_by: Optional[str]  # Admin user_id
+    approved_by: Optional[str] = None  # Admin user_id
     
     # Processing
-    razorpay_refund_id: Optional[str]
-    processed_at: Optional[datetime]
-    completed_at: Optional[datetime]
+    razorpay_refund_id: Optional[str] = None
+    processed_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     
     # Metadata
     reason_code: str  # Machine-readable code for analytics
-    customer_note: Optional[str]
-    admin_note: Optional[str]
+    customer_note: Optional[str] = None
+    admin_note: Optional[str] = None
     
     # Timestamps
     requested_at: datetime = Field(default_factory=utcnow)
@@ -422,26 +424,26 @@ class AttendanceCheckpoint(BaseModel):
     start_otp_generated_at: datetime
     start_otp_expires_at: datetime
     checked_in: bool = False
-    checked_in_at: Optional[datetime]
-    checked_in_by: Optional[str]  # acharya_id usually
-    check_in_location: Optional[Dict[str, float]]  # {"lat": 12.97, "lng": 77.59}
-    check_in_distance_meters: Optional[float]  # Distance from booking location
+    checked_in_at: Optional[datetime] = None
+    checked_in_by: Optional[str] = None  # acharya_id usually
+    check_in_location: Optional[Dict[str, float]] = None  # {"lat": 12.97, "lng": 77.59}
+    check_in_distance_meters: Optional[float] = None  # Distance from booking location
     
     # Check-out (End)
-    end_otp: Optional[str]
-    end_otp_generated_at: Optional[datetime]
-    end_otp_expires_at: Optional[datetime]
+    end_otp: Optional[str] = None
+    end_otp_generated_at: Optional[datetime] = None
+    end_otp_expires_at: Optional[datetime] = None
     checked_out: bool = False
-    checked_out_at: Optional[datetime]
-    checked_out_by: Optional[str]  # grihasta_id usually
+    checked_out_at: Optional[datetime] = None
+    checked_out_by: Optional[str] = None  # grihasta_id usually
     
     # Service Duration
-    actual_duration_minutes: Optional[int]
-    scheduled_duration_minutes: Optional[int]
+    actual_duration_minutes: Optional[int] = None
+    scheduled_duration_minutes: Optional[int] = None
     
     # Anomalies
     late_check_in: bool = False
-    late_check_in_minutes: Optional[int]
+    late_check_in_minutes: Optional[int] = None
     early_checkout: bool = False
     no_show_detected: bool = False
     
@@ -449,3 +451,7 @@ class AttendanceCheckpoint(BaseModel):
     updated_at: datetime = Field(default_factory=utcnow)
     
     model_config = ConfigDict(populate_by_name=True)
+
+
+# Aliases for backwards compatibility
+TrustScoreComponents = TrustScoreComponent

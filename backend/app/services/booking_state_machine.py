@@ -16,8 +16,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
-
 from app.models.database import BookingStatus, UserRole
 from app.core.exceptions import InvalidInputError
 
@@ -131,7 +129,6 @@ def validate_transition(
 
 
 async def emit_booking_update(
-    db: AsyncIOMotorDatabase,
     booking_id: str,
     booking_doc: Dict[str, Any],
     new_status: str,

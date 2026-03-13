@@ -18,6 +18,7 @@ from fastapi import (
     WebSocketDisconnect,
     HTTPException,
 )
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
@@ -37,6 +38,7 @@ from app.services.websocket_manager import manager, process_websocket_message
 # Include API routers
 from app.api.v1 import (
     auth,
+    acharya,
     users,
     bookings,
     chat,
@@ -171,7 +173,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     Handle validation errors
     SonarQube: Proper input validation
     """
-    logger.warning(f"Validation Error: {exc.errors()}")
+    safe_details = jsonable_encoder(
+        exc.errors(),
+        custom_encoder={Exception: lambda e: str(e)},
+    )
+    logger.warning(f"Validation Error: {safe_details}")
     response = JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
@@ -179,7 +185,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "error": {
                 "code": "VAL_001",
                 "message": "Validation failed",
-                "details": exc.errors(),
+                "details": safe_details,
             },
             "timestamp": time.time(),
             "request_id": getattr(request.state, "request_id", None),
@@ -342,6 +348,7 @@ async def api_info():
 
 API_V1_PREFIX = "/api/v1"
 app.include_router(auth.router, prefix=API_V1_PREFIX)
+app.include_router(acharya.router, prefix=API_V1_PREFIX)
 app.include_router(users.router, prefix=API_V1_PREFIX)
 app.include_router(bookings.router, prefix=API_V1_PREFIX)
 app.include_router(chat.router, prefix=API_V1_PREFIX)

@@ -9,14 +9,12 @@
  *  connecting    → yellow "Connecting…"    + ActivityIndicator
  *  connected     → green  "Connected"  → auto-hides after 2 seconds
  */
-import PropTypes from 'prop-types';
 import { useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
   Animated,
   StyleSheet,
   Text,
-  View,
 } from 'react-native';
 import { useSocket } from '../context/SocketContext';
 
@@ -118,25 +116,25 @@ ConnectionBanner.propTypes = {};
 // ─── Styles ────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   banner: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: BANNER_HEIGHT,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 9999,
     elevation: 20,
+    flexDirection: 'row',
+    height: BANNER_HEIGHT,
+    justifyContent: 'center',
+    left: 0,
     paddingHorizontal: 16,
-  },
-  spinner: {
-    marginRight: 8,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    zIndex: 9999,
   },
   label: {
     color: '#fff',
     fontSize: 13,
     fontWeight: '600',
     letterSpacing: 0.3,
+  },
+  spinner: {
+    marginRight: 8,
   },
 });

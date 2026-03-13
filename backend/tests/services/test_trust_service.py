@@ -23,6 +23,7 @@ def mock_db():
     db.reviews = MagicMock()
     db.acharya_trust_scores = MagicMock()
     db.disputes = MagicMock()
+    db.dispute_resolutions = MagicMock()
     db.booking_checkpoints = MagicMock()
     db.service_guarantees = MagicMock()
     
@@ -76,6 +77,22 @@ def sample_bookings():
 class TestTrustScoreCalculation:
     """Test trust score calculation logic"""
     
+    def _setup_aggregate_mocks(self, mock_db, acharya_id, response_hours=2.5, avg_rating=4.5, rating_reviews=85):
+        """Helper to set up aggregate mocks with proper to_list support"""
+        # bookings.aggregate is called twice: response_time and rebooking
+        response_cursor = MagicMock(to_list=AsyncMock(return_value=[{"avg_response_hours": response_hours}]))
+        rebooking_cursor = MagicMock(to_list=AsyncMock(return_value=[]))  # neutral rebooking
+        mock_db.bookings.aggregate = MagicMock(side_effect=[response_cursor, rebooking_cursor])
+        # reviews.aggregate for review_quality_score
+        review_cursor = MagicMock(to_list=AsyncMock(return_value=[{"avg_rating": avg_rating, "total_reviews": rating_reviews}]))
+        # badge check also calls reviews.aggregate
+        badge_review_cursor = MagicMock(to_list=AsyncMock(return_value=[{"avg_rating": avg_rating}]))
+        mock_db.reviews.aggregate = MagicMock(side_effect=[review_cursor, badge_review_cursor])
+        mock_db.acharya_trust_scores.find_one = AsyncMock(return_value=None)
+        mock_db.acharya_trust_scores.update_one = AsyncMock()
+        mock_db.service_guarantees.count_documents = AsyncMock(return_value=5)
+        mock_db.dispute_resolutions.count_documents = AsyncMock(return_value=2)
+
     @pytest.mark.asyncio
     async def test_calculate_trust_score_basic(self, mock_db, sample_acharya):
         """Test basic trust score calculation with mocked data"""
@@ -83,13 +100,8 @@ class TestTrustScoreCalculation:
         
         # Mock database queries
         mock_db.users.find_one = AsyncMock(return_value=sample_acharya)
-        mock_db.bookings.count_documents = AsyncMock(side_effect=[100, 95])  # Total, Completed
-        mock_db.bookings.aggregate = AsyncMock(return_value=AsyncMock(__aiter__=lambda x: iter([
-            {"avg_response_hours": 2.5}
-        ])))
-        mock_db.reviews.aggregate = AsyncMock(return_value=AsyncMock(__aiter__=lambda x: iter([
-            {"avg_rating": 4.5, "total_reviews": 85}
-        ])))
+        mock_db.bookings.count_documents = AsyncMock(side_effect=[100, 95, 95])  # total, completed, badge-check
+        self._setup_aggregate_mocks(mock_db, acharya_id)
         
         # Calculate
         result = await TrustService.calculate_acharya_trust_score(mock_db, acharya_id)
@@ -105,16 +117,14 @@ class TestTrustScoreCalculation:
     async def test_verification_badge_premium(self, mock_db, sample_acharya):
         """Test Premium badge award (score >= 90)"""
         acharya_id = str(sample_acharya["_id"])
+        sample_acharya["kyc_status"] = "verified"
+        sample_acharya["background_check_status"] = "cleared"
         
         # Mock high scores
         mock_db.users.find_one = AsyncMock(return_value=sample_acharya)
-        mock_db.bookings.count_documents = AsyncMock(side_effect=[200, 198])  # 99% completion
-        mock_db.bookings.aggregate = AsyncMock(return_value=AsyncMock(__aiter__=lambda x: iter([
-            {"avg_response_hours": 1.0}  # Fast response
-        ])))
-        mock_db.reviews.aggregate = AsyncMock(return_value=AsyncMock(__aiter__=lambda x: iter([
-            {"avg_rating": 4.9, "total_reviews": 180}
-        ])))
+        # count_documents calls: total, completed (completion), completed (badge check)
+        mock_db.bookings.count_documents = AsyncMock(side_effect=[200, 198, 60])  # 60 >= 50 for premium
+        self._setup_aggregate_mocks(mock_db, acharya_id, response_hours=1.0, avg_rating=4.9, rating_reviews=180)
         
         result = await TrustService.calculate_acharya_trust_score(mock_db, acharya_id)
         
@@ -126,18 +136,14 @@ class TestTrustScoreCalculation:
         """Test Basic badge (score < 60)"""
         # Mock low scores
         sample_acharya["verification_status"] = "pending"
+        sample_acharya["kyc_status"] = "pending"  # not verified → BASIC badge
         sample_acharya["documents_submitted"] = ["aadhar"]  # Incomplete
         
         acharya_id = str(sample_acharya["_id"])
         
         mock_db.users.find_one = AsyncMock(return_value=sample_acharya)
-        mock_db.bookings.count_documents = AsyncMock(side_effect=[50, 35])  # 70% completion
-        mock_db.bookings.aggregate = AsyncMock(return_value=AsyncMock(__aiter__=lambda x: iter([
-            {"avg_response_hours": 12.0}  # Slow response
-        ])))
-        mock_db.reviews.aggregate = AsyncMock(return_value=AsyncMock(__aiter__=lambda x: iter([
-            {"avg_rating": 3.5, "total_reviews": 20}
-        ])))
+        mock_db.bookings.count_documents = AsyncMock(side_effect=[50, 35, 35])  # total, completed, badge-check
+        self._setup_aggregate_mocks(mock_db, acharya_id, response_hours=12.0, avg_rating=3.5, rating_reviews=20)
         
         result = await TrustService.calculate_acharya_trust_score(mock_db, acharya_id)
         
@@ -149,13 +155,8 @@ class TestTrustScoreCalculation:
         acharya_id = str(sample_acharya["_id"])
         
         mock_db.users.find_one = AsyncMock(return_value=sample_acharya)
-        mock_db.bookings.count_documents = AsyncMock(side_effect=[100, 95])
-        mock_db.bookings.aggregate = AsyncMock(return_value=AsyncMock(__aiter__=lambda x: iter([
-            {"avg_response_hours": 2.5}
-        ])))
-        mock_db.reviews.aggregate = AsyncMock(return_value=AsyncMock(__aiter__=lambda x: iter([
-            {"avg_rating": 4.5, "total_reviews": 85}
-        ])))
+        mock_db.bookings.count_documents = AsyncMock(side_effect=[100, 95, 95])
+        self._setup_aggregate_mocks(mock_db, acharya_id)
         
         result = await TrustService.calculate_acharya_trust_score(mock_db, acharya_id)
         
@@ -277,7 +278,8 @@ class TestDisputeHandling:
             "status": "completed",
             "acharya_id": ObjectId()
         })
-        mock_db.disputes.insert_one = AsyncMock(return_value=MagicMock(inserted_id=ObjectId()))
+        mock_db.dispute_resolutions = MagicMock()
+        mock_db.dispute_resolutions.insert_one = AsyncMock(return_value=MagicMock(inserted_id=ObjectId()))
         
         result = await TrustService.file_dispute(
             mock_db,
@@ -332,7 +334,10 @@ class TestServiceGuarantee:
             "total_amount": 15000,
             "completed_at": datetime.now(timezone.utc) - timedelta(hours=12)
         })
-        mock_db.service_guarantees.insert_one = AsyncMock()
+        mock_db.service_guarantees.find_one = AsyncMock(return_value=None)
+        mock_db.service_guarantees.insert_one = AsyncMock(return_value=MagicMock(inserted_id=ObjectId()))
+        mock_db.users = MagicMock()
+        mock_db.users.find = MagicMock(return_value=MagicMock(to_list=AsyncMock(return_value=[])))
         
         result = await TrustService.process_service_guarantee(
             mock_db,
@@ -356,7 +361,10 @@ class TestServiceGuarantee:
             "actual_start_time": datetime.now(timezone.utc) - timedelta(hours=2) + timedelta(minutes=20),
             "total_amount": 8000
         })
-        mock_db.service_guarantees.insert_one = AsyncMock()
+        mock_db.service_guarantees.find_one = AsyncMock(return_value=None)
+        mock_db.service_guarantees.insert_one = AsyncMock(return_value=MagicMock(inserted_id=ObjectId()))
+        mock_db.users = MagicMock()
+        mock_db.users.find = MagicMock(return_value=MagicMock(to_list=AsyncMock(return_value=[])))
         
         result = await TrustService.process_service_guarantee(
             mock_db,

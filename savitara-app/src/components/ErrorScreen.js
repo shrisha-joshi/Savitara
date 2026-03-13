@@ -8,6 +8,7 @@
  *   style    {object}     Extra style for the outer container
  */
 import React from 'react';
+import PropTypes from 'prop-types';
 import { StyleSheet, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Button, Text } from 'react-native-paper';
@@ -36,26 +37,32 @@ const ErrorScreen = ({ message = 'Something went wrong. Please try again.', onRe
 );
 
 const styles = StyleSheet.create({
+  button: {
+    paddingHorizontal: 16,
+  },
   container: {
+    alignItems: 'center',
+    backgroundColor: BRAND.background,
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
     padding: 32,
-    backgroundColor: BRAND.background,
   },
   icon: {
     marginBottom: 20,
   },
   message: {
-    fontSize: 16,
-    textAlign: 'center',
     color: '#555',
-    marginBottom: 24,
+    fontSize: 16,
     lineHeight: 22,
-  },
-  button: {
-    paddingHorizontal: 16,
+    marginBottom: 24,
+    textAlign: 'center',
   },
 });
 
 export default ErrorScreen;
+
+ErrorScreen.propTypes = {
+  message: PropTypes.string,
+  onRetry: PropTypes.func,
+  style: PropTypes.object,
+};

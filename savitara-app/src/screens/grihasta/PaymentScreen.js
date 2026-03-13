@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import PropTypes from 'prop-types';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { Text, Button, ActivityIndicator, Divider, Surface, Icon } from 'react-native-paper';
 import RazorpayCheckout from 'react-native-razorpay';
@@ -415,3 +416,44 @@ const styles = StyleSheet.create({
 });
 
 export default PaymentScreen;
+
+const bookingShape = PropTypes.shape({
+  _id: PropTypes.string,
+  id: PropTypes.string,
+  razorpay_order_id: PropTypes.string,
+  acharya_name: PropTypes.string,
+  total_amount: PropTypes.number,
+  grihasta_name: PropTypes.string,
+  grihasta_email: PropTypes.string,
+  grihasta_phone: PropTypes.string,
+  pooja_type: PropTypes.string,
+  service_name: PropTypes.string,
+  scheduled_datetime: PropTypes.string,
+  duration_hours: PropTypes.number,
+});
+
+PaymentScreen.propTypes = {
+  route: PropTypes.shape({
+    params: PropTypes.shape({
+      booking: bookingShape.isRequired,
+    }).isRequired,
+  }).isRequired,
+  navigation: PropTypes.shape({
+    replace: PropTypes.func,
+    navigate: PropTypes.func,
+    goBack: PropTypes.func,
+  }).isRequired,
+};
+
+DetailRow.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  highlight: PropTypes.bool,
+};
+
+ReceiptRow.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  highlight: PropTypes.bool,
+  mono: PropTypes.bool,
+};

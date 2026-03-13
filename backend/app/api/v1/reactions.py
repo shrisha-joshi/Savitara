@@ -55,7 +55,8 @@ async def add_reaction(
         message_id=message_id, user_id=user_id, emoji=request.emoji
     )
 
-    return StandardResponse.success(
+    return StandardResponse(
+        success=True,
         data={"reactions": reactions},
         message=f"Reaction {request.emoji} added successfully",
     )
@@ -95,8 +96,10 @@ async def remove_reaction(
         message_id=message_id, user_id=user_id, emoji=emoji
     )
 
-    return StandardResponse.success(
-        data={"reactions": reactions}, message="Reaction removed successfully"
+    return StandardResponse(
+        success=True,
+        data={"reactions": reactions},
+        message="Reaction removed successfully",
     )
 
 
@@ -132,6 +135,8 @@ async def get_reactions(
         message_id=message_id, user_id=user_id
     )
 
-    return StandardResponse.success(
-        data={"reactions": reactions}, message="Reactions retrieved successfully"
+    return StandardResponse(
+        success=True,
+        data={"reactions": reactions},
+        message="Reactions retrieved successfully",
     )

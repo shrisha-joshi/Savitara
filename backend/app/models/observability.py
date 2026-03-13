@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
+import os
 
 
 def utcnow():
@@ -28,9 +29,9 @@ class TraceContext(BaseModel):
     """
     trace_id: str  # Unique ID for entire request flow (128-bit hex)
     span_id: str  # Unique ID for this operation (64-bit hex)
-    parent_span_id: Optional[str]  # Parent operation
+    parent_span_id: Optional[str] = None  # Parent operation
     trace_flags: str = "01"  # Sampled
-    trace_state: Optional[str]  # Vendor-specific
+    trace_state: Optional[str] = None  # Vendor-specific
     
     # Service Context
     service_name: str = "savitara-backend"
@@ -38,8 +39,8 @@ class TraceContext(BaseModel):
     
     # Timing
     start_time: datetime = Field(default_factory=utcnow)
-    end_time: Optional[datetime]
-    duration_ms: Optional[float]
+    end_time: Optional[datetime] = None
+    duration_ms: Optional[float] = None
     
     # Tags
     tags: Dict[str, str] = {}  # {"user_id": "123", "booking_id": "456"}
@@ -84,40 +85,40 @@ class StructuredLog(BaseModel):
     message: str
     
     # Tracing
-    trace_id: Optional[str]
-    span_id: Optional[str]
+    trace_id: Optional[str] = None
+    span_id: Optional[str] = None
     
     # Service Context
     service_name: str = "savitara-backend"
-    service_version: Optional[str]
-    environment: str = "production"  # "dev", "staging", "prod"
+    service_version: Optional[str] = None
+    environment: str = Field(default_factory=lambda: os.getenv("ENVIRONMENT", "development"))  # "dev", "staging", "prod"
     
     # Request Context
-    http_method: Optional[str]
-    http_path: Optional[str]
-    http_status_code: Optional[int]
-    http_user_agent: Optional[str]
+    http_method: Optional[str] = None
+    http_path: Optional[str] = None
+    http_status_code: Optional[int] = None
+    http_user_agent: Optional[str] = None
     
     # User Context
-    user_id: Optional[str]
-    user_role: Optional[str]
-    session_id: Optional[str]
+    user_id: Optional[str] = None
+    user_role: Optional[str] = None
+    session_id: Optional[str] = None
     
     # Business Context
-    booking_id: Optional[str]
-    acharya_id: Optional[str]
-    grihasta_id: Optional[str]
+    booking_id: Optional[str] = None
+    acharya_id: Optional[str] = None
+    grihasta_id: Optional[str] = None
     
     # Error Context
-    error_type: Optional[str]
-    error_message: Optional[str]
-    error_stack_trace: Optional[str]
+    error_type: Optional[str] = None
+    error_message: Optional[str] = None
+    error_stack_trace: Optional[str] = None
     
     # Custom Fields
     custom_fields: Dict[str, Any] = {}
     
     # Performance
-    duration_ms: Optional[float]
+    duration_ms: Optional[float] = None
     
     model_config = ConfigDict(populate_by_name=True, use_enum_values=True)
 
@@ -166,18 +167,18 @@ class BusinessMetric(BaseModel):
     granularity: str = "daily"  # "hourly", "daily", "weekly", "monthly"
     
     # Comparison
-    previous_period_value: Optional[float]
-    change_percentage: Optional[float]
-    trend: Optional[str]  # "up", "down", "stable"
+    previous_period_value: Optional[float] = None
+    change_percentage: Optional[float] = None
+    trend: Optional[str] = None  # "up", "down", "stable"
     
     # Benchmarks
-    target_value: Optional[float]
+    target_value: Optional[float] = None
     target_met: bool = False
     
     # Metadata
     calculated_at: datetime = Field(default_factory=utcnow)
     data_sources: List[str] = []  # ["bookings", "payments", "users"]
-    calculation_method: Optional[str]
+    calculation_method: Optional[str] = None
     
     model_config = ConfigDict(populate_by_name=True, use_enum_values=True)
 
@@ -257,8 +258,8 @@ class LTVCalculation(BaseModel):
     ltv: float  # Final calculated LTV
     
     # LTV:CAC Ratio
-    cac: Optional[float]
-    ltv_cac_ratio: Optional[float]  # Should be > 3.0
+    cac: Optional[float] = None
+    ltv_cac_ratio: Optional[float] = None  # Should be > 3.0
     
     calculated_at: datetime = Field(default_factory=utcnow)
     
@@ -299,8 +300,8 @@ class GMVTracking(BaseModel):
     gmv_by_acharya_tier: Dict[str, float] = {}
     
     # Growth
-    previous_period_gmv: Optional[float]
-    gmv_growth_rate: Optional[float]
+    previous_period_gmv: Optional[float] = None
+    gmv_growth_rate: Optional[float] = None
     
     calculated_at: datetime = Field(default_factory=utcnow)
     
@@ -476,15 +477,15 @@ class DatabaseQueryMetric(BaseModel):
     execution_time_ms: float
     documents_examined: int
     documents_returned: int
-    index_used: Optional[str]
+    index_used: Optional[str] = None
     
     # Flags
     is_slow: bool = False  # execution_time > 100ms
     missing_index: bool = False
     
     # Context
-    trace_id: Optional[str]
-    api_endpoint: Optional[str]
+    trace_id: Optional[str] = None
+    api_endpoint: Optional[str] = None
     
     timestamp: datetime = Field(default_factory=utcnow)
     

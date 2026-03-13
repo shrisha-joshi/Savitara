@@ -44,7 +44,7 @@ const ERROR_CATEGORIES = {
  * @param {Error} error - Razorpay error object
  * @returns {string} Error category
  */
-const categorizePaymentError = (error) => {
+export const categorizePaymentError = (error) => {
   const errorCode = error?.code || '';
   const errorDescription = error?.description || '';
   
@@ -69,7 +69,7 @@ const categorizePaymentError = (error) => {
  * @param {string} category - Error category
  * @returns {Object} Title and message for alert
  */
-const getErrorMessage = (category) => {
+export const getErrorMessage = (category) => {
   const messages = {
     [ERROR_CATEGORIES.USER_CANCELLED]: {
       title: 'Payment Cancelled',
@@ -140,14 +140,14 @@ export const checkUPIApps = async () => {
  * @returns {Promise<Object>} Payment result
  */
 export const initiateUPIPayment = async (options) => {
-  // Destructure required payment options
-  const {
-    razorpay_order_id,
-  } = options;
-  
+  // Destructure all supported payment options
+  const { razorpay_order_id, onError } = options;
+
   // Validate required parameters
   if (!razorpay_order_id) {
-    throw new Error('Razorpay order ID is required');
+    const err = new Error('Razorpay order ID is required');
+    if (typeof onError === 'function') onError(err, {});
+    throw err;
   }
   
   /* 
@@ -188,7 +188,9 @@ export const initiateUPIPayment = async (options) => {
         {
           text: 'OK',
           onPress: () => {
-            reject(new Error('Native UPI not available in current configuration'));
+              const err = new Error('Native UPI not available in current configuration');
+              if (typeof onError === 'function') onError(err, {});
+              reject(err);
           },
         },
       ]
@@ -201,7 +203,7 @@ export const initiateUPIPayment = async (options) => {
  * @param {Object} paymentData - Razorpay payment response
  * @returns {Promise<Object>} Verification result
  */
-const handlePaymentSuccess = async (paymentData) => {
+export const handlePaymentSuccess = async (paymentData) => {
   const {
     razorpay_payment_id,
     razorpay_order_id,
@@ -277,7 +279,7 @@ export const processBookingPayment = async (paymentDetails) => {
       description,
     });
     
-    const { razorpay_order_id } = orderResponse.data;
+      const { razorpay_order_id } = orderResponse;
     
     // Step 2: Check UPI apps availability (optional notification)
     const upiApps = await checkUPIApps();

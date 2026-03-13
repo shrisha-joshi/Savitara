@@ -268,7 +268,7 @@ def _create_verification_notification_message(action: str, notes: str = None) ->
     return f"Your Acharya verification has been declined. Reason: {notes or 'Not specified'}"
 
 
-def _send_verification_push_notification(
+async def _send_verification_push_notification(
     acharya_doc: dict, action: str, reason: str = None
 ):
     """Send push notification for verification status"""
@@ -366,7 +366,7 @@ async def verify_acharya(  # noqa: C901
 
         # Send push notification
         acharya_doc = await db.users.find_one({"_id": ObjectId(acharya_id)})
-        _send_verification_push_notification(
+        await _send_verification_push_notification(
             acharya_doc, verification.action, verification.notes
         )
 
@@ -666,6 +666,56 @@ async def get_acharyas(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch acharyas",
+        )
+
+
+@router.get(
+    "/users",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Users",
+    description="Get paginated list of users",
+)
+async def get_users(
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 20,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """Get users with pagination for admin dashboard."""
+    try:
+        users = (
+            await db.users.find({})
+            .sort("created_at", -1)
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .to_list(length=limit)
+        )
+
+        for i, user in enumerate(users):
+            if "_id" in user:
+                user["_id"] = str(user["_id"])
+            users[i] = _strip_sensitive_fields(user)
+
+        total_count = await db.users.count_documents({})
+
+        return StandardResponse(
+            success=True,
+            data={
+                "users": users,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total": total_count,
+                    "pages": (total_count + limit - 1) // limit,
+                },
+            },
+        )
+    except Exception as e:
+        logger.error(f"Get users error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch users",
         )
 
 
@@ -1734,10 +1784,10 @@ async def review_report(
     description="Get demand density hotspots for city managers with Redis caching (TTL 3600s)",
 )
 async def get_pooja_hotspots(
-    city: Annotated[str, Query(default="Bangalore", description="City to analyze")],
-    days: Annotated[int, Query(default=30, ge=1, le=90, description="Number of days to analyze")],
-    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)],
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)],
+    city: Annotated[str, Query(description="City to analyze")] = "Bangalore",
+    days: Annotated[int, Query(ge=1, le=90, description="Number of days to analyze")] = 30,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """
     Get "Pooja Hotspots" - residential clusters with high booking density.

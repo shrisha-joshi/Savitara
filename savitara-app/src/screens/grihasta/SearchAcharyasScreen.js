@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { View, StyleSheet, ScrollView, Image } from 'react-native';
 import { Text, Searchbar, Card, Chip, Avatar } from 'react-native-paper';
 import { userAPI } from '../../services/api';
@@ -74,12 +75,11 @@ const SearchAcharyasScreen = ({ navigation }) => {
       </View>
 
       <ScrollView style={styles.results}>
-        {loading ? (
-          <Text style={styles.centerText}>Searching...</Text>
-        ) : acharyas.length === 0 ? (
+        {loading && <Text style={styles.centerText}>Searching...</Text>}
+        {!loading && acharyas.length === 0 && (
           <Text style={styles.centerText}>No Acharyas found</Text>
-        ) : (
-          acharyas.map((acharya) => (
+        )}
+        {!loading && acharyas.length > 0 && acharyas.map((acharya) => (
             <Card 
               key={acharya._id} 
               style={styles.card}
@@ -107,8 +107,7 @@ const SearchAcharyasScreen = ({ navigation }) => {
                 </View>
               </Card.Content>
             </Card>
-          ))
-        )}
+          ))}
       </ScrollView>
     </View>
   );
@@ -174,3 +173,9 @@ const styles = StyleSheet.create({
 });
 
 export default SearchAcharyasScreen;
+
+SearchAcharyasScreen.propTypes = {
+  navigation: PropTypes.shape({
+    navigate: PropTypes.func.isRequired,
+  }).isRequired,
+};

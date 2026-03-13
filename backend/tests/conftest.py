@@ -2,16 +2,42 @@
 Pytest Configuration and Fixtures
 """
 import pytest
+import pytest_asyncio
 import asyncio
+import unittest.mock as unittest_mock
+import os
 from typing import AsyncGenerator
 from httpx import AsyncClient, ASGITransport
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from _pytest.fixtures import FixtureDef
 from app.main import app
 from app.db.connection import DatabaseManager
 from app.core.config import settings
 
 
-@pytest.fixture(scope="function")
+if not hasattr(FixtureDef, "unittest"):
+    FixtureDef.unittest = False
+
+if not hasattr(pytest, "mock"):
+    pytest.mock = unittest_mock
+
+
+async def _list_collections_with_retry(db: AsyncIOMotorDatabase, retries: int = 3) -> list[str]:
+    """Retry listing collections to handle transient DNS/network issues in CI/dev."""
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            return await db.list_collection_names()
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt < retries - 1:
+                await asyncio.sleep(1)
+    if last_exc:
+        raise last_exc
+    return []
+
+
+@pytest_asyncio.fixture(scope="function")
 async def test_db(monkeypatch) -> AsyncGenerator[AsyncIOMotorDatabase, None]:
     """Create test database connection"""
     # 1. Prevent real connection attempt during lifespan
@@ -24,8 +50,19 @@ async def test_db(monkeypatch) -> AsyncGenerator[AsyncIOMotorDatabase, None]:
         pass
     monkeypatch.setattr(DatabaseManager, "close_database_connection", mock_close)
 
-    client = AsyncIOMotorClient(settings.MONGODB_URL)
+    mongo_url = settings.MONGODB_URL
+    client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
     db = client[f"{settings.MONGODB_DB_NAME}_test"]
+
+    # Validate connectivity early; fallback to local Mongo if SRV DNS is unavailable.
+    try:
+        await _list_collections_with_retry(db, retries=2)
+    except Exception:
+        fallback_url = os.getenv("TEST_MONGODB_URL", "mongodb://localhost:27017")
+        client.close()
+        client = AsyncIOMotorClient(fallback_url, serverSelectionTimeoutMS=5000)
+        db = client[f"{settings.MONGODB_DB_NAME}_test"]
+        await _list_collections_with_retry(db, retries=2)
     
     # 3. Set the global state explicitly
     DatabaseManager.client = client
@@ -36,14 +73,14 @@ async def test_db(monkeypatch) -> AsyncGenerator[AsyncIOMotorDatabase, None]:
     monkeypatch.setattr(DatabaseManager, "get_database", lambda: db)
     
     # Clean database before tests
-    collections = await db.list_collection_names()
+    collections = await _list_collections_with_retry(db)
     for collection in collections:
         await db[collection].delete_many({})
     
     yield db
     
     # Clean database after tests
-    collections = await db.list_collection_names()
+    collections = await _list_collections_with_retry(db)
     for collection in collections:
         await db[collection].delete_many({})
     
@@ -56,7 +93,7 @@ async def test_db(monkeypatch) -> AsyncGenerator[AsyncIOMotorDatabase, None]:
 
 
 
-@pytest.fixture(scope="function")
+@pytest_asyncio.fixture(scope="function")
 async def client(test_db):
     """Create async test client with overridden dependencies (replaces sync TestClient for httpx compatibility)"""
     from app.db.connection import get_db
@@ -69,7 +106,7 @@ async def client(test_db):
     app.dependency_overrides = {}
 
 
-@pytest.fixture(scope="function")
+@pytest_asyncio.fixture(scope="function")
 async def async_client(test_db):
     """Create async test client with overridden dependencies"""
     from app.db.connection import get_db
@@ -135,7 +172,7 @@ def mock_booking_data():
     }
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def authenticated_token(client, mock_user_data, test_db):
     """Get authentication token for tests"""
     # Mock Google OAuth response

@@ -19,9 +19,9 @@ const AVATAR_PALETTE = [
 export const getAvatarColor = (userId = '') => {
   const str = String(userId);
   let hash = 0;
-  for (let i = 0; i < str.length; i++) {
+  for (const char of str) {
     // djb2-style hash — fast and well-distributed for short strings
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    hash = (char.codePointAt(0) ?? 0) + ((hash << 5) - hash);
   }
   return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length];
 };

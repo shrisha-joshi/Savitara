@@ -98,7 +98,6 @@ async def expire_stale_bookings(db: AsyncIOMotorDatabase) -> int:
                 )
 
                 await emit_booking_update(
-                    db,
                     booking_id,
                     booking,
                     new_status,

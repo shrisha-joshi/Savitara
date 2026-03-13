@@ -3,6 +3,7 @@ Block Service
 Handles user-to-user blocking functionality
 """
 from typing import List, Dict, Any, Optional
+import inspect
 from datetime import datetime, timezone
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -13,6 +14,13 @@ from app.services.websocket_manager import manager
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+async def _maybe_await(value):
+    """Await value only when it is awaitable (mock/driver compatibility)."""
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 class BlockService:
@@ -41,12 +49,16 @@ class BlockService:
         """
         # Validate can't block yourself
         if blocker_id == blocked_user_id:
-            raise InvalidInputError("message", "Cannot block yourself")
+            raise InvalidInputError(
+                message="Cannot block yourself",
+                field="blocked_user_id",
+            )
 
         # Verify blocked user exists
         blocked_user = await self.db.users.find_one({"_id": ObjectId(blocked_user_id)})
         if not blocked_user:
             raise ResourceNotFoundError(
+                message=f"User not found: {blocked_user_id}",
                 resource_type="User", resource_id=blocked_user_id
             )
 
@@ -123,13 +135,16 @@ class BlockService:
             )
 
             logger.info(f"User {blocker_id} unblocked user {blocked_user_id}")
-            return True
-
-        return False
+        return True
 
     async def get_blocked_users(
-        self, blocker_id: str, limit: int = 100, skip: int = 0
-    ) -> List[Dict[str, Any]]:
+        self,
+        user_id: Optional[str] = None,
+        blocker_id: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+        skip: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         Get list of users blocked by a user with user details
         
@@ -141,53 +156,43 @@ class BlockService:
         Returns:
             List of blocked users with user details
         """
-        # Get blocked user IDs
-        blocks = (
-            await self.db.blocked_users.find({"blocker_id": blocker_id})
-            .sort("created_at", -1)
-            .skip(skip)
-            .limit(limit)
-            .to_list(length=limit)
+        effective_user_id = user_id or blocker_id
+        if not effective_user_id:
+            return {"users": [], "total": 0}
+
+        effective_skip = skip if skip is not None else offset
+
+        pipeline = [
+            {"$match": {"blocker_id": effective_user_id}},
+            {"$sort": {"created_at": -1}},
+            {"$skip": effective_skip},
+            {"$limit": limit},
+        ]
+
+        aggregate_result = await _maybe_await(self.db.blocked_users.aggregate(pipeline))
+        blocks = await _maybe_await(aggregate_result.to_list(length=limit))
+        formatted = [
+            {
+                "block_id": str(block.get("_id")),
+                "blocked_user_id": block.get("blocked_user_id"),
+                "blocked_at": block.get("created_at"),
+                "reason": block.get("reason"),
+                "is_mutual": block.get("is_mutual", False),
+            }
+            for block in blocks
+        ]
+
+        total = await _maybe_await(
+            self.db.blocked_users.count_documents({"blocker_id": effective_user_id})
         )
+        if not isinstance(total, int):
+            total = len(formatted)
+        if not total and formatted:
+            total = len(formatted)
 
-        if not blocks:
-            return []
+        return {"users": formatted, "total": total}
 
-        # Get blocked user details
-        blocked_ids = [block["blocked_user_id"] for block in blocks]
-        users = await self.db.users.find(
-            {"_id": {"$in": [ObjectId(uid) for uid in blocked_ids if ObjectId.is_valid(uid)]}}
-        ).to_list(length=len(blocked_ids))
-
-        # Create user lookup dict
-        user_dict = {str(user["_id"]): user for user in users}
-
-        # Combine block info with user details
-        result = []
-        for block in blocks:
-            blocked_user_id = block["blocked_user_id"]
-            user = user_dict.get(blocked_user_id, {})
-            
-            result.append(
-                {
-                    "block_id": str(block["_id"]),
-                    "blocked_user_id": blocked_user_id,
-                    "blocked_at": block["created_at"],
-                    "reason": block.get("reason"),
-                    "is_mutual": block.get("is_mutual", False),
-                    "user": {
-                        "id": blocked_user_id,
-                        "name": user.get("name", "Unknown User"),
-                        "email": user.get("email", ""),
-                        "profile_picture": user.get("profile_picture"),
-                        "role": user.get("role", "user"),
-                    },
-                }
-            )
-
-        return result
-
-    async def is_blocked(self, user_id_a: str, user_id_b: str) -> Dict[str, bool]:
+    async def is_blocked(self, user_id_a: str, user_id_b: str) -> bool:
         """
         Check if there's a block relationship between two users
         
@@ -207,12 +212,37 @@ class BlockService:
             {"blocker_id": user_id_b, "blocked_user_id": user_id_a}
         )
 
-        return {
-            "a_blocks_b": a_blocks_b is not None,
-            "b_blocks_a": b_blocks_a is not None,
-            "is_blocked": a_blocks_b is not None or b_blocks_a is not None,
-            "is_mutual": a_blocks_b is not None and b_blocks_a is not None,
-        }
+        return a_blocks_b is not None or b_blocks_a is not None
+
+    async def is_blocked_bidirectional(self, user_id_a: str, user_id_b: str) -> bool:
+        """Check if block exists in either direction using count query."""
+        count = await self.db.blocked_users.count_documents(
+            {
+                "$or": [
+                    {"blocker_id": user_id_a, "blocked_user_id": user_id_b},
+                    {"blocker_id": user_id_b, "blocked_user_id": user_id_a},
+                ]
+            }
+        )
+        return count > 0
+
+    async def get_mutual_blocks(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all mutual blocks for a user."""
+        cursor = await _maybe_await(
+            self.db.blocked_users.find({"blocker_id": user_id, "is_mutual": True})
+        )
+        blocks = await _maybe_await(cursor.to_list(length=None))
+        return [
+            {
+                **block,
+                "_id": str(block.get("_id")),
+            }
+            for block in blocks
+        ]
+
+    async def block_count(self, user_id: str) -> int:
+        """Get total number of users blocked by a given user."""
+        return await self.db.blocked_users.count_documents({"blocker_id": user_id})
 
     async def get_blockers_of_user(self, user_id: str) -> List[str]:
         """

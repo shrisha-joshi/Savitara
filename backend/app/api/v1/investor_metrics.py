@@ -4,8 +4,10 @@ Dashboard metrics for CAC, LTV, GMV, NRR, Churn
 ADMIN ONLY
 """
 from fastapi import APIRouter, Depends, Query
-from typing import Optional, Dict, Any
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from typing import Annotated, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
+from dateutil.relativedelta import relativedelta
 
 from app.core.security import get_current_admin
 from app.db.connection import get_database
@@ -27,7 +29,7 @@ class MetricsRequest(BaseModel):
 @router.post("/cac", dependencies=[Depends(get_current_admin)])
 async def calculate_cac_metric(
     request: MetricsRequest,
-    db=Depends(get_database),
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
 ):
     """
     Calculate Customer Acquisition Cost
@@ -79,7 +81,7 @@ async def calculate_cac_metric(
 @router.get("/ltv/{cohort_month}", dependencies=[Depends(get_current_admin)])
 async def calculate_ltv_metric(
     cohort_month: str,
-    db=Depends(get_database),
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
 ):
     """
     Calculate Lifetime Value for a cohort
@@ -111,7 +113,7 @@ async def calculate_ltv_metric(
 @router.post("/gmv", dependencies=[Depends(get_current_admin)])
 async def calculate_gmv_metric(
     request: MetricsRequest,
-    db=Depends(get_database),
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
 ):
     """
     Calculate Gross Merchandise Value
@@ -143,7 +145,7 @@ async def calculate_gmv_metric(
 @router.post("/repeat-rate", dependencies=[Depends(get_current_admin)])
 async def calculate_repeat_booking_metric(
     request: MetricsRequest,
-    db=Depends(get_database),
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
 ):
     """
     Calculate Repeat Booking Rate
@@ -177,7 +179,7 @@ async def calculate_repeat_booking_metric(
 @router.post("/churn", dependencies=[Depends(get_current_admin)])
 async def calculate_churn_metric(
     request: MetricsRequest,
-    db=Depends(get_database),
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
 ):
     """
     Calculate Acharya Churn Rate
@@ -210,8 +212,8 @@ async def calculate_churn_metric(
 
 @router.get("/dashboard", dependencies=[Depends(get_current_admin)])
 async def get_investor_dashboard(
-    days: int = Query(30, description="Period in days"),
-    db=Depends(get_database),
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
+    days: Annotated[int, Query(description="Period in days")] = 30,
 ):
     """
     Get comprehensive investor dashboard metrics
@@ -276,9 +278,9 @@ async def get_investor_dashboard(
 
 @router.get("/trends", dependencies=[Depends(get_current_admin)])
 async def get_metric_trends(
-    metric: str = Query(..., description="Metric name: gmv, repeat_rate, churn"),
-    months: int = Query(6, description="Number of months to show"),
-    db=Depends(get_database),
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
+    metric: Annotated[str, Query(description="Metric name: gmv, repeat_rate, churn")],
+    months: Annotated[int, Query(description="Number of months to show")] = 6,
 ):
     """
     Get historical trends for a metric
@@ -291,8 +293,8 @@ async def get_metric_trends(
     current_date = datetime.now(timezone.utc)
     
     for i in range(months, 0, -1):
-        month_start = current_date.replace(day=1) - timedelta(days=30 * i)
-        month_end = month_start + timedelta(days=30)
+        month_start = (current_date - relativedelta(months=i)).replace(day=1)
+        month_end = month_start + relativedelta(months=1)
         
         if metric == "gmv":
             data = await InvestorMetricsService.calculate_gmv(db, month_start, month_end)

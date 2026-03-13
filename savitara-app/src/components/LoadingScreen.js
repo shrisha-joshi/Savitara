@@ -7,6 +7,7 @@
  *   style {object}  Extra style for the outer container
  */
 import React from 'react';
+import PropTypes from 'prop-types';
 import { StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Text } from 'react-native-paper';
 import { BRAND } from '../constants/theme';
@@ -20,16 +21,21 @@ const LoadingScreen = ({ text, style }) => (
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: BRAND.background,
+    flex: 1,
+    justifyContent: 'center',
   },
   text: {
-    marginTop: 12,
     color: '#666',
     fontSize: 15,
+    marginTop: 12,
   },
 });
 
 export default LoadingScreen;
+
+LoadingScreen.propTypes = {
+  text: PropTypes.string,
+  style: PropTypes.object,
+};

@@ -55,7 +55,7 @@ class MaskedPhoneRelay(BaseModel):
     # Relay Configuration
     status: PhoneMaskStatus = PhoneMaskStatus.ACTIVE
     relay_provider: str = "twilio"  # "twilio", "exotel", "plivo"
-    relay_session_id: Optional[str]
+    relay_session_id: Optional[str] = None
     
     # Call Logging
     total_calls: int = 0
@@ -69,8 +69,8 @@ class MaskedPhoneRelay(BaseModel):
     # Lifecycle
     created_at: datetime = Field(default_factory=utcnow)
     expires_at: datetime  # Auto-expire 24h after booking completion
-    revoked_at: Optional[datetime]
-    revoked_reason: Optional[str]
+    revoked_at: Optional[datetime] = None
+    revoked_reason: Optional[str] = None
     
     model_config = ConfigDict(populate_by_name=True, use_enum_values=True)
 
@@ -95,19 +95,19 @@ class CallLog(BaseModel):
     
     # Duration
     duration_seconds: int = 0
-    started_at: Optional[datetime]
-    ended_at: Optional[datetime]
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
     
     # Recording
-    recording_url: Optional[str]
-    recording_duration: Optional[int]
+    recording_url: Optional[str] = None
+    recording_duration: Optional[int] = None
     
     # Quality Metrics
-    call_quality_score: Optional[float]  # 1-5 (from provider)
+    call_quality_score: Optional[float] = None  # 1-5 (from provider)
     
     # Anomaly Detection
     suspicious: bool = False
-    suspicious_reason: Optional[str]  # "excessive_duration", "off_hours", "number_exchange_attempt"
+    suspicious_reason: Optional[str] = None  # "excessive_duration", "off_hours", "number_exchange_attempt"
     
     created_at: datetime = Field(default_factory=utcnow)
     
@@ -140,7 +140,7 @@ class ContentFilterRule(BaseModel):
     
     rule_name: str
     rule_type: str  # "regex", "nlp", "ml_model"
-    pattern: Optional[str]  # Regex pattern
+    pattern: Optional[str] = None  # Regex pattern
     keywords: List[str] = []  # Keyword list
     
     # Detection
@@ -207,12 +207,12 @@ class MessageFilterAnalysis(BaseModel):
     
     # User Notification
     notification_sent: bool = False
-    notification_message: Optional[str]
+    notification_message: Optional[str] = None
     
     # Admin Review
-    reviewed_by: Optional[str]  # Admin user_id
-    review_status: Optional[str]  # "false_positive", "true_positive", "pending"
-    reviewed_at: Optional[datetime]
+    reviewed_by: Optional[str] = None  # Admin user_id
+    review_status: Optional[str] = None  # "false_positive", "true_positive", "pending"
+    reviewed_at: Optional[datetime] = None
     
     # Metadata
     analyzed_at: datetime = Field(default_factory=utcnow)
@@ -262,11 +262,11 @@ class LoyaltyReward(BaseModel):
     
     # Redemption
     is_redeemed: bool = False
-    redeemed_at: Optional[datetime]
-    redeemed_booking_id: Optional[str]
+    redeemed_at: Optional[datetime] = None
+    redeemed_booking_id: Optional[str] = None
     
     # Expiry
-    expires_at: Optional[datetime]
+    expires_at: Optional[datetime] = None
     
     created_at: datetime = Field(default_factory=utcnow)
     
@@ -308,7 +308,7 @@ class RankPenalty(BaseModel):
     id: Optional[str] = Field(alias="_id", default=None)
     
     acharya_id: str
-    booking_id: Optional[str]
+    booking_id: Optional[str] = None
     
     # Penalty Details
     reason: RankPenaltyReason
@@ -317,7 +317,7 @@ class RankPenalty(BaseModel):
     
     # Evidence
     evidence_type: str  # "message_log", "call_recording", "customer_report"
-    evidence_id: Optional[str]
+    evidence_id: Optional[str] = None
     evidence_description: str
     
     # Impact
@@ -330,8 +330,8 @@ class RankPenalty(BaseModel):
     # Administrative
     issued_by: str  # "system" or admin user_id
     is_appealable: bool = True
-    appeal_deadline: Optional[datetime]
-    appeal_status: Optional[str]  # "pending", "accepted", "rejected"
+    appeal_deadline: Optional[datetime] = None
+    appeal_status: Optional[str] = None  # "pending", "accepted", "rejected"
     
     # Timestamps
     issued_at: datetime = Field(default_factory=utcnow)
@@ -384,13 +384,60 @@ class OfflineBookingIndicator(BaseModel):
     # Action
     flagged_for_review: bool = False
     penalty_applied: bool = False
-    penalty_id: Optional[str]
+    penalty_id: Optional[str] = None
     
     # Review
-    reviewed_by: Optional[str]
-    review_outcome: Optional[str]  # "false_positive", "confirmed", "inconclusive"
-    reviewed_at: Optional[datetime]
+    reviewed_by: Optional[str] = None
+    review_outcome: Optional[str] = None  # "false_positive", "confirmed", "inconclusive"
+    reviewed_at: Optional[datetime] = None
     
     detected_at: datetime = Field(default_factory=utcnow)
     
+    model_config = ConfigDict(populate_by_name=True)
+
+
+# ==================== SERVICE-LAYER WORKING MODELS ====================
+# These complement the above models and are used by DisintermediationService.
+
+class MessageContentAnalysis(BaseModel):
+    """Working model for content analysis results tracked by DisintermediationService."""
+    id: Optional[str] = Field(alias="_id", default=None)
+    conversation_id: str
+    message_id: str
+    sender_id: str
+    content_hash: str
+    flags: Dict[str, Any] = {}
+    risk_score: float = 0.0
+    action_taken: str = "ALLOWED"
+    analyzed_at: datetime = Field(default_factory=utcnow)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class OfflineTransactionDetection(BaseModel):
+    """Working model for offline transaction detection results."""
+    id: Optional[str] = Field(alias="_id", default=None)
+    user_id: str
+    booking_id: Optional[str] = None
+    detection_signals: Dict[str, Any] = {}
+    ml_confidence_score: float = 0.0
+    investigation_status: str = "PENDING"
+    detected_at: datetime = Field(default_factory=utcnow)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class LoyaltyIncentive(BaseModel):
+    """Working model for loyalty incentives issued by DisintermediationService."""
+    id: Optional[str] = Field(alias="_id", default=None)
+    user_id: str
+    incentive_type: str
+    trigger_event: str
+    value_amount: float = 0.0
+    redemption_conditions: Dict[str, Any] = {}
+    coins_reward: float = 0.0
+    redeemed: bool = False
+    expires_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=utcnow)
+
     model_config = ConfigDict(populate_by_name=True)

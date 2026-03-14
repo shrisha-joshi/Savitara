@@ -10,9 +10,10 @@ import time
 import uuid
 from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.security import SecurityManager
@@ -22,6 +23,9 @@ from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.utils.logging_config import set_correlation_id, set_user_id
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_SCHEMA_VERSION = "v1"
+SUPPORTED_SCHEMA_VERSIONS = {"v1"}
 
 try:
     from prometheus_client import Counter, Histogram
@@ -73,6 +77,35 @@ def _normalize_endpoint(path: str) -> str:
     """Reduce path cardinality for metrics labels."""
     normalized = re.sub(r"/[0-9a-fA-F]{24}(?=/|$)", "/:id", path)
     normalized = re.sub(r"/\d+(?=/|$)", "/:num", normalized)
+    return normalized
+
+
+def _resolve_schema_version(request: Request) -> str:
+    """Resolve requested schema version from header/query and validate support."""
+    requested = (
+        request.headers.get("X-API-Schema-Version")
+        or request.query_params.get("schema_version")
+        or DEFAULT_SCHEMA_VERSION
+    )
+    normalized = requested.strip().lower()
+    request.state.schema_version = normalized
+    if normalized not in SUPPORTED_SCHEMA_VERSIONS:
+        from fastapi import HTTPException, status as http_status  # noqa: PLC0415
+
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "VAL_003",
+                    "message": "Unsupported API schema version",
+                    "details": {
+                        "requested": normalized,
+                        "supported": sorted(SUPPORTED_SCHEMA_VERSIONS),
+                    },
+                },
+            },
+        )
     return normalized
 
 
@@ -182,6 +215,7 @@ def register_middleware(app: FastAPI) -> None:
             "X-RateLimit-Remaining",
             "X-RateLimit-Reset",
             "X-Correlation-ID",
+            "X-API-Schema-Version",
         ],
         max_age=86400,          # Cache preflight for 24 hours
     )
@@ -197,8 +231,31 @@ def register_middleware(app: FastAPI) -> None:
         incoming_correlation_id = request.headers.get("X-Correlation-ID")
         correlation_id = incoming_correlation_id or str(uuid.uuid4())
         request_id = str(int(time.time() * 1000))
+        try:
+            schema_version = _resolve_schema_version(request)
+        except HTTPException as exc:
+            content = exc.detail if isinstance(exc.detail, dict) else {
+                "success": False,
+                "error": {
+                    "code": "VAL_003",
+                    "message": str(exc.detail),
+                    "details": {},
+                },
+            }
+            content.setdefault("timestamp", time.time())
+            content.setdefault("request_id", request_id)
+            content.setdefault("correlation_id", correlation_id)
+            content.setdefault("schema_version", getattr(request.state, "schema_version", "v1"))
+            response = JSONResponse(status_code=exc.status_code, content=content)
+            response.headers["X-Request-ID"] = request_id
+            response.headers["X-Correlation-ID"] = correlation_id
+            response.headers["X-API-Schema-Version"] = getattr(
+                request.state, "schema_version", "v1"
+            )
+            return response
         request.state.request_id = request_id
         request.state.correlation_id = correlation_id
+        request.state.schema_version = schema_version
         set_correlation_id(correlation_id)
 
         user_id = _extract_user_id_from_bearer(request)
@@ -213,6 +270,7 @@ def register_middleware(app: FastAPI) -> None:
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Correlation-ID"] = correlation_id
         response.headers["X-Process-Time"] = str(process_time)
+        response.headers["X-API-Schema-Version"] = schema_version
         # Fix for Firebase Auth cross-origin popup
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
 

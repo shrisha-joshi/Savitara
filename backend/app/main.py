@@ -62,6 +62,7 @@ from app.api.v1 import (
     forwarding,
     moderation,
     group_admin,
+    feature_flags,
     strategy_features,
     trust,  # Trust score and dispute resolution
     investor_metrics,  # Investor dashboard metrics
@@ -157,6 +158,9 @@ def add_cors_headers(response: JSONResponse, request: Request) -> JSONResponse:
     response.headers["Access-Control-Allow-Origin"] = get_cors_origin(request)
     response.headers["Access-Control-Allow-Credentials"] = "true"
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+    response.headers["X-API-Schema-Version"] = getattr(
+        request.state, "schema_version", "v1"
+    )
     return response
 
 
@@ -176,6 +180,7 @@ async def savitara_exception_handler(request: Request, exc: SavitaraException):
             },
             "timestamp": time.time(),
             "request_id": getattr(request.state, "request_id", None),
+            "schema_version": getattr(request.state, "schema_version", "v1"),
         },
     )
     return add_cors_headers(response, request)
@@ -203,6 +208,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             },
             "timestamp": time.time(),
             "request_id": getattr(request.state, "request_id", None),
+            "schema_version": getattr(request.state, "schema_version", "v1"),
         },
     )
     return add_cors_headers(response, request)
@@ -232,6 +238,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             "timestamp": time.time(),
             "request_id": request_id,
             "correlation_id": correlation_id,
+            "schema_version": getattr(request.state, "schema_version", "v1"),
         }
     elif isinstance(exc.detail, dict):
         content = {
@@ -244,6 +251,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             "timestamp": time.time(),
             "request_id": request_id,
             "correlation_id": correlation_id,
+            "schema_version": getattr(request.state, "schema_version", "v1"),
         }
     else:
         content = {
@@ -256,6 +264,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             "timestamp": time.time(),
             "request_id": request_id,
             "correlation_id": correlation_id,
+            "schema_version": getattr(request.state, "schema_version", "v1"),
         }
 
     response = JSONResponse(status_code=exc.status_code, content=content)
@@ -284,6 +293,7 @@ async def general_exception_handler(request: Request, exc: Exception):
                 },
                 "timestamp": time.time(),
                 "request_id": getattr(request.state, "request_id", None),
+                "schema_version": getattr(request.state, "schema_version", "v1"),
             },
         )
     else:
@@ -300,6 +310,7 @@ async def general_exception_handler(request: Request, exc: Exception):
                 },
                 "timestamp": time.time(),
                 "request_id": getattr(request.state, "request_id", None),
+                "schema_version": getattr(request.state, "schema_version", "v1"),
             },
         )
 
@@ -329,6 +340,7 @@ async def health_check():
     return {
         "status": "healthy",
         "version": settings.API_VERSION,
+        "schema_version": "v1",
         "environment": settings.APP_ENV,
         "components": {"database": db_status, "api": "healthy"},
     }
@@ -423,6 +435,7 @@ app.include_router(voice.router, prefix=API_V1_PREFIX)  # Voice messages
 app.include_router(forwarding.router, prefix=API_V1_PREFIX)  # Message forwarding
 app.include_router(moderation.router, prefix=API_V1_PREFIX)  # User blocking and reporting
 app.include_router(group_admin.router, prefix=API_V1_PREFIX)  # Group chat moderation
+app.include_router(feature_flags.router, prefix=API_V1_PREFIX)  # Tenant/cohort feature flags
 app.include_router(
     strategy_features.router, prefix=API_V1_PREFIX
 )  # Strategy features (subscriptions, bundles, penalties, guarantee)

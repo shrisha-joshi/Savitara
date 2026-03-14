@@ -44,6 +44,30 @@ class TestSecurityHeaders:
         assert response.status_code == 200
         assert response.headers.get("x-correlation-id") == correlation_id
 
+    @pytest.mark.asyncio
+    async def test_default_schema_version_header(self, client):
+        """Responses should expose default schema version header."""
+        response = await client.get("/health")
+        assert response.status_code == 200
+        assert response.headers.get("x-api-schema-version") == "v1"
+
+    @pytest.mark.asyncio
+    async def test_supported_schema_version_header(self, client):
+        """Supported schema version from request should be echoed back."""
+        response = await client.get("/health", headers={"X-API-Schema-Version": "v1"})
+        assert response.status_code == 200
+        assert response.headers.get("x-api-schema-version") == "v1"
+
+    @pytest.mark.asyncio
+    async def test_unsupported_schema_version_rejected(self, client):
+        """Unsupported schema version should return machine-readable 400 error."""
+        response = await client.get("/health", headers={"X-API-Schema-Version": "v2"})
+        assert response.status_code == 400
+        body = response.json()
+        assert body.get("success") is False
+        assert body.get("error", {}).get("code") == "VAL_003"
+        assert body.get("schema_version") == "v2"
+
 
 class TestAuthEdgeCases:
     """Edge-case authentication tests"""

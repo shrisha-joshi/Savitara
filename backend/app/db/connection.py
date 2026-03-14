@@ -475,6 +475,17 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             "processed_at",
         )
 
+        # Reliability: Tenant/cohort feature flags
+        await cls._create_index_safe(
+            cls.db.feature_flags,
+            "key",
+            unique=True,
+        )
+        await cls._create_index_safe(
+            cls.db.feature_flags,
+            [("is_active", 1), ("updated_at", -1)],
+        )
+
         # Blocked users indexes
         await cls._create_index_safe(
             cls.db.blocked_users,

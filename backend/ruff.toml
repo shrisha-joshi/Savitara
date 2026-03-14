@@ -30,7 +30,8 @@ exclude = [
 #   C4     — flake8-comprehensions
 #   SIM    — flake8-simplify
 #   RUF    — ruff-specific rules
-select = ["E", "W", "F", "I", "N", "UP", "B", "S", "C4", "SIM", "RUF"]
+#   BLE    — flake8-blind-except (catches bare `except Exception` without noqa)
+select = ["E", "W", "F", "I", "N", "UP", "B", "S", "C4", "SIM", "RUF", "BLE"]
 
 ignore = [
     "E203",   # whitespace before ':' (conflicts with black)
@@ -50,12 +51,14 @@ fixable = ["E", "W", "F", "I", "UP", "C4", "SIM"]
 unfixable = ["B", "S"]  # never auto-fix security or bugbear issues
 
 [lint.per-file-ignores]
-# Tests can use assert and access private members
-"tests/**" = ["S101", "S105", "S106", "N802"]
+# Tests can use assert, access private members, and may have bare excepts for test isolation
+"tests/**" = ["S101", "S105", "S106", "N802", "BLE001", "SLF001"]
 # Scripts are standalone — relax a bit
 "scripts/**" = ["S101", "S603", "S607", "T201"]
 # Config files may have long strings
 "app/core/config/**" = ["S105"]
+# Services use _record_success/failure on circuit breaker internals
+"app/services/**" = ["SLF001"]
 
 [lint.isort]
 known-first-party = ["app"]

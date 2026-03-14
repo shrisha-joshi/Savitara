@@ -29,6 +29,7 @@ import os
 import uuid
 import aiofiles
 from pydantic import BaseModel
+from app.utils.id_utils import ensure_object_id, maybe_object_id, object_id_or_raw
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -181,8 +182,7 @@ async def _get_or_create_conversation(db, sender_id: str, receiver_id: str) -> s
                 {"participants": participants_strs, "is_open_chat": False}
             )
 
-    except Exception:
-        # Fallback if conversion fails
+    except (ValueError, TypeError):  # ObjectId conversion failure — fall back to str keys
         participants = sorted([sender_id, receiver_id])
         conversation_doc = await db.conversations.find_one(
             {"participants": participants, "is_open_chat": False}
@@ -194,7 +194,7 @@ async def _get_or_create_conversation(db, sender_id: str, receiver_id: str) -> s
             participants_for_create = sorted(
                 [ObjectId(sender_id), ObjectId(receiver_id)]
             )
-        except Exception:
+        except (ValueError, TypeError):  # ObjectId parse failure — use raw strings
             participants_for_create = sorted([sender_id, receiver_id])
 
         conversation = Conversation(
@@ -663,12 +663,7 @@ async def _try_resolve_acharya_profile(db, profile_oid: ObjectId) -> Optional[di
 
 async def _resolve_receiver(db, receiver_id: str) -> Tuple[dict, str]:
     """Resolve receiver by ID, handling both User IDs and Acharya Profile IDs"""
-    if not ObjectId.is_valid(receiver_id):
-        raise InvalidInputError(
-            message="Invalid receiver_id format", field="receiver_id"
-        )
-
-    receiver_oid = ObjectId(receiver_id)
+    receiver_oid = ensure_object_id(receiver_id, "receiver_id")
     receiver = await db.users.find_one({"_id": receiver_oid})
 
     # Try Acharya Profile ID if not found as User
@@ -754,7 +749,7 @@ def _serialize_message_doc(msg: dict) -> dict:
 
 async def _find_conversation(db, conversation_id: str) -> Optional[dict]:
     """Find conversation by ID, trying both ObjectId and string"""
-    conv_oid = ObjectId(conversation_id) if ObjectId.is_valid(conversation_id) else None
+    conv_oid = maybe_object_id(conversation_id)
     if conv_oid:
         conv = await db.conversations.find_one({"_id": conv_oid})
         if conv:
@@ -772,7 +767,7 @@ async def _get_other_participant_info(
     if not other_user_id:
         return None
 
-    other_oid = ObjectId(other_user_id) if ObjectId.is_valid(other_user_id) else None
+    other_oid = maybe_object_id(other_user_id)
     other_user = await db.users.find_one({"_id": other_oid}) if other_oid else None
 
     if not other_user:
@@ -796,9 +791,7 @@ async def _find_acharya_profile(db, sender_id: Any) -> Optional[dict]:
     sender_id_str = str(sender_id)
     profile = await db.acharya_profiles.find_one({"user_id": sender_id_str})
     if not profile:
-        sender_oid = (
-            ObjectId(sender_id_str) if ObjectId.is_valid(sender_id_str) else None
-        )
+        sender_oid = maybe_object_id(sender_id_str)
         if sender_oid:
             profile = await db.acharya_profiles.find_one({"_id": sender_oid})
     return profile
@@ -859,7 +852,7 @@ async def _broadcast_message_via_websocket(
             if resolved_receiver_id:
                 await manager.send_personal_message(resolved_receiver_id, ws_message)
             await manager.send_personal_message(sender_id, ws_message)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — WS failure must not block message persistence
         logger.error(f"Failed to broadcast real-time message: {e}")
 
 
@@ -983,7 +976,7 @@ async def send_message(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Service momentarily unavailable. Please retry.",
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Send message critical error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1092,7 +1085,7 @@ async def send_media_message(
             if resolved_receiver_id:
                 await manager.send_personal_message(resolved_receiver_id, ws_message)
             await manager.send_personal_message(sender_id, ws_message)
-        except Exception as ws_err:
+        except Exception as ws_err:  # noqa: BLE001 — WS failure must not block media upload
             logger.error(f"WS broadcast error for media message: {ws_err}")
 
         # Send push notification
@@ -1124,7 +1117,7 @@ async def send_media_message(
 
     except (InvalidInputError, PermissionDeniedError, ResourceNotFoundError):
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Media message upload error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1159,13 +1152,10 @@ async def verify_conversation(
             )
 
         # Validate receiver ID format first
-        if not ObjectId.is_valid(receiver_id):
-            raise InvalidInputError(
-                message="Invalid recipient ID format", field="recipient_id"
-            )
+        ensure_object_id(receiver_id, "recipient_id")
 
         # Check if receiver exists
-        receiver_oid = ObjectId(receiver_id)
+        receiver_oid = ensure_object_id(receiver_id, "recipient_id")
         receiver = await db.users.find_one({"_id": receiver_oid})
 
         # If not found in users, check if it's an Acharya Profile ID
@@ -1175,15 +1165,12 @@ async def verify_conversation(
                 # Found profile! Use the linked user_id
                 real_receiver_id = profile["user_id"]
                 # Verify this user exists
-                try:
-                    receiver = await db.users.find_one(
-                        {"_id": ObjectId(real_receiver_id)}
-                    )
+                real_receiver_oid = maybe_object_id(real_receiver_id)
+                if real_receiver_oid:
+                    receiver = await db.users.find_one({"_id": real_receiver_oid})
                     if receiver:
                         # Found the real user! Update receiver_id for conversation creation
                         receiver_id = str(receiver["_id"])
-                except Exception:  # nosec
-                    pass
 
         if not receiver:
             raise InvalidInputError(
@@ -1212,7 +1199,7 @@ async def verify_conversation(
         )
     except (InvalidInputError, ResourceNotFoundError):
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Verify conversation error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1299,7 +1286,7 @@ async def get_conversations(
             },
         )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Get conversations error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1322,8 +1309,8 @@ async def get_conversation(
     """Return a single conversation's settings (muted, pinned, archived, etc.)"""
     try:
         user_id = current_user["id"]
-        conv_oid = ObjectId(conversation_id) if ObjectId.is_valid(conversation_id) else None
-        user_oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
+        conv_oid = maybe_object_id(conversation_id)
+        user_oid = maybe_object_id(user_id)
 
         conv = None
         if conv_oid:
@@ -1350,7 +1337,7 @@ async def get_conversation(
 
     except (ResourceNotFoundError, PermissionDeniedError):
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Get conversation error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1375,10 +1362,8 @@ async def get_conversation_messages(
     """Get messages from a specific conversation"""
     try:
         user_id = current_user["id"]
-        conv_oid = (
-            ObjectId(conversation_id) if ObjectId.is_valid(conversation_id) else None
-        )
-        user_oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
+        conv_oid = maybe_object_id(conversation_id)
+        user_oid = maybe_object_id(user_id)
 
         # Find conversation using helper
         conversation = await _find_conversation(db, conversation_id)
@@ -1445,7 +1430,7 @@ async def get_conversation_messages(
                     "read_by": user_id,
                     "read_at": datetime.now(timezone.utc).isoformat(),
                 })
-            except Exception as ws_err:
+            except Exception as ws_err:  # noqa: BLE001 — WS read-receipt failure non-blocking
                 logger.warning(f"Failed to send message_read WS event to {other_user_id}: {ws_err}")
 
         # Total count
@@ -1467,7 +1452,7 @@ async def get_conversation_messages(
 
     except (ResourceNotFoundError, PermissionDeniedError):
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Get messages error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1530,7 +1515,7 @@ async def get_open_chat_messages(
             },
         )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Get open chat error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1553,7 +1538,7 @@ async def delete_message(
     """Delete a message (soft delete - mark as deleted)"""
     try:
         user_id = current_user["id"]
-        msg_oid = ObjectId(message_id) if ObjectId.is_valid(message_id) else None
+        msg_oid = maybe_object_id(message_id)
 
         # Get message - try ObjectId first
         message = None
@@ -1583,7 +1568,7 @@ async def delete_message(
 
     except (ResourceNotFoundError, PermissionDeniedError):
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Delete message error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1618,7 +1603,7 @@ async def get_unread_count(
 
         return StandardResponse(success=True, data={"unread_count": unread_count})
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Get unread count error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

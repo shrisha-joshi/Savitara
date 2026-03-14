@@ -1,5 +1,7 @@
 async def _fetch_and_validate_booking(booking_id, current_user, db):
-    booking_doc = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+    booking_doc = await db.bookings.find_one(
+        {"_id": ensure_object_id(booking_id, "booking_id")}
+    )
     if not booking_doc:
         raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
     if str(booking_doc["grihasta_id"]) != current_user["id"]:
@@ -35,9 +37,8 @@ def _verify_razorpay_signature(payment_service, booking_doc, razorpay_payment_id
         )
 
 def _validate_acharya_id(acharya_id, db):
-    if not ObjectId.is_valid(acharya_id):
-        raise InvalidInputError(message="Invalid acharya_id format", field="acharya_id")
-    return db.acharya_profiles.find_one({"_id": ObjectId(acharya_id)})
+    acharya_oid = ensure_object_id(acharya_id, "acharya_id")
+    return db.acharya_profiles.find_one({"_id": acharya_oid})
 
 def _parse_requested_start(date_time):
     try:
@@ -147,6 +148,8 @@ from app.core.exceptions import (
 )
 from app.db.connection import get_db
 from app.models.database import Booking, BookingStatus, PaymentStatus, UserRole
+from app.repositories.booking_repository import MongoBookingRepository
+from app.utils.id_utils import ensure_object_id, maybe_object_id, object_id_or_raw
 
 # Constants to avoid duplication (S1192)
 ACTION_CANCEL_BOOKING = "Cancel booking"
@@ -196,13 +199,14 @@ async def refer_booking(
     new_acharya_id = refer_data.new_acharya_id
     notes = refer_data.notes
 
-    booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+    booking_oid = ensure_object_id(booking_id, "booking_id")
+    booking = await db.bookings.find_one({"_id": booking_oid})
     if not booking:
         raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
 
     # Only the current assigned Acharya can refer — resolve profile ID
     acharya_id = current_user["id"]
-    acharya_obj = ObjectId(acharya_id) if ObjectId.is_valid(acharya_id) else None
+    acharya_obj = maybe_object_id(acharya_id)
     acharya_profile = await db.acharya_profiles.find_one(
         {"user_id": acharya_obj or acharya_id}, {"_id": 1}
     )
@@ -211,20 +215,21 @@ async def refer_booking(
         raise PermissionDeniedError(action="Refer booking")
 
     # Validate new Acharya exists
-    new_acharya = await db.acharya_profiles.find_one({"_id": ObjectId(new_acharya_id)})
+    new_acharya_oid = ensure_object_id(new_acharya_id, "new_acharya_id")
+    new_acharya = await db.acharya_profiles.find_one({"_id": new_acharya_oid})
     if not new_acharya:
         raise ResourceNotFoundError(resource_type="Acharya", resource_id=new_acharya_id)
 
     # Update booking's acharya_id and add note
     update_doc = {
-        "acharya_id": ObjectId(new_acharya_id),
+        "acharya_id": new_acharya_oid,
         "status": BookingStatus.REQUESTED.value,  # Reset to requested for new Acharya
         "updated_at": datetime.now(timezone.utc),
     }
     if notes:
         update_doc["notes"] = notes
 
-    await db.bookings.update_one({"_id": ObjectId(booking_id)}, {"$set": update_doc})
+    await db.bookings.update_one({"_id": booking_oid}, {"$set": update_doc})
 
     # Notify new Acharya (optional: and Grihasta)
     try:
@@ -463,10 +468,7 @@ def _prepare_booking_dict(booking: Booking) -> Dict[str, Any]:
 
 def _parse_grihasta_id(user_id_str: str) -> Any:
     """Parse grihasta ID, converting to ObjectId if valid."""
-    try:
-        return ObjectId(user_id_str)
-    except Exception:
-        return user_id_str
+    return object_id_or_raw(user_id_str)
 
 
 @router.get(
@@ -509,10 +511,8 @@ async def get_price_estimate(
       • acharya_earnings   — after platform cut
     """
     # ── 1. Validate Acharya ────────────────────────────────────────────────
-    if not ObjectId.is_valid(acharya_id):
-        raise InvalidInputError(message="Invalid acharya_id format", field="acharya_id")
-
-    acharya = await db.acharya_profiles.find_one({"_id": ObjectId(acharya_id)})
+    acharya_oid = ensure_object_id(acharya_id, "acharya_id")
+    acharya = await db.acharya_profiles.find_one({"_id": acharya_oid})
     if not acharya:
         raise ResourceNotFoundError(resource_type="Acharya", resource_id=acharya_id)
 
@@ -789,7 +789,7 @@ async def create_booking(
 
     except (ResourceNotFoundError, InvalidInputError, SlotUnavailableError):
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Create booking error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -899,7 +899,8 @@ async def update_booking_status(
 ):
     """Update booking status"""
     # Booking status transition matrix – prevent illegal state changes
-    booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+    booking_oid = ensure_object_id(booking_id, "booking_id")
+    booking = await db.bookings.find_one({"_id": booking_oid})
     if not booking:
         raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
 
@@ -932,7 +933,7 @@ async def update_booking_status(
         # Set payment status to pending when Acharya confirms request
         update_doc["payment_status"] = PaymentStatus.PENDING.value
 
-    await db.bookings.update_one({"_id": ObjectId(booking_id)}, {"$set": update_doc})
+    await db.bookings.update_one({"_id": booking_oid}, {"$set": update_doc})
 
     # Send notifications after status update (includes FCM for payment_required)
     # Note: _notify_booking_status_update also emits the booking_update WS event.
@@ -972,7 +973,8 @@ async def cancel_booking(
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Cancel booking"""
-    booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+    booking_oid = ensure_object_id(booking_id, "booking_id")
+    booking = await db.bookings.find_one({"_id": booking_oid})
     if not booking:
         raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
 
@@ -984,7 +986,7 @@ async def cancel_booking(
     _validate_transition(current_status, BookingStatus.CANCELLED.value, current_user["role"])
 
     await db.bookings.update_one(
-        {"_id": ObjectId(booking_id)},
+        {"_id": booking_oid},
         {
             "$set": {
                 "status": BookingStatus.CANCELLED.value,
@@ -1012,7 +1014,7 @@ async def cancel_booking(
                 notes={"reason": "Booking cancelled by user", "booking_id": booking_id},
             )
             await db.bookings.update_one(
-                {"_id": ObjectId(booking_id)},
+                {"_id": booking_oid},
                 {
                     "$set": {
                         "payment_status": "refunded",
@@ -1042,7 +1044,8 @@ async def generate_attendance_otp(
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Generate OTP for attendance"""
-    booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+    booking_oid = ensure_object_id(booking_id, "booking_id")
+    booking = await db.bookings.find_one({"_id": booking_oid})
     if not booking:
         raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
 
@@ -1058,7 +1061,7 @@ async def generate_attendance_otp(
     # Store OTP in booking document with expiry (M8 fix: OTP expires in 30 minutes)
     otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
     await db.bookings.update_one(
-        {"_id": ObjectId(booking_id)},
+        {"_id": booking_oid},
         {"$set": {"start_otp": otp, "otp_expires_at": otp_expires_at, "updated_at": datetime.now(timezone.utc)}},
     )
 
@@ -1082,7 +1085,8 @@ async def create_payment_order_for_request(
     """
     try:
         # Get booking
-        booking_doc = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+        booking_oid = ensure_object_id(booking_id, "booking_id")
+        booking_doc = await db.bookings.find_one({"_id": booking_oid})
         if not booking_doc:
             raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
 
@@ -1092,23 +1096,23 @@ async def create_payment_order_for_request(
 
         # Verify booking is in request mode and confirmed by Acharya
         if booking_doc.get("booking_mode") != "request":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="This endpoint is only for request-mode bookings"
+            raise InvalidInputError(
+                message="This endpoint is only for request-mode bookings",
+                field="booking_mode",
             )
 
         if booking_doc.get("status") != BookingStatus.CONFIRMED.value:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Booking must be confirmed by Acharya before payment"
+            raise InvalidInputError(
+                message="Booking must be confirmed by Acharya before payment",
+                field="status",
             )
 
         # Check if amount is set
         total_amount = booking_doc.get("total_amount", 0)
         if total_amount <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Booking amount not set by Acharya"
+            raise InvalidInputError(
+                message="Booking amount not set by Acharya",
+                field="total_amount",
             )
 
         # Check if payment order already exists
@@ -1125,9 +1129,9 @@ async def create_payment_order_for_request(
 
         # Create Razorpay order
         try:
-            from app.services.payment_service import PaymentService
+            from app.services.payment_service import RazorpayService
 
-            payment_service = PaymentService()
+            payment_service = RazorpayService()
             razorpay_order = payment_service.create_order(
                 amount=total_amount,
                 currency="INR",
@@ -1138,7 +1142,7 @@ async def create_payment_order_for_request(
                     "booking_mode": "request"
                 },
             )
-            razorpay_order_id = razorpay_order.get("id")
+            razorpay_order_id = razorpay_order.get("order_id")
         except Exception as e:
             logger.warning(f"Razorpay order creation warning: {e}")
             # Only allow fallback dev order IDs in non-production environments
@@ -1151,7 +1155,7 @@ async def create_payment_order_for_request(
 
         # Update booking with razorpay_order_id and payment status
         await db.bookings.update_one(
-            {"_id": ObjectId(booking_id)},
+            {"_id": booking_oid},
             {
                 "$set": {
                     "razorpay_order_id": razorpay_order_id,
@@ -1172,9 +1176,9 @@ async def create_payment_order_for_request(
             message="Payment order created successfully"
         )
 
-    except (ResourceNotFoundError, PermissionDeniedError, HTTPException):
+    except (ResourceNotFoundError, PermissionDeniedError, InvalidInputError, HTTPException):
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Create payment order error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1224,7 +1228,13 @@ async def verify_payment(
             from app.services.payment_service import RazorpayService
             payment_service = RazorpayService()
             _verify_razorpay_signature(payment_service, booking_doc, razorpay_payment_id, razorpay_signature)
-        except Exception as e:
+        except (ValueError, PaymentFailedError) as e:  # signature invalid or Razorpay error
+            logger.error(f"Payment signature verification failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail="Payment verification error — please contact support",
+            )
+        except Exception as e:  # noqa: BLE001 — unexpected SDK failure
             logger.error(f"Payment verification failed unexpectedly: {e}")
             raise HTTPException(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
@@ -1293,7 +1303,7 @@ async def verify_payment(
         )
     except (ResourceNotFoundError, PermissionDeniedError, PaymentFailedError):
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Verify payment error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1327,10 +1337,11 @@ async def start_booking(
             raise InvalidInputError(message="OTP is required", field="otp")
 
         acharya_id = current_user["id"]
-        acharya_obj_id = ObjectId(acharya_id) if ObjectId.is_valid(acharya_id) else None
+        acharya_obj_id = maybe_object_id(acharya_id)
 
         # Get booking
-        booking_doc = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+        booking_oid = ensure_object_id(booking_id, "booking_id")
+        booking_doc = await db.bookings.find_one({"_id": booking_oid})
         if not booking_doc:
             raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
 
@@ -1358,7 +1369,7 @@ async def start_booking(
 
         # Update to IN_PROGRESS
         await db.bookings.update_one(
-            {"_id": ObjectId(booking_id)},
+            {"_id": booking_oid},
             {
                 "$set": {
                     "status": BookingStatus.IN_PROGRESS.value,
@@ -1377,7 +1388,7 @@ async def start_booking(
 
     except (ResourceNotFoundError, PermissionDeniedError, InvalidInputError):
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Start booking error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1441,7 +1452,7 @@ async def _complete_booking_with_notifications(db, booking_id: str, booking_doc:
                 body="Booking completed. Payment will be transferred.",
                 data={"type": "booking_completed", "booking_id": booking_id},
             )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — notification failure must not block completion
         logger.warning(f"Failed to send completion notification: {e}")
 
 
@@ -1481,7 +1492,7 @@ async def _update_booking_attendance(
         attendance["acharya_confirmed_at"] = datetime.now(timezone.utc)
 
     await db.bookings.update_one(
-        {"_id": ObjectId(booking_id)},
+        {"_id": ensure_object_id(booking_id, "booking_id")},
         {"$set": {"attendance": attendance, "updated_at": datetime.now(timezone.utc)}},
     )
     return attendance
@@ -1510,9 +1521,19 @@ async def confirm_attendance(
         user_role = current_user["role"]
 
         # Get booking
-        booking_doc = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+        booking_doc = await db.bookings.find_one(
+            {"_id": ensure_object_id(booking_id, "booking_id")}
+        )
         if not booking_doc:
             raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
+
+        # Resolve acharya_user_id from profile when booking stores only acharya profile _id
+        if user_role == UserRole.ACHARYA.value and not booking_doc.get("acharya_user_id"):
+            acharya_profile = await db.acharya_profiles.find_one(
+                {"_id": booking_doc.get("acharya_id")}, {"user_id": 1}
+            )
+            if acharya_profile and acharya_profile.get("user_id"):
+                booking_doc["acharya_user_id"] = str(acharya_profile.get("user_id"))
 
         # Verify participation
         _verify_booking_participation(booking_doc, user_id, user_role)
@@ -1550,7 +1571,7 @@ async def confirm_attendance(
 
     except (ResourceNotFoundError, PermissionDeniedError, InvalidInputError):
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Confirm attendance error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1564,7 +1585,7 @@ async def _build_user_booking_query(
     """Build query for user's bookings based on role."""
     try:
         user_obj_id = ObjectId(user_id)
-    except Exception:
+    except (ValueError, TypeError):  # InvalidId extends ValueError
         user_obj_id = None
         logger.warning(f"Could not convert user_id to ObjectId: {user_id}")
 
@@ -1678,22 +1699,18 @@ async def get_my_bookings(
         user_id = current_user["id"]
         role = current_user["role"]
 
-        # Build query using helper
-        query = await _build_user_booking_query(db, user_id, role, status_filter)
-        
-        logger.info(f"Final query before pipeline: {query}")
-        count_before_pipeline = await db.bookings.count_documents(query)
-        logger.info(f"Bookings matching query: {count_before_pipeline}")
-
-        # Build and execute pipeline using helper
-        pipeline = _build_my_bookings_pipeline(query, page, limit)
-        bookings = await db.bookings.aggregate(pipeline).to_list(length=limit)
+        repository = MongoBookingRepository(db)
+        bookings, total_count = await repository.find_for_user(
+            user_id=user_id,
+            role=role,
+            status_filter=status_filter,
+            page=page,
+            limit=limit,
+        )
 
         # Serialize ObjectIds using helper
         for booking in bookings:
             _serialize_booking_ids(booking)
-
-        total_count = await db.bookings.count_documents(query)
 
         return StandardResponse(
             success=True,
@@ -1710,7 +1727,7 @@ async def get_my_bookings(
 
     except PermissionDeniedError:
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Get bookings error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1732,74 +1749,10 @@ async def get_booking_details(
 ):
     """Get booking details with full information"""
     try:
-        # Get booking with aggregation
-        pipeline = [
-            {MONGO_MATCH: {"_id": ObjectId(booking_id)}},
-            {
-                MONGO_LOOKUP: {
-                    "from": "poojas",
-                    "localField": "pooja_id",
-                    "foreignField": "_id",
-                    "as": "pooja",
-                }
-            },
-            {MONGO_UNWIND: {"path": "$pooja", "preserveNullAndEmptyArrays": True}},
-            {
-                MONGO_LOOKUP: {
-                    "from": "acharya_profiles",
-                    "localField": "acharya_id",
-                    "foreignField": "_id",
-                    "as": "acharya",
-                }
-            },
-            {MONGO_UNWIND: {"path": "$acharya", "preserveNullAndEmptyArrays": True}},
-            {
-                MONGO_LOOKUP: {
-                    "from": "users",
-                    "localField": "grihasta_id",
-                    "foreignField": "_id",
-                    "as": "grihasta_user",
-                }
-            },
-            {"$unwind": {"path": "$grihasta_user", "preserveNullAndEmptyArrays": True}},
-            {
-                MONGO_LOOKUP: {
-                    "from": "users",
-                    "localField": "acharya.user_id",
-                    "foreignField": "_id",
-                    "as": "acharya_user",
-                }
-            },
-            {"$unwind": {"path": "$acharya_user", "preserveNullAndEmptyArrays": True}},
-            {
-                "$addFields": {
-                    "pooja_name": {MONGO_IF_NULL: [FIELD_POOJA_NAME, FIELD_SERVICE_NAME]},
-                    "acharya_user_id": "$acharya.user_id",
-                    "pooja_type": {MONGO_IF_NULL: [FIELD_POOJA_NAME, FIELD_SERVICE_NAME]},
-                    "grihasta_name": {
-                        MONGO_IF_NULL: [
-                            "$grihasta_user.full_name",
-                            "$grihasta_user.name",
-                        ]
-                    },
-                    "acharya_name": {
-                        MONGO_IF_NULL: [
-                            "$acharya.name",
-                            "$acharya_user.full_name",
-                            "$acharya_user.name",
-                        ]
-                    },
-                    "scheduled_datetime": "$date_time",
-                }
-            },
-        ]
-
-        bookings = await db.bookings.aggregate(pipeline).to_list(length=1)
-
-        if not bookings:
+        repository = MongoBookingRepository(db)
+        booking = await repository.find_with_details(booking_id)
+        if not booking:
             raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
-
-        booking = bookings[0]
 
         # Verify access
         user_role = current_user["role"]
@@ -1822,7 +1775,7 @@ async def get_booking_details(
 
     except (ResourceNotFoundError, PermissionDeniedError):
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Get booking details error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1894,7 +1847,7 @@ async def mark_acharya_arrival(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
         logger.error(f"Mark arrival error for booking {booking_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

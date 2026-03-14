@@ -245,6 +245,48 @@ class TestGetMessages:
         assert response.status_code == 422  # limit max is 200
 
 
+class TestConversationIdValidation:
+    """Critical chat validation tests for malformed identifiers."""
+
+    @pytest.mark.asyncio
+    async def test_get_single_conversation_invalid_id_authenticated(self, client, test_db):
+        from app.db.connection import get_db
+        from app.core.security import get_current_user as gcu
+        from app.main import app as fastapi_app
+
+        user = make_fake_user()
+        fastapi_app.dependency_overrides[gcu] = lambda: user
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            response = await client.get(
+                "/api/v1/chat/conversations/not-an-object-id",
+                headers=auth_headers(),
+            )
+            assert response.status_code in [400, 404]
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_delete_message_invalid_id_authenticated(self, client, test_db):
+        from app.db.connection import get_db
+        from app.core.security import get_current_user as gcu
+        from app.main import app as fastapi_app
+
+        user = make_fake_user()
+        fastapi_app.dependency_overrides[gcu] = lambda: user
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            response = await client.delete(
+                "/api/v1/chat/messages/not-an-object-id",
+                headers=auth_headers(),
+            )
+            assert response.status_code in [400, 404]
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+
 # ---------------------------------------------------------------------------
 # TestDeleteMessage
 # ---------------------------------------------------------------------------

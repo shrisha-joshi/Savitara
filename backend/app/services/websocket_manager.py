@@ -1,13 +1,14 @@
 """
 WebSocket Connection Manager for Real-time Communication
 """
-from typing import Dict, List, Set, Optional
+from typing import Dict, List, Set, Optional, Callable, Awaitable
 from fastapi import WebSocket
 from datetime import datetime
 import json
 import logging
 import asyncio
 import redis.asyncio as redis
+from redis.exceptions import RedisError
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,91 @@ except ImportError:  # pragma: no cover
     logger.warning("prometheus_client not installed — WS metrics disabled")
 
 
+class RedisRealtimeTransport:
+    """Encapsulates Redis Pub/Sub + offline queue concerns for WebSocket delivery."""
+
+    def __init__(self) -> None:
+        self.redis_client: Optional[redis.Redis] = None
+        self.pubsub: Optional[redis.client.PubSub] = None
+        self.listener_task: Optional[asyncio.Task] = None
+
+    async def connect(self) -> None:
+        if self.redis_client:
+            return
+
+        self.redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        self.pubsub = self.redis_client.pubsub()
+        await self.pubsub.subscribe("system:heartbeat")
+
+    async def _process_pubsub_message(
+        self,
+        message: dict,
+        dispatch_user_message: Callable[[str, dict], Awaitable[None]],
+    ) -> None:
+        if message.get("type") != "message":
+            return
+
+        raw_data = message.get("data")
+        try:
+            data = json.loads(raw_data)
+        except json.JSONDecodeError:
+            logger.error("Failed to decode Redis message: %s", raw_data)
+            return
+
+        channel = message.get("channel", "")
+        if channel.startswith("user:"):
+            await dispatch_user_message(channel, data)
+
+    def start_listener(
+        self,
+        dispatch_user_message: Callable[[str, dict], Awaitable[None]],
+    ) -> None:
+        if not self.pubsub or self.listener_task:
+            return
+
+        async def _listen() -> None:
+            if not self.pubsub:
+                return
+            try:
+                async for message in self.pubsub.listen():
+                    await self._process_pubsub_message(message, dispatch_user_message)
+            except (RedisError, RuntimeError) as exc:
+                logger.error("Redis listener error: %s", exc)
+            except Exception:
+                logger.exception("Unexpected Redis listener failure")
+
+        self.listener_task = asyncio.create_task(_listen())
+
+    async def subscribe_user(self, user_id: str) -> None:
+        if self.pubsub:
+            await self.pubsub.subscribe(f"user:{user_id}")
+
+    async def unsubscribe_user(self, user_id: str) -> None:
+        if self.pubsub:
+            await self.pubsub.unsubscribe(f"user:{user_id}")
+
+    async def publish_user_message(self, user_id: str, message_str: str) -> int:
+        if not self.redis_client:
+            return 0
+        return await self.redis_client.publish(f"user:{user_id}", message_str)
+
+    async def queue_offline_message(self, user_id: str, message_str: str) -> None:
+        if not self.redis_client:
+            return
+        queue_key = f"offline_queue:{user_id}"
+        await self.redis_client.rpush(queue_key, message_str)
+        await self.redis_client.expire(queue_key, 86400 * 7)
+
+    async def get_offline_messages(self, user_id: str) -> list[str]:
+        if not self.redis_client:
+            return []
+        return await self.redis_client.lrange(f"offline_queue:{user_id}", 0, -1)
+
+    async def clear_offline_messages(self, user_id: str) -> None:
+        if self.redis_client:
+            await self.redis_client.delete(f"offline_queue:{user_id}")
+
+
 class ConnectionManager:
     """
     Manages WebSocket connections for real-time features using Redis Pub/Sub.
@@ -54,15 +140,31 @@ class ConnectionManager:
 
         # Room-based connections (for group features)
         self.rooms: Dict[str, Set[str]] = {}
+        self._transport = RedisRealtimeTransport()
 
-        # Redis Client for publishing
-        self.redis_client: Optional[redis.Redis] = None
+    @property
+    def redis_client(self) -> Optional[redis.Redis]:
+        return self._transport.redis_client
 
-        # Redis PubSub for subscribing
-        self.pubsub: Optional[redis.client.PubSub] = None
+    @redis_client.setter
+    def redis_client(self, value: Optional[redis.Redis]) -> None:
+        self._transport.redis_client = value
 
-        # Background task for listening to Redis
-        self.listener_task: Optional[asyncio.Task] = None
+    @property
+    def pubsub(self) -> Optional[redis.client.PubSub]:
+        return self._transport.pubsub
+
+    @pubsub.setter
+    def pubsub(self, value: Optional[redis.client.PubSub]) -> None:
+        self._transport.pubsub = value
+
+    @property
+    def listener_task(self) -> Optional[asyncio.Task]:
+        return self._transport.listener_task
+
+    @listener_task.setter
+    def listener_task(self, value: Optional[asyncio.Task]) -> None:
+        self._transport.listener_task = value
 
     def _log_event(self, event: str, **fields) -> None:
         """Emit a structured WebSocket event log (lightweight, no metrics backend)."""
@@ -74,25 +176,17 @@ class ConnectionManager:
 
     async def connect_redis(self):
         """Initialize Redis connection for Pub/Sub"""
-        if self.redis_client:
-            return  # Already connected
-
         try:
-            self.redis_client = redis.from_url(
-                settings.REDIS_URL, decode_responses=True
-            )
-            self.pubsub = self.redis_client.pubsub()
-
-            # Subscribe to a default channel to ensure pubsub is initialized (async operation)
-            await self.pubsub.subscribe("system:heartbeat")
-
-            # Start the listener loop in background
-            self.listener_task = asyncio.create_task(self._redis_listener())
+            await self._transport.connect()
+            self._transport.start_listener(self._handle_user_message)
             logger.info("WebSocket Manager connected to Redis")
             self._log_event("redis_connected")
-        except Exception as e:
+        except RedisError as e:
             logger.error(f"Failed to connect WebSocket Manager to Redis: {e}")
             self._log_event("redis_connect_failed", error=str(e))
+        except Exception:
+            logger.exception("Unexpected Redis connection failure")
+            self._log_event("redis_connect_failed", error="unexpected_error")
 
     async def _handle_user_message(self, channel: str, data: dict) -> None:
         """Handle a message for a specific user channel"""
@@ -102,39 +196,12 @@ class ConnectionManager:
         if websocket:
             try:
                 await websocket.send_json(data)
-            except Exception as e:
+            except RuntimeError as e:
                 logger.error(f"Error sending to {user_id}: {e}")
                 self._log_event("deliver_failed", user_id=user_id, error=str(e))
-
-    def _parse_message_data(self, data_str: str) -> Optional[dict]:
-        """Parse JSON message data, return None on failure"""
-        try:
-            return json.loads(data_str)
-        except json.JSONDecodeError:
-            logger.error(f"Failed to decode Redis message: {data_str}")
-            return None
-
-    async def _redis_listener(self):
-        """Continuously listen for Redis messages and dispatch to local websockets"""
-        if not self.pubsub:
-            return
-
-        try:
-            async for message in self.pubsub.listen():
-                if message["type"] != "message":
-                    continue
-
-                data = self._parse_message_data(message["data"])
-                if not data:
-                    continue
-
-                channel = message["channel"]
-                if channel.startswith("user:"):
-                    await self._handle_user_message(channel, data)
-
-        except Exception as e:
-            logger.error(f"Redis listener error: {e}")
-            self._log_event("redis_listener_error", error=str(e))
+            except Exception:
+                logger.exception("Unexpected websocket send failure for user %s", user_id)
+                self._log_event("deliver_failed", user_id=user_id, error="unexpected_error")
 
     async def connect(self, user_id: str, websocket: WebSocket):
         """Accept new WebSocket connection"""
@@ -147,7 +214,7 @@ class ConnectionManager:
 
         if self.pubsub:
             # Subscribe to this user's channel on Redis
-            await self.pubsub.subscribe(f"user:{user_id}")
+            await self._transport.subscribe_user(user_id)
             # Check Offline Queue
             await self.check_offline_queue(user_id)
 
@@ -173,25 +240,18 @@ class ConnectionManager:
 
     async def check_offline_queue(self, user_id: str):
         """Deliver messages stored while user was offline"""
-        queue_key = f"offline_queue:{user_id}"
         if not self.redis_client:
             return
 
-        messages = await self.redis_client.lrange(queue_key, 0, -1)
-        if messages:
-            for msg_str in messages:
-                try:
-                    msg = json.loads(msg_str)
-                    if user_id in self.active_connections:
-                        await self.active_connections[user_id].send_json(msg)
-                except Exception as e:
-                    logger.error(f"Error checking offline queue for {user_id}: {e}")
-
-            await self.redis_client.delete(queue_key)
-            logger.info(f"Delivered {len(messages)} offline messages to {user_id}")
-            self._log_event("offline_delivered", user_id=user_id, count=len(messages))
-        else:
+        messages = await self._transport.get_offline_messages(user_id)
+        if not messages:
             logger.debug(f"No offline messages for {user_id}")
+            return
+
+        await self._deliver_offline_messages(user_id, messages)
+        await self._transport.clear_offline_messages(user_id)
+        logger.info(f"Delivered {len(messages)} offline messages to {user_id}")
+        self._log_event("offline_delivered", user_id=user_id, count=len(messages))
 
     def disconnect(self, user_id: str):
         """Remove WebSocket connection"""
@@ -208,7 +268,7 @@ class ConnectionManager:
             # Unsubscribe in background
             try:
                 loop = asyncio.get_event_loop()
-                loop.create_task(self.pubsub.unsubscribe(f"user:{user_id}"))
+                loop.create_task(self._transport.unsubscribe_user(user_id))
             except RuntimeError as e:
                 # Event loop not running or other runtime errors
                 logger.warning(f"Failed to unsubscribe user {user_id}: {e}")
@@ -224,54 +284,80 @@ class ConnectionManager:
         """
 
         if not self.redis_client:
-            if user_id in self.active_connections:
-                try:
-                    await self.active_connections[user_id].send_json(message)
-                    logger.debug(f"WS local delivery to {user_id}")
-                    self._log_event("local", user_id=user_id)
-                    return "local"
-                except Exception as e:
-                    logger.error(f"Failed to send local message: {e}")
-                    self._log_event("local_failed", user_id=user_id, error=str(e))
-                    self.disconnect(user_id)
-            return "queued"
-        channel = f"user:{user_id}"
+            return await self._deliver_local(user_id, message)
+
         message_str = json.dumps(message)
+        return await self._deliver_via_redis(user_id, message, message_str)
 
-        try:
-            # Publish returns number of clients subscribed
-            subscriber_count = await self.redis_client.publish(channel, message_str)
+    async def _deliver_offline_messages(self, user_id: str, messages: list[str]) -> None:
+        websocket = self.active_connections.get(user_id)
+        if not websocket:
+            return
 
-            if subscriber_count == 0:
-                # User offline
-                await self.redis_client.rpush(f"offline_queue:{user_id}", message_str)
-                await self.redis_client.expire(
-                    f"offline_queue:{user_id}", 86400 * 7
-                )  # 7 days
-                logger.info(f"WS queued message for offline user {user_id}")
-                self._log_event("queued", user_id=user_id, channel=channel)
-                return "queued"
+        for msg_str in messages:
+            try:
+                await websocket.send_json(json.loads(msg_str))
+            except json.JSONDecodeError as exc:
+                logger.error("Invalid queued message payload for %s: %s", user_id, exc)
+            except RuntimeError as exc:
+                logger.error("Offline queue delivery runtime error for %s: %s", user_id, exc)
+            except Exception:
+                logger.exception("Unexpected error while delivering offline queue for %s", user_id)
 
-            logger.debug(f"WS delivered to {user_id} via Redis pubsub")
-            self._log_event("delivered", user_id=user_id, channel=channel)
-            if _METRICS_ENABLED:
-                WS_MESSAGES_SENT.inc()
-            return "delivered"
-
-        except Exception as e:
-            logger.error(f"Redis publish error: {e}")
-            self._log_event("publish_error", user_id=user_id, error=str(e))
-            # Fallback local check
-            if user_id in self.active_connections:
-                try:
-                    await self.active_connections[user_id].send_json(message)
-                    logger.debug(f"WS local fallback delivery to {user_id}")
-                    self._log_event("local_fallback", user_id=user_id)
-                    return "local"
-                except Exception as e2:  # noqa: BLE001
-                    logger.error(f"WS local fallback failed for {user_id}: {e2}")
-                    self._log_event("local_fallback_failed", user_id=user_id, error=str(e2))
+    async def _deliver_local(self, user_id: str, message: dict) -> str:
+        websocket = self.active_connections.get(user_id)
+        if not websocket:
             return "queued"
+        try:
+            await websocket.send_json(message)
+            logger.debug(f"WS local delivery to {user_id}")
+            self._log_event("local", user_id=user_id)
+            return "local"
+        except RuntimeError as exc:
+            logger.error("Failed local WS delivery for %s: %s", user_id, exc)
+            self._log_event("local_failed", user_id=user_id, error=str(exc))
+            self.disconnect(user_id)
+        except Exception:
+            logger.exception("Unexpected local message delivery failure for %s", user_id)
+            self._log_event("local_failed", user_id=user_id, error="unexpected_error")
+        return "queued"
+
+    async def _deliver_via_redis(self, user_id: str, message: dict, message_str: str) -> str:
+        try:
+            subscriber_count = await self._transport.publish_user_message(user_id, message_str)
+            if subscriber_count > 0:
+                self._log_event("delivered", user_id=user_id, channel=f"user:{user_id}")
+                if _METRICS_ENABLED:
+                    WS_MESSAGES_SENT.inc()
+                return "delivered"
+
+            await self._transport.queue_offline_message(user_id, message_str)
+            logger.info(f"WS queued message for offline user {user_id}")
+            self._log_event("queued", user_id=user_id, channel=f"user:{user_id}")
+            return "queued"
+        except RedisError as exc:
+            logger.error("Redis publish error for %s: %s", user_id, exc)
+            self._log_event("publish_error", user_id=user_id, error=str(exc))
+            return await self._deliver_local_fallback(user_id, message)
+        except Exception:
+            logger.exception("Unexpected delivery pipeline failure for %s", user_id)
+            return "queued"
+
+    async def _deliver_local_fallback(self, user_id: str, message: dict) -> str:
+        websocket = self.active_connections.get(user_id)
+        if not websocket:
+            return "queued"
+        try:
+            await websocket.send_json(message)
+            self._log_event("local_fallback", user_id=user_id)
+            return "local"
+        except RuntimeError as exc:
+            logger.error("WS local fallback failed for %s: %s", user_id, exc)
+            self._log_event("local_fallback_failed", user_id=user_id, error=str(exc))
+        except Exception:
+            logger.exception("Unexpected local fallback failure for %s", user_id)
+            self._log_event("local_fallback_failed", user_id=user_id, error="unexpected_error")
+        return "queued"
 
     async def emit_to_user(
         self,
@@ -304,15 +390,21 @@ class ConnectionManager:
         for user_id in disconnected:
             self.disconnect(user_id)
 
-    def join_room(self, user_id: str, room_id: str):
-        """Add user to a room"""
+    def join_room(self, room_id: str, user_id: str):
+        """Add user to a room.
+
+        Signature kept as (room_id, user_id) to match existing tests/callers.
+        """
         if room_id not in self.rooms:
             self.rooms[room_id] = set()
         self.rooms[room_id].add(user_id)
         logger.info(f"User {user_id} joined room {room_id}")
 
-    def leave_room(self, user_id: str, room_id: str):
-        """Remove user from a room"""
+    def leave_room(self, room_id: str, user_id: str):
+        """Remove user from a room.
+
+        Signature kept as (room_id, user_id) to match existing tests/callers.
+        """
         if room_id in self.rooms:
             self.rooms[room_id].discard(user_id)
             if not self.rooms[room_id]:
@@ -330,6 +422,10 @@ class ConnectionManager:
         for user_id in self.rooms[room_id]:
             if user_id not in exclude:
                 await self.send_personal_message(user_id, message)
+
+    async def broadcast_to_room(self, room_id: str, message: dict, exclude: List[str] = None):
+        """Backward-compatible alias used by older tests/callers."""
+        await self.send_to_room(room_id, message, exclude)
 
     def is_user_online(self, user_id: str) -> bool:
         """Check if user is currently connected (Local)"""
@@ -395,6 +491,23 @@ async def handle_typing_indicator(user_id: str, data: dict):
     )
 
 
+async def handle_read_receipt(user_id: str, data: dict):
+    """Handle explicit read receipts from clients."""
+    receiver_id = data.get("receiver_id")
+    if not receiver_id:
+        return
+    await manager.send_personal_message(
+        receiver_id,
+        {
+            "type": "message_read",
+            "conversation_id": data.get("conversation_id"),
+            "message_id": data.get("message_id"),
+            "read_by": user_id,
+            "read_at": datetime.now().isoformat(),
+        },
+    )
+
+
 async def handle_booking_update(user_id: str, data: dict):
     """Handle booking status update"""
     booking_id = data.get("booking_id")
@@ -433,7 +546,9 @@ async def handle_ping(user_id: str, data: dict):
 MESSAGE_HANDLERS = {
     "chat_message": handle_chat_message,
     "typing_indicator": handle_typing_indicator,
+    "typing": handle_typing_indicator,
     "booking_update": handle_booking_update,
+    "read_receipt": handle_read_receipt,
     "ping": handle_ping,
 }
 
@@ -450,7 +565,9 @@ async def process_websocket_message(user_id: str, message: dict):
     if handler:
         try:
             await handler(user_id, message)
-        except Exception as exc:  # noqa: BLE001
+        except (ValueError, RuntimeError) as exc:
             logger.error(f"WS handler error for {message_type}: {exc}")
+        except Exception:
+            logger.exception("Unexpected WS handler error for %s", message_type)
     else:
         logger.warning(f"Unknown message type: {message_type}")

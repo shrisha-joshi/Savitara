@@ -4,7 +4,7 @@ All concrete service implementations must satisfy these contracts.
 SonarQube: S1192 - No duplicated strings
 """
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -263,3 +263,81 @@ class IIndexManager(ABC):
     @abstractmethod
     async def _create_index_safe(cls, collection: Any, *args: Any, **kwargs: Any) -> None:
         """Create a single index, silently ignoring duplicates."""
+
+
+# ---------------------------------------------------------------------------
+# Repository Interfaces (Phase 2: Service/Data Boundary Contracts)
+# ---------------------------------------------------------------------------
+
+class IBookingRepository(ABC):
+    """
+    Abstract data access contract for bookings.
+
+    Decouples business logic from MongoDB driver details.
+    All query patterns (aggregations, lookups) are encapsulated here so
+    callers depend on method signatures, not on Motor + ObjectId internals.
+    """
+
+    @abstractmethod
+    async def find_by_id(self, booking_id: str) -> Optional[Dict[str, Any]]:
+        """Find a booking by its ID. Returns None if not found."""
+
+    @abstractmethod
+    async def find_for_user(
+        self,
+        user_id: str,
+        role: str,
+        status_filter: Optional[str] = None,
+        page: int = 1,
+        limit: int = 20,
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """
+        Return (bookings_page, total_count) for a given user/role.
+        Handles acharya profile lookup internally.
+        """
+
+    @abstractmethod
+    async def update_status(
+        self,
+        booking_id: str,
+        status: str,
+        extra_fields: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Update booking status and optional extra fields. Returns True on success."""
+
+    @abstractmethod
+    async def update_attendance(
+        self,
+        booking_id: str,
+        attendance: Dict[str, Any],
+    ) -> bool:
+        """Persist attendance confirmation dict. Returns True on success."""
+
+    @abstractmethod
+    async def find_with_details(self, booking_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch a booking with joined pooja, acharya, and grihasta details.
+        Equivalent to the current multi-stage $lookup aggregation.
+        """
+
+
+class IUserRepository(ABC):
+    """
+    Abstract data access contract for user lookups.
+    Separates user/profile resolution from route handlers.
+    """
+
+    @abstractmethod
+    async def find_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Find user by ID string. Returns None if not found."""
+
+    @abstractmethod
+    async def find_acharya_profile(
+        self,
+        user_id: Optional[str] = None,
+        profile_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Resolve acharya profile by user_id or profile _id.
+        Used to normalize the acharya identity in booking flows.
+        """

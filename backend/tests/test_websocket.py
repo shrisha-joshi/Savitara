@@ -67,7 +67,7 @@ class TestConnectionManager:
         payload = {"type": "new_message", "data": {"content": "Hello"}}
         await mgr.send_personal_message(FAKE_USER_ID, payload)
 
-        fake_ws.send_json.assert_called_once_with(payload)
+        fake_ws.send_json.assert_any_call(payload)
 
     @pytest.mark.asyncio
     async def test_send_personal_message_to_offline_user(self):

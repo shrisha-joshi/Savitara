@@ -13,6 +13,7 @@ from pathlib import Path
 from app.core.config import get_settings
 from app.core.exceptions import ExternalServiceError
 from app.core.interfaces import INotificationService
+from app.utils.circuit_breaker import notification_circuit, CircuitState
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -87,8 +88,16 @@ class NotificationService(INotificationService):
             Message ID if successful
 
         Raises:
-            ExternalServiceError: If notification sending fails
+            ExternalServiceError: If notification sending fails or circuit is open
         """
+        # Circuit breaker guard — fail fast if Firebase is degraded
+        if notification_circuit.state == CircuitState.OPEN:
+            logger.warning("Notification circuit is OPEN — dropping single notification")
+            raise ExternalServiceError(
+                service_name="Firebase",
+                details={"type": "circuit_open", "error": "Circuit breaker open"},
+            )
+
         # Check if Firebase is initialized
         if not self._ensure_initialized():
             logger.warning("Firebase not initialized - notification not sent")
@@ -126,17 +135,20 @@ class NotificationService(INotificationService):
 
             # Send message
             response = messaging.send(message)
+            notification_circuit._record_success()  # noqa: SLF001
 
             logger.info(f"Notification sent successfully: {response}")
             return response
 
         except messaging.UnregisteredError:
+            # Invalid token is a client error — don’t penalise circuit
             logger.warning(f"FCM token is invalid or unregistered: {token[:20]}...")
             raise ExternalServiceError(
                 service_name="Firebase",
                 details={"error": "Invalid or expired FCM token"},
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — boundary: surface Firebase errors
+            notification_circuit._record_failure(e)  # noqa: SLF001
             logger.error(f"Failed to send notification: {e}", exc_info=True)
             raise ExternalServiceError(
                 service_name="Firebase", details={"error": str(e)}
@@ -183,6 +195,14 @@ class NotificationService(INotificationService):
         Returns:
             Results with success/failure counts
         """
+        # Circuit breaker guard — fail fast if Firebase is degraded
+        if notification_circuit.state == CircuitState.OPEN:
+            logger.warning("Notification circuit OPEN — skipping multicast")
+            raise ExternalServiceError(
+                service_name="Firebase",
+                details={"type": "circuit_open", "error": "Circuit breaker open"},
+            )
+
         # Check if Firebase is initialized
         if not self._ensure_initialized():
             logger.warning("Firebase not initialized - multicast notification not sent")
@@ -238,6 +258,7 @@ class NotificationService(INotificationService):
                 ]
                 logger.warning(f"Failed tokens: {failed_tokens}")
 
+            notification_circuit._record_success()  # noqa: SLF001
             return {
                 "success_count": response.success_count,
                 "failure_count": response.failure_count,
@@ -249,7 +270,8 @@ class NotificationService(INotificationService):
                 ],
             }
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — boundary: record failure and surface as service error
+            notification_circuit._record_failure(e)  # noqa: SLF001
             logger.error(f"Multicast notification failed: {e}", exc_info=True)
             raise ExternalServiceError(
                 service_name="Firebase", details={"error": str(e)}

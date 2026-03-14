@@ -70,11 +70,21 @@ class InsufficientPermissionsError(SavitaraException):
 class PermissionDeniedError(SavitaraException):
     """Permission denied"""
 
-    def __init__(self, message: str = "Permission denied"):
+    def __init__(
+        self,
+        message: str = "Permission denied",
+        action: Optional[str] = None,
+    ):
+        details: Dict[str, Any] = {}
+        if action:
+            details["action"] = action
+            if message == "Permission denied":
+                message = f"Permission denied: {action}"
         super().__init__(
             message=message,
             error_code="AUTH_004",
             status_code=status.HTTP_403_FORBIDDEN,
+            details=details,
         )
 
 
@@ -127,13 +137,19 @@ class PaymentFailedError(SavitaraException):
     """Payment processing failed"""
 
     def __init__(
-        self, message: str = "Payment processing failed", details: Optional[Dict] = None
+        self,
+        message: str = "Payment processing failed",
+        details: Optional[Dict] = None,
+        order_id: Optional[str] = None,
     ):
+        _details = details or {}
+        if order_id:
+            _details["order_id"] = order_id
         super().__init__(
             message=message,
             error_code="BKG_003",
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            details=details,
+            details=_details,
         )
 
 

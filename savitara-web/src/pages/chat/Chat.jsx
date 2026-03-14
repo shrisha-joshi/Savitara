@@ -1,16 +1,12 @@
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import AttachFileIcon from '@mui/icons-material/AttachFile';
 import BlockIcon from '@mui/icons-material/Block';
 import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
-import DoneIcon from '@mui/icons-material/Done';
-import DoneAllIcon from '@mui/icons-material/DoneAll';
 import ForwardIcon from '@mui/icons-material/Forward';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import MicIcon from '@mui/icons-material/Mic';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
-import ReplayIcon from '@mui/icons-material/Replay';
 import ReportIcon from '@mui/icons-material/Report';
 import SearchIcon from '@mui/icons-material/Search';
 import SendIcon from '@mui/icons-material/Send';
@@ -36,16 +32,13 @@ import {
 import PropTypes from 'prop-types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import EmojiPickerButton from '../../components/EmojiPickerButton';
+import ChatMessageBubble from '../../components/chat/ChatMessageBubble';
 import ForwardMessageDialog from '../../components/ForwardMessageDialog';
-import MessageReactions from '../../components/MessageReactions';
 import MessageSkeleton from '../../components/MessageSkeleton';
-import VoiceMessagePlayer from '../../components/VoiceMessagePlayer';
 import VoiceRecorder from '../../components/VoiceRecorder';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import api from '../../services/api';
-import { formatLocalTime } from '../../utils/timeFormat';
 
 // ── Module-level message state updaters (avoid deep nesting in component) ──
 function applyAddReaction(messages, messageId, reaction) {
@@ -77,59 +70,6 @@ function applyLocalReadState(messages, userId) {
     msg.sender_id !== userId && !msg.read_at && msg.status !== 'read'
       ? { ...msg, status: 'read', read_at: new Date().toISOString() }
       : msg
-  );
-}
-
-// ── Pure render helper: message content based on type ─────────────────────
-function renderMessageContent(msg, isMe) {
-  if (msg.message_type === 'voice') {
-    return (
-      <VoiceMessagePlayer
-        audioUrl={msg.media_url}
-        duration={msg.duration_s}
-        waveform={msg.waveform}
-      />
-    );
-  }
-  if (msg.message_type === 'image') {
-    return (
-      <Box
-        component="img"
-        src={msg.media_url}
-        alt="Image message"
-        sx={{ maxWidth: '100%', borderRadius: 1, cursor: 'pointer', '&:hover': { opacity: 0.9 } }}
-        onClick={() => window.open(msg.media_url, '_blank')}
-      />
-    );
-  }
-  if (msg.message_type === 'file') {
-    return (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <AttachFileIcon fontSize="small" />
-        <Typography
-          variant="body2"
-          component="a"
-          href={msg.media_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          sx={{ color: isMe ? 'white' : 'primary.main', textDecoration: 'underline' }}
-        >
-          {msg.file_name || 'Download File'}
-        </Typography>
-      </Box>
-    );
-  }
-  return (
-    <>
-      {msg.forwarded_from && (
-        <Box sx={{ borderLeft: 2, borderColor: isMe ? 'rgba(255,255,255,0.5)' : 'primary.main', pl: 1, mb: 0.5 }}>
-          <Typography variant="caption" sx={{ opacity: 0.8 }}>
-            Forwarded from {msg.forwarded_from?.name || 'Unknown'}
-          </Typography>
-        </Box>
-      )}
-      <Typography variant="body1">{msg.content}</Typography>
-    </>
   );
 }
 
@@ -777,83 +717,18 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => { // 
             );
           }
           
-          return <>{filteredMessages.map((msg) => {
-          const isMe = msg.sender_id === user.id;
-          const msgTime = msg.created_at || msg.timestamp;
-          const msgId = msg.id || msg._id;
-          return (
-            <Box 
-              key={msgId || `${msg.sender_id}-${msgTime}`}
-              onContextMenu={(e) => handleContextMenu(e, msg)}
-              sx={{ 
-                alignSelf: isMe ? 'flex-end' : 'flex-start',
-                maxWidth: '70%',
-                mb: 1.5,
-                p: 1.5,
-                bgcolor: isMe ? 'primary.main' : 'white',
-                color: isMe ? 'white' : 'text.primary',
-                borderRadius: 2,
-                boxShadow: 1,
-                cursor: 'context-menu',
-                position: 'relative',
-                '&:hover .emoji-picker': {
-                  opacity: 1
-                }
-              }}
-            >
-              {/* Message content - voice / image / file / text */}
-              {renderMessageContent(msg, isMe)}
-              
-              {/* Reactions display */}
-              {msg.reactions && msg.reactions.length > 0 && (
-                <MessageReactions
-                  reactions={msg.reactions}
-                  currentUserId={user.id}
-                  onReact={(emoji) => handleReact(msgId, emoji)}
-                  onUnreact={(emoji) => handleUnreact(msgId, emoji)}
-                />
-              )}
-              
-              {/* Bottom row: timestamp, read receipts, emoji picker */}
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5, gap: 0.5 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                    {msgTime ? formatLocalTime(msgTime, user?.location?.timezone) : ''}
-                  </Typography>
-                  {isMe && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                      {msg.status === 'read' && <DoneAllIcon sx={{ fontSize: 14, color: '#4fc3f7' }} />}
-                      {msg.status === 'delivered' && <DoneAllIcon sx={{ fontSize: 14, opacity: 0.7 }} />}
-                      {msg.status === 'sent' && <DoneIcon sx={{ fontSize: 14, opacity: 0.7 }} />}
-                      {msg.status === 'sending' && (
-                        <CircularProgress size={10} sx={{ color: 'rgba(255,255,255,0.65)' }} />
-                      )}
-                      {msg.status === 'failed' && (
-                        <IconButton
-                          size="small"
-                          onClick={() => handleRetryFailed(msg._tempId)}
-                          title="Send failed — tap to retry"
-                          sx={{ p: 0, color: '#ff5252', '&:hover': { color: '#ff1744' } }}
-                        >
-                          <ReplayIcon sx={{ fontSize: 14 }} />
-                        </IconButton>
-                      )}
-                      {!msg.status && <DoneIcon sx={{ fontSize: 14, opacity: 0.4 }} />}
-                    </Box>
-                  )}
-                </Box>
-                
-                {/* Emoji picker button (shows on hover) */}
-                <Box className="emoji-picker" sx={{ opacity: 0, transition: 'opacity 0.2s' }}>
-                  <EmojiPickerButton
-                    onSelect={(emoji) => handleReact(msgId, emoji)}
-                    size="small"
-                  />
-                </Box>
-              </Box>
-            </Box>
-          );
-          })}</>
+          return <>{filteredMessages.map((msg) => (
+            <ChatMessageBubble
+              key={msg.id || msg._id || `${msg.sender_id}-${msg.created_at || msg.timestamp}`}
+              msg={msg}
+              currentUserId={user?.id}
+              timezone={user?.location?.timezone}
+              onContextMenu={handleContextMenu}
+              onReact={handleReact}
+              onUnreact={handleUnreact}
+              onRetryFailed={handleRetryFailed}
+            />
+          ))}</>
         })()}
         
         {isTyping && (

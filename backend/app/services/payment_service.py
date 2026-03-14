@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from app.core.config import get_settings
 from app.core.exceptions import PaymentFailedError
 from app.core.interfaces import IPaymentService
+from app.utils.circuit_breaker import payment_circuit
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -51,8 +52,18 @@ class RazorpayService(IPaymentService):
             Order details with order_id
 
         Raises:
-            PaymentFailedError: If order creation fails
+            PaymentFailedError: If order creation fails or circuit is open
         """
+        from app.utils.circuit_breaker import CircuitState
+
+        # Reject immediately if payment circuit is open
+        if payment_circuit.state == CircuitState.OPEN:
+            logger.error("Payment gateway circuit is OPEN — rejecting order creation")
+            raise PaymentFailedError(
+                order_id="",
+                details={"error": "Payment gateway temporarily unavailable", "type": "circuit_open"},
+            )
+
         try:
             # Convert to paise (smallest currency unit) — use round() to avoid float truncation
             amount_paise = round(amount * 100)
@@ -69,8 +80,9 @@ class RazorpayService(IPaymentService):
             if notes:
                 order_data["notes"] = notes
 
-            # Create order
+            # Create order via Razorpay SDK
             order = self.client.order.create(data=order_data)
+            payment_circuit._record_success()  # noqa: SLF001
 
             logger.info(f"Razorpay order created: {order['id']}")
 
@@ -86,11 +98,13 @@ class RazorpayService(IPaymentService):
             }
 
         except razorpay.errors.BadRequestError as e:
+            payment_circuit._record_failure(e)  # noqa: SLF001
             logger.error(f"Razorpay bad request: {e}")
             raise PaymentFailedError(
                 order_id="", details={"error": str(e), "type": "bad_request"}
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — boundary: surface Razorpay SDK errors
+            payment_circuit._record_failure(e)  # noqa: SLF001
             logger.error(f"Razorpay order creation failed: {e}", exc_info=True)
             raise PaymentFailedError(order_id="", details={"error": str(e)})
 

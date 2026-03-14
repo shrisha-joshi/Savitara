@@ -579,3 +579,105 @@ class TestAttendanceConfirmationBothParties:
             )
         finally:
             fastapi_app.dependency_overrides = {}
+
+
+# ---------------------------------------------------------------------------
+# TestCriticalBookingFlowValidation
+# ---------------------------------------------------------------------------
+
+class TestCriticalBookingFlowValidation:
+    """Critical-path validation tests for Acharya booking flow hardening."""
+
+    @pytest.mark.asyncio
+    async def test_update_status_invalid_booking_id_returns_400(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        acharya_user = {"id": str(ObjectId()), "role": "acharya", "email": "a@test.com"}
+        fastapi_app.dependency_overrides[gcu] = lambda: acharya_user
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            resp = await client.put(
+                "/api/v1/bookings/not-an-object-id/status",
+                json={"status": "confirmed"},
+            )
+            assert resp.status_code == 400
+            body = resp.json()
+            assert body.get("success") is False
+            assert body.get("error", {}).get("code") == "VAL_003"
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_create_payment_order_invalid_booking_id_returns_400(self, client, test_db):
+        from app.core.security import get_current_grihasta
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        user = {"id": str(ObjectId()), "role": "grihasta", "email": "g@test.com"}
+        fastapi_app.dependency_overrides[get_current_grihasta] = lambda: user
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            resp = await client.post(
+                "/api/v1/bookings/not-an-object-id/create-payment-order",
+            )
+            assert resp.status_code == 400
+            body = resp.json()
+            assert body.get("success") is False
+            assert body.get("error", {}).get("code") == "VAL_003"
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_acharya_cannot_jump_requested_to_completed(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        acharya_user_oid = ObjectId()
+        acharya_profile_oid = ObjectId()
+        booking_oid = ObjectId()
+        grihasta_oid = ObjectId()
+
+        await test_db.acharya_profiles.insert_one(
+            {
+                "_id": acharya_profile_oid,
+                "user_id": acharya_user_oid,
+                "name": "Pandit Test",
+            }
+        )
+        await test_db.bookings.insert_one(
+            {
+                "_id": booking_oid,
+                "grihasta_id": grihasta_oid,
+                "acharya_id": acharya_profile_oid,
+                "status": "requested",
+                "booking_mode": "request",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        acharya_user = {
+            "id": str(acharya_user_oid),
+            "role": "acharya",
+            "email": "acharya@test.com",
+        }
+
+        fastapi_app.dependency_overrides[gcu] = lambda: acharya_user
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            resp = await client.put(
+                f"/api/v1/bookings/{booking_oid}/status",
+                json={"status": "completed"},
+            )
+            assert resp.status_code == 400
+            body = resp.json()
+            assert body.get("success") is False
+            assert body.get("error", {}).get("code") == "VAL_003"
+        finally:
+            fastapi_app.dependency_overrides = {}

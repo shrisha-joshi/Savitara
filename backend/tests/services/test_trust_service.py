@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from bson import ObjectId
 
-from app.services.trust_service import TrustService
+from app.services.trust_service import TrustScoreService as TrustService
 from app.models.trust import TrustScoreComponents, VerificationLevel, DisputeStatus
 
 

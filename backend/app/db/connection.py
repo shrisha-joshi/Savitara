@@ -455,6 +455,26 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             expireAfterSeconds=0,
         )
 
+        # Reliability: Durable outbox events
+        await cls._create_index_safe(
+            cls.db.outbox_events,
+            [("status", 1), ("next_attempt_at", 1), ("created_at", 1)],
+        )
+        await cls._create_index_safe(
+            cls.db.outbox_events,
+            "dedupe_key",
+            unique=True,
+            sparse=True,
+        )
+        await cls._create_index_safe(
+            cls.db.outbox_events,
+            "locked_at",
+        )
+        await cls._create_index_safe(
+            cls.db.outbox_events,
+            "processed_at",
+        )
+
         # Blocked users indexes
         await cls._create_index_safe(
             cls.db.blocked_users,

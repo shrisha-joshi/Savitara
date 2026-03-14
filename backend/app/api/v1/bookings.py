@@ -165,6 +165,7 @@ from app.services.booking_state_machine import (  # noqa: E402, PLC0415
     emit_booking_update,
 )
 from app.services.idempotency_service import idempotency_service, IdempotencyContext
+from app.services.outbox_dispatcher import enqueue_fcm_single, enqueue_ws_personal
 
 # Legacy transition table retained for reference only.
 # Enforcement is now handled by booking_state_machine.VALID_TRANSITIONS.
@@ -428,20 +429,23 @@ def _create_razorpay_order(
 
 
 async def _send_booking_notification(
-    acharya: dict, current_user: dict, pooja: Optional[dict], booking_id: str
+    db: AsyncIOMotorDatabase,
+    acharya: dict,
+    current_user: dict,
+    pooja: Optional[dict],
+    booking_id: str,
 ):
     """Send notification to Acharya for new booking request"""
     try:
-        from app.services.notification_service import NotificationService
-
-        notification_service = NotificationService()
         if acharya.get("fcm_token"):
             pooja_name = pooja.get("name") if pooja else "custom service"
-            await notification_service.send_notification_async(
+            await enqueue_fcm_single(
+                db,
                 token=acharya["fcm_token"],
                 title="New Booking Request",
                 body=f"Request from {current_user.get('full_name', 'a user')} for {pooja_name}",
                 data={"type": "booking_request", "booking_id": booking_id},
+                dedupe_key=f"booking_request:{booking_id}:{acharya.get('fcm_token')}",
             )
     except Exception as e:
         logger.warning(f"Failed to send request notification: {e}")
@@ -785,7 +789,7 @@ async def create_booking(
 
         # Send request notification to Acharya
         if booking_data.booking_mode == "request":
-            await _send_booking_notification(acharya, current_user, pooja, str(booking.id))
+            await _send_booking_notification(db, acharya, current_user, pooja, str(booking.id))
 
         response_message = "Booking created. Please complete payment."
         if booking_data.booking_mode == "request":
@@ -849,8 +853,6 @@ async def _notify_booking_status_update(
 ) -> None:
     """Send WS + FCM notifications after a booking status change."""
     try:
-        from app.services.websocket_manager import manager  # noqa: PLC0415
-
         grihasta = await db.users.find_one({"_id": booking.get("grihasta_id")})
         grihasta_id = str(booking.get("grihasta_id"))
         acharya_id = str(booking.get("acharya_id"))
@@ -870,14 +872,23 @@ async def _notify_booking_status_update(
             "message": f"Booking {status_update.status}",
         }
 
-        await manager.send_personal_message(grihasta_id, websocket_data)
-        await manager.send_personal_message(acharya_id, websocket_data)
+        await enqueue_ws_personal(
+            db,
+            user_id=grihasta_id,
+            message=websocket_data,
+            dedupe_key=f"booking_ws:{booking_id}:{grihasta_id}:{status_update.status}",
+        )
+        await enqueue_ws_personal(
+            db,
+            user_id=acharya_id,
+            message=websocket_data,
+            dedupe_key=f"booking_ws:{booking_id}:{acharya_id}:{status_update.status}",
+        )
 
         if payment_required and grihasta and grihasta.get("fcm_token"):
             try:
-                from app.services.notification_service import NotificationService  # noqa: PLC0415
-
-                NotificationService().send_notification(
+                await enqueue_fcm_single(
+                    db,
                     token=grihasta["fcm_token"],
                     title="Booking Approved!",
                     body=f"Acharya approved your request. Amount: \u20B9{status_update.amount}. Please complete payment.",
@@ -886,6 +897,7 @@ async def _notify_booking_status_update(
                         "booking_id": booking_id,
                         "amount": str(status_update.amount),
                     },
+                    dedupe_key=f"booking_payment_required:{booking_id}:{grihasta.get('fcm_token')}",
                 )
             except Exception as fcm_exc:  # noqa: BLE001
                 logger.warning(f"Failed to send FCM notification: {fcm_exc}")
@@ -1306,28 +1318,29 @@ async def verify_payment(
 
         # Send confirmation notifications
         try:
-            from app.services.notification_service import NotificationService
-            from app.services.websocket_manager import manager
-            notification_service = NotificationService()
             # Notify Grihasta
             grihasta = await db.users.find_one({"_id": ObjectId(booking_doc["grihasta_id"])} )
             if grihasta and grihasta.get("fcm_token"):
-                await notification_service.send_notification_async(
+                await enqueue_fcm_single(
+                    db,
                     token=grihasta["fcm_token"],
                     title="Booking Confirmed",
                     body="Your booking is confirmed. Check the app for details.",
                     data={"type": "booking_confirmed", "booking_id": booking_id},
+                    dedupe_key=f"booking_confirmed:{booking_id}:{grihasta.get('fcm_token')}",
                 )
             # Notify Acharya
             acharya_profile = await db.acharya_profiles.find_one({"_id": ObjectId(booking_doc["acharya_id"])} )
             if acharya_profile:
                 acharya = await db.users.find_one({"_id": acharya_profile.get("user_id")} )
                 if acharya and acharya.get("fcm_token"):
-                    await notification_service.send_notification_async(
+                    await enqueue_fcm_single(
+                        db,
                         token=acharya["fcm_token"],
                         title="New Booking Confirmed",
                         body="Booking confirmed with payment",
                         data={"type": "booking_confirmed", "booking_id": booking_id},
+                        dedupe_key=f"booking_confirmed:{booking_id}:{acharya.get('fcm_token')}",
                     )
             # Emit unified booking_update WS event via state machine helper
             await emit_booking_update(
@@ -1484,30 +1497,30 @@ async def _complete_booking_with_notifications(db, booking_id: str, booking_doc:
     await emit_booking_update(booking_id, booking_doc, BookingStatus.COMPLETED.value)
 
     try:
-        from app.services.notification_service import NotificationService
-
-        notification_service = NotificationService()
-
         # Notify Grihasta
         grihasta = await db.users.find_one(
             {"_id": ObjectId(booking_doc["grihasta_id"])}
         )
         if grihasta and grihasta.get("fcm_token"):
-            await notification_service.send_notification_async(
+            await enqueue_fcm_single(
+                db,
                 token=grihasta["fcm_token"],
                 title=BOOKING_COMPLETED,
                 body="Your booking has been completed successfully",
                 data={"type": "booking_completed", "booking_id": booking_id},
+                dedupe_key=f"booking_completed:{booking_id}:{grihasta.get('fcm_token')}",
             )
 
         # Notify Acharya
         acharya = await db.users.find_one({"_id": ObjectId(booking_doc["acharya_id"])})
         if acharya and acharya.get("fcm_token"):
-            await notification_service.send_notification_async(
+            await enqueue_fcm_single(
+                db,
                 token=acharya["fcm_token"],
                 title=BOOKING_COMPLETED,
                 body="Booking completed. Payment will be transferred.",
                 data={"type": "booking_completed", "booking_id": booking_id},
+                dedupe_key=f"booking_completed:{booking_id}:{acharya.get('fcm_token')}",
             )
     except Exception as e:  # noqa: BLE001 — notification failure must not block completion
         logger.warning(f"Failed to send completion notification: {e}")

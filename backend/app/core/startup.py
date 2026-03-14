@@ -3,6 +3,7 @@ Application Startup & Shutdown Logic
 SonarQube: S2095 - Proper resource management
 Extracted from main.py for Single Responsibility Principle (SRP).
 """
+import asyncio
 import logging
 
 from app.core.config import settings
@@ -82,6 +83,7 @@ async def _initialize_services_collection() -> None:
 
     try:
         from app.db.init_services import initialize_services_collection  # type: ignore
+
         await initialize_services_collection(DatabaseManager.db)
     except ImportError:
         logger.warning("Services initialization module not found - skipping")
@@ -117,13 +119,18 @@ async def startup(app) -> None:
         app.state.audit_service = None
         logger.warning("Audit service not initialized - database unavailable")
 
-    # Booking expiry background worker — auto-cancels stale requested/pending_payment bookings
+    # Background workers
     if DatabaseManager.db is not None:
         from app.workers.booking_expiry_worker import start_expiry_worker  # noqa: PLC0415
+        from app.workers.outbox_worker import start_outbox_worker  # noqa: PLC0415
+
         app.state.booking_expiry_task = start_expiry_worker(DatabaseManager.db)
+        app.state.outbox_task = start_outbox_worker(DatabaseManager.db)
         logger.info("Booking expiry worker started")
+        logger.info("Outbox worker started")
     else:
         logger.warning("Booking expiry worker not started - database unavailable")
+        logger.warning("Outbox worker not started - database unavailable")
 
     logger.info("Application startup complete")
 
@@ -134,6 +141,17 @@ async def shutdown(app) -> None:  # noqa: ARG001 - app reserved for future use
     Called from the lifespan context manager.
     """
     logger.info("Shutting down Savitara application...")
+
+    # Graceful background worker shutdown
+    for task_name in ["outbox_task", "booking_expiry_task"]:
+        task = getattr(app.state, task_name, None)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except Exception as e:  # noqa: BLE001
+                logger.warning("%s shutdown error: %s", task_name, e)
+            logger.info("%s cancelled", task_name)
 
     await DatabaseManager.close_database_connection()
     await rate_limiter.close()

@@ -166,7 +166,14 @@ async def get_acharya_trust_score(
         raise HTTPException(status_code=500, detail=f"Failed to calculate trust score: {str(e)}")
 
 
-@router.post("/bookings/{booking_id}/checkpoints/check-in", responses={403: {"description": "Forbidden"}, 404: {"description": "Booking not found"}})
+@router.post(
+    "/bookings/{booking_id}/checkpoints/check-in",
+    responses={
+        400: {"description": "Validation error"},
+        403: {"description": "Forbidden"},
+        404: {"description": "Booking not found"},
+    },
+)
 async def create_check_in_checkpoint(
     booking_id: str,
     current_user: Annotated[User, Depends(get_current_user)],

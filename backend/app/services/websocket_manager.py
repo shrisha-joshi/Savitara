@@ -10,6 +10,7 @@ import asyncio
 import redis.asyncio as redis
 from redis.exceptions import RedisError
 from app.core.config import settings
+from app.utils.logging_config import get_correlation_id, set_correlation_id
 
 logger = logging.getLogger(__name__)
 
@@ -283,11 +284,16 @@ class ConnectionManager:
         or "local" (no Redis, sent only to local connection). Emits lightweight logs for observability.
         """
 
-        if not self.redis_client:
-            return await self._deliver_local(user_id, message)
+        enriched = dict(message)
+        correlation_id = enriched.get("correlation_id") or get_correlation_id()
+        if correlation_id:
+            enriched["correlation_id"] = correlation_id
 
-        message_str = json.dumps(message)
-        return await self._deliver_via_redis(user_id, message, message_str)
+        if not self.redis_client:
+            return await self._deliver_local(user_id, enriched)
+
+        message_str = json.dumps(enriched)
+        return await self._deliver_via_redis(user_id, enriched, message_str)
 
     async def _deliver_offline_messages(self, user_id: str, messages: list[str]) -> None:
         websocket = self.active_connections.get(user_id)
@@ -555,6 +561,10 @@ MESSAGE_HANDLERS = {
 
 async def process_websocket_message(user_id: str, message: dict):
     """Process incoming WebSocket message"""
+    incoming_corr = message.get("correlation_id")
+    if isinstance(incoming_corr, str) and incoming_corr.strip():
+        set_correlation_id(incoming_corr.strip())
+
     message_type = message.get("type")
 
     if not message_type:
@@ -571,3 +581,5 @@ async def process_websocket_message(user_id: str, message: dict):
             logger.exception("Unexpected WS handler error for %s", message_type)
     else:
         logger.warning(f"Unknown message type: {message_type}")
+
+    set_correlation_id("")

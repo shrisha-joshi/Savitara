@@ -80,7 +80,7 @@ Booking API Endpoints
 Handles booking creation, management, and attendance confirmation
 SonarQube: S5659 - Secure OTP generation
 """
-from fastapi import APIRouter, Body, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, status, Query, Header
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import Annotated, Dict, Any, Optional
 import logging
@@ -145,6 +145,7 @@ from app.core.exceptions import (
     SlotUnavailableError,
     PaymentFailedError,
     ValidationError,
+    ConflictError,
 )
 from app.db.connection import get_db
 from app.models.database import Booking, BookingStatus, PaymentStatus, UserRole
@@ -163,6 +164,7 @@ from app.services.booking_state_machine import (  # noqa: E402, PLC0415
     validate_transition as _validate_transition,
     emit_booking_update,
 )
+from app.services.idempotency_service import idempotency_service, IdempotencyContext
 
 # Legacy transition table retained for reference only.
 # Enforcement is now handled by booking_state_machine.VALID_TRANSITIONS.
@@ -657,6 +659,7 @@ async def check_availability(
 )
 async def create_booking(
     booking_data: BookingCreateRequest,
+    idempotency_key: Annotated[Optional[str], Header(alias="X-Idempotency-Key")] = None,
     current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
@@ -670,9 +673,22 @@ async def create_booking(
     4. Create Razorpay order
     5. Create booking record (PENDING_PAYMENT)
     """
+    idempotency_ctx: Optional[IdempotencyContext] = None
     try:
         grihasta_id = _parse_grihasta_id(current_user["id"])
         logger.info(f"Creating booking for grihasta_id: {grihasta_id} (type: {type(grihasta_id)})")
+
+        cached_response, idempotency_ctx = await idempotency_service.begin(
+            db,
+            key=idempotency_key,
+            scope="bookings.create",
+            user_id=current_user["id"],
+            request_hash=idempotency_service.compute_request_hash(
+                booking_data.model_dump(mode="json", exclude_none=False)
+            ),
+        )
+        if cached_response is not None:
+            return StandardResponse(**cached_response)
 
         # 1 & 2. Validate Acharya and Pooja
         acharya, pooja = await _validate_acharya_and_pooja(
@@ -775,7 +791,7 @@ async def create_booking(
         if booking_data.booking_mode == "request":
             response_message = "Booking requested. Waiting for Acharya approval."
 
-        return StandardResponse(
+        response_payload = StandardResponse(
             success=True,
             data={
                 "booking_id": str(booking.id),
@@ -786,10 +802,19 @@ async def create_booking(
             },
             message=response_message,
         )
+        await idempotency_service.complete(
+            db,
+            context=idempotency_ctx,
+            response_payload=response_payload.model_dump(mode="json"),
+            status_code=status.HTTP_201_CREATED,
+        )
+        return response_payload
 
-    except (ResourceNotFoundError, InvalidInputError, SlotUnavailableError):
+    except (ResourceNotFoundError, InvalidInputError, SlotUnavailableError, ConflictError):
+        await idempotency_service.fail(db, context=idempotency_ctx)
         raise
     except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
+        await idempotency_service.fail(db, context=idempotency_ctx)
         logger.error(f"Create booking error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1196,6 +1221,7 @@ async def create_payment_order_for_request(
 async def verify_payment(
     booking_id: str,
     payment_data: PaymentVerificationData,  # ARCH-04: typed model replaces raw dict
+    idempotency_key: Annotated[Optional[str], Header(alias="X-Idempotency-Key")] = None,
     current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
@@ -1207,13 +1233,35 @@ async def verify_payment(
     """
     razorpay_payment_id = payment_data.razorpay_payment_id
     razorpay_signature = payment_data.razorpay_signature
+    idempotency_ctx: Optional[IdempotencyContext] = None
     try:
+        cached_response, idempotency_ctx = await idempotency_service.begin(
+            db,
+            key=idempotency_key,
+            scope="bookings.verify_payment",
+            user_id=current_user["id"],
+            request_hash=idempotency_service.compute_request_hash(
+                {
+                    "booking_id": booking_id,
+                    **payment_data.model_dump(mode="json", exclude_none=False),
+                }
+            ),
+        )
+        if cached_response is not None:
+            return StandardResponse(**cached_response)
+
         # Get booking and validate ownership
         booking_doc = await _fetch_and_validate_booking(booking_id, current_user, db)
 
         # Idempotency guard
         idempotent_response = _check_idempotency(booking_doc, booking_id)
         if idempotent_response:
+            await idempotency_service.complete(
+                db,
+                context=idempotency_ctx,
+                response_payload=idempotent_response.model_dump(mode="json"),
+                status_code=status.HTTP_200_OK,
+            )
             return idempotent_response
 
         # Validate state transition
@@ -1292,7 +1340,7 @@ async def verify_payment(
             logger.warning(f"Failed to send confirmation notifications: {e}")
 
         logger.info(f"Payment verified for booking {booking_id}")
-        return StandardResponse(
+        response_payload = StandardResponse(
             success=True,
             data={
                 "booking_id": booking_id,
@@ -1301,9 +1349,18 @@ async def verify_payment(
             },
             message="Payment verified. Booking confirmed.",
         )
-    except (ResourceNotFoundError, PermissionDeniedError, PaymentFailedError):
+        await idempotency_service.complete(
+            db,
+            context=idempotency_ctx,
+            response_payload=response_payload.model_dump(mode="json"),
+            status_code=status.HTTP_200_OK,
+        )
+        return response_payload
+    except (ResourceNotFoundError, PermissionDeniedError, PaymentFailedError, InvalidInputError, ConflictError):
+        await idempotency_service.fail(db, context=idempotency_ctx)
         raise
     except Exception as e:  # noqa: BLE001 — boundary: log and surface as 500
+        await idempotency_service.fail(db, context=idempotency_ctx)
         logger.error(f"Verify payment error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

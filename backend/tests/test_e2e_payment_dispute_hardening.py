@@ -108,6 +108,9 @@ async def test_e2e_dispute_resolution_survives_refund_and_notify_failures(client
             trust_api,
             "_notify_dispute_parties",
             new=AsyncMock(side_effect=RuntimeError("notify failure")),
+        ), patch(
+            "app.services.audit_service.AuditService.log_action",
+            new=AsyncMock(return_value=None),
         ):
             response = await client.post(
                 f"/api/v1/trust/admin/disputes/{dispute_id}/resolve",

@@ -336,30 +336,6 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => { // 
     scrollToBottom();
   }, [messages]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Ctrl/Cmd + Enter to send message (when focused on input)
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && newMessage.trim()) {
-        e.preventDefault();
-        handleSend();
-      }
-      
-      // Esc to close emoji picker or other dialogs
-      if (e.key === 'Escape') {
-        if (showForwardDialog) {
-          setShowForwardDialog(false);
-        }
-        if (contextMenu !== null) {
-          handleCloseContextMenu();
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [newMessage, showForwardDialog, contextMenu]);
-
   // Debounced typing indicator
   const typingDebounceRef = useRef(null);
   const handleTyping = useCallback(() => {
@@ -543,7 +519,7 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => { // 
     queued.forEach(entry => retrySend(entry));
   }, [isConnected, retrySend]);
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     if (!newMessage.trim()) return;
 
     const receiverId = recipient?.id || recipient?._id || recipientId;
@@ -600,7 +576,38 @@ const Chat = ({ inLayout = false, conversationId: propConversationId }) => { // 
     } finally {
       setSending(false);
     }
-  };
+  }, [
+    activeConversationId,
+    newMessage,
+    recipient,
+    recipientId,
+    sendTypingIndicator,
+    user?.id,
+  ]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl/Cmd + Enter to send message (when focused on input)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && newMessage.trim()) {
+        e.preventDefault();
+        handleSend();
+      }
+
+      // Esc to close emoji picker or other dialogs
+      if (e.key === 'Escape') {
+        if (showForwardDialog) {
+          setShowForwardDialog(false);
+        }
+        if (contextMenu !== null) {
+          handleCloseContextMenu();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [newMessage, showForwardDialog, contextMenu, handleSend]);
 
   // Add reaction to a message
   const handleReact = async (messageId, emoji) => {

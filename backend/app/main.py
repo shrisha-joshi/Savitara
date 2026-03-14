@@ -107,6 +107,20 @@ API_DOCS_PATH = "/api/docs"
 API_REDOC_PATH = "/api/redoc"
 DOCS_PATH = "/docs"
 
+_HTTP_ERROR_CODE_MAP = {
+    400: "REQ_400",
+    401: "AUTH_401",
+    403: "AUTH_403",
+    404: "RES_404",
+    409: "CONFLICT_409",
+    422: "VAL_422",
+    429: "RATE_LIMIT_001",
+    500: "SERVER_500",
+    502: "UPSTREAM_502",
+    503: "SERVICE_503",
+    504: "UPSTREAM_504",
+}
+
 
 # Startup/shutdown logic lives in app.core.startup (SRP).
 # Lifespan context manager lives in app.core.lifespan (SRP).
@@ -203,19 +217,45 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Handle HTTP exceptions with CORS headers"""
-    # Handle structured detail from get_db()
-    if isinstance(exc.detail, dict):
-        content = exc.detail
+    correlation_id = getattr(request.state, "correlation_id", None)
+    request_id = getattr(request.state, "request_id", None)
+    default_code = _HTTP_ERROR_CODE_MAP.get(exc.status_code, f"HTTP_{exc.status_code}")
+
+    if isinstance(exc.detail, dict) and "error" in exc.detail:
+        content = {
+            "success": exc.detail.get("success", False),
+            "error": {
+                "code": exc.detail.get("error", {}).get("code", default_code),
+                "message": exc.detail.get("error", {}).get("message", "Request failed"),
+                "details": exc.detail.get("error", {}).get("details", {}),
+            },
+            "timestamp": time.time(),
+            "request_id": request_id,
+            "correlation_id": correlation_id,
+        }
+    elif isinstance(exc.detail, dict):
+        content = {
+            "success": False,
+            "error": {
+                "code": default_code,
+                "message": exc.detail.get("message") or exc.detail.get("detail") or "Request failed",
+                "details": exc.detail,
+            },
+            "timestamp": time.time(),
+            "request_id": request_id,
+            "correlation_id": correlation_id,
+        }
     else:
         content = {
             "success": False,
             "error": {
-                "code": f"HTTP_{exc.status_code}",
-                "message": exc.detail,
+                "code": default_code,
+                "message": str(exc.detail),
                 "details": {},
             },
             "timestamp": time.time(),
-            "request_id": getattr(request.state, "request_id", None),
+            "request_id": request_id,
+            "correlation_id": correlation_id,
         }
 
     response = JSONResponse(status_code=exc.status_code, content=content)

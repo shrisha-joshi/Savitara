@@ -443,6 +443,18 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             cls.db.coupon_usage, [("user_id", 1), ("coupon_id", 1)], unique=True
         )
 
+        # Reliability: Idempotency key records
+        await cls._create_index_safe(
+            cls.db.idempotency_keys,
+            [("scope", 1), ("user_id", 1), ("key", 1)],
+            unique=True,
+        )
+        await cls._create_index_safe(
+            cls.db.idempotency_keys,
+            "expires_at",
+            expireAfterSeconds=0,
+        )
+
         # Blocked users indexes
         await cls._create_index_safe(
             cls.db.blocked_users,

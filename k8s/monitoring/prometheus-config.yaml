@@ -116,6 +116,32 @@ data:
           summary: "Service is down"
           description: "{{ $labels.job }} has been down for more than 2 minutes"
 
+      - alert: ApiErrorBudgetBurnFast
+        expr: (
+          rate(http_requests_total{status=~"5.."}[5m])
+          /
+          rate(http_requests_total[5m])
+        ) > (14 * 0.001)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Fast error budget burn detected"
+          description: "API 5xx ratio indicates >14x burn rate against 99.9% SLO"
+
+      - alert: ApiErrorBudgetBurnSlow
+        expr: (
+          rate(http_requests_total{status=~"5.."}[30m])
+          /
+          rate(http_requests_total[30m])
+        ) > (6 * 0.001)
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow error budget burn detected"
+          description: "API 5xx ratio indicates >6x burn rate against 99.9% SLO"
+
 ---
 apiVersion: v1
 kind: ConfigMap

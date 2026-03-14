@@ -279,6 +279,18 @@ class RequiredFieldMissingError(SavitaraException):
         )
 
 
+class ConflictError(SavitaraException):
+    """Conflict error (e.g., concurrent state/idempotency collision)."""
+
+    def __init__(self, message: str = "Conflict", details: Optional[Dict] = None):
+        super().__init__(
+            message=message,
+            error_code="CONFLICT_001",
+            status_code=status.HTTP_409_CONFLICT,
+            details=details,
+        )
+
+
 # Database Exceptions
 class DatabaseError(SavitaraException):
     """Database operation failed"""
@@ -298,12 +310,22 @@ class DatabaseError(SavitaraException):
 class ExternalServiceError(SavitaraException):
     """External service error"""
 
-    def __init__(self, service: str, message: str = "External service error"):
+    def __init__(
+        self,
+        service: Optional[str] = None,
+        message: str = "External service error",
+        service_name: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        resolved_service = service_name or service or "external_service"
+        resolved_details: Dict[str, Any] = {"service": resolved_service}
+        if details:
+            resolved_details.update(details)
         super().__init__(
             message=message,
             error_code="EXT_001",
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            details={"service": service},
+            details=resolved_details,
         )
 
 

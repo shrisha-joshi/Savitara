@@ -5,19 +5,136 @@ Extracted from main.py for Single Responsibility Principle (SRP).
 All middleware is registered in one place via register_middleware().
 """
 import logging
+import re
 import time
 import uuid
+from typing import Optional
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.core.config import settings
+from app.core.security import SecurityManager
 from app.middleware.compression import CompressionMiddleware
+from app.middleware.rate_limit import rate_limiter
 from app.middleware.security_headers import SecurityHeadersMiddleware
-from app.utils.logging_config import set_correlation_id
+from app.utils.logging_config import set_correlation_id, set_user_id
 
 logger = logging.getLogger(__name__)
+
+try:
+    from prometheus_client import Counter, Histogram
+
+    API_REQUESTS_TOTAL = Counter(
+        "savitara_api_requests_total",
+        "Total backend API requests",
+        ["method", "endpoint", "status"],
+    )
+    API_REQUEST_DURATION_SECONDS = Histogram(
+        "savitara_api_request_duration_seconds",
+        "Backend API request duration in seconds",
+        ["method", "endpoint", "status"],
+        buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10),
+    )
+    _API_METRICS_ENABLED = True
+except Exception:  # pragma: no cover
+    _API_METRICS_ENABLED = False
+
+
+def _extract_user_id_from_bearer(request: Request) -> Optional[str]:
+    """Best-effort extraction of user_id from bearer token for rate-limit bucketing."""
+    authorization = request.headers.get("authorization", "")
+    if not authorization.startswith("Bearer "):
+        return None
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
+        return None
+    try:
+        payload = SecurityManager.verify_token(token)
+        sub = payload.get("sub")
+        return str(sub) if sub else None
+    except Exception:
+        return None
+
+
+def _device_fingerprint(request: Request) -> str:
+    """Resolve device fingerprint from common headers with conservative fallback."""
+    device = (
+        request.headers.get("X-Device-Fingerprint")
+        or request.headers.get("X-Device-Id")
+        or request.headers.get("X-Client-Device")
+        or "unknown-device"
+    )
+    return device[:128]
+
+
+def _normalize_endpoint(path: str) -> str:
+    """Reduce path cardinality for metrics labels."""
+    normalized = re.sub(r"/[0-9a-fA-F]{24}(?=/|$)", "/:id", path)
+    normalized = re.sub(r"/\d+(?=/|$)", "/:num", normalized)
+    return normalized
+
+
+async def _enforce_rate_limit(request: Request, user_id: Optional[str]) -> None:
+    """Apply composite distributed rate limiting for incoming request."""
+    if not settings.ENABLE_RATE_LIMITING:
+        return
+
+    client_ip = request.client.host if request.client else "unknown-ip"
+    device_fp = _device_fingerprint(request)
+    path = request.url.path
+    limit = (
+        settings.RATE_LIMIT_AUTH_PER_MINUTE
+        if path.startswith("/api/v1/auth")
+        else settings.RATE_LIMIT_PER_MINUTE
+    )
+    principal = user_id or "anonymous"
+    bucket_key = (
+        f"rate:v2:u:{principal}:ip:{client_ip}:d:{device_fp}:"
+        f"m:{request.method}:p:{path}"
+    )
+
+    allowed = await rate_limiter.check_rate_limit(bucket_key, limit=limit, window=60)
+    if allowed:
+        return
+
+    from fastapi import HTTPException, status as http_status  # noqa: PLC0415
+
+    raise HTTPException(
+        status_code=http_status.HTTP_429_TOO_MANY_REQUESTS,
+        detail={
+            "success": False,
+            "error": {
+                "code": "RATE_LIMIT_001",
+                "message": "Too many requests. Please try again later.",
+                "details": {
+                    "limit": limit,
+                    "window_seconds": 60,
+                    "dimensions": ["user", "ip", "device", "method", "path"],
+                },
+            },
+        },
+    )
+
+
+def _record_api_metrics(request: Request, response_status: int, process_time: float) -> None:
+    """Emit per-endpoint request count/latency metrics for SLO dashboards."""
+    if not (_API_METRICS_ENABLED and request.url.path.startswith("/api/")):
+        return
+
+    endpoint = _normalize_endpoint(request.url.path)
+    status_code = str(response_status)
+    API_REQUESTS_TOTAL.labels(
+        method=request.method,
+        endpoint=endpoint,
+        status=status_code,
+    ).inc()
+    API_REQUEST_DURATION_SECONDS.labels(
+        method=request.method,
+        endpoint=endpoint,
+        status=status_code,
+    ).observe(process_time)
 
 
 def register_middleware(app: FastAPI) -> None:
@@ -84,6 +201,11 @@ def register_middleware(app: FastAPI) -> None:
         request.state.correlation_id = correlation_id
         set_correlation_id(correlation_id)
 
+        user_id = _extract_user_id_from_bearer(request)
+        request.state.user_id = user_id
+        set_user_id(user_id or "")
+        await _enforce_rate_limit(request, user_id)
+
         start_time = time.time()
         response = await call_next(request)
         process_time = time.time() - start_time
@@ -94,6 +216,8 @@ def register_middleware(app: FastAPI) -> None:
         # Fix for Firebase Auth cross-origin popup
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
 
+        _record_api_metrics(request, response.status_code, process_time)
+
         logger.info(
             "Request: %s %s — Status: %s — Duration: %.3fs — Request-ID: %s",
             request.method,
@@ -103,5 +227,6 @@ def register_middleware(app: FastAPI) -> None:
             request_id,
         )
         set_correlation_id("")
+        set_user_id("")
 
         return response

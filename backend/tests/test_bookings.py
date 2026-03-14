@@ -345,6 +345,7 @@ class TestPaymentIdempotency:
                     "razorpay_payment_id": "pay_test_123",
                     "razorpay_signature": "sig_duplicate",
                 },
+                headers={"X-Idempotency-Key": "pay-verify-idem-001"},
             )
             assert response.status_code == 200
             body = response.json()
@@ -354,6 +355,136 @@ class TestPaymentIdempotency:
             assert "already" in msg or data_status == "confirmed", (
                 f"Expected idempotency guard message or confirmed status, got: {body!r}"
             )
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_verify_payment_requires_idempotency_key(self, client, test_db):
+        """Authenticated payment verify must require X-Idempotency-Key header."""
+        from app.core.security import get_current_grihasta
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        grihasta_oid = ObjectId()
+        booking_oid = ObjectId()
+        await test_db.bookings.insert_one({
+            "_id": booking_oid,
+            "grihasta_id": grihasta_oid,
+            "acharya_id": ObjectId(),
+            "status": "confirmed",
+            "payment_status": "completed",
+            "razorpay_order_id": "order_test_123",
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
+        })
+
+        fastapi_app.dependency_overrides[get_current_grihasta] = lambda: {
+            "id": str(grihasta_oid),
+            "role": "grihasta",
+            "email": "g@example.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            response = await client.post(
+                f"/api/v1/bookings/{booking_oid}/payment/verify",
+                json={
+                    "razorpay_payment_id": "pay_test_123",
+                    "razorpay_signature": "sig_duplicate",
+                },
+            )
+            assert response.status_code == 400
+            body = response.json()
+            assert body.get("error", {}).get("code") == "VAL_003"
+            assert "Idempotency" in body.get("error", {}).get("message", "")
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_verify_payment_idempotency_key_payload_mismatch_conflict(self, client, test_db):
+        """Reusing the same key with different payload must return HTTP 409 conflict."""
+        from app.core.security import get_current_grihasta
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        grihasta_oid = ObjectId()
+        booking_oid = ObjectId()
+        await test_db.bookings.insert_one({
+            "_id": booking_oid,
+            "grihasta_id": grihasta_oid,
+            "acharya_id": ObjectId(),
+            "status": "confirmed",
+            "payment_status": "completed",
+            "razorpay_order_id": "order_test_123",
+            "start_otp": "123456",
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
+        })
+
+        fastapi_app.dependency_overrides[get_current_grihasta] = lambda: {
+            "id": str(grihasta_oid),
+            "role": "grihasta",
+            "email": "g@example.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            headers = {"X-Idempotency-Key": "pay-verify-idem-conflict-001"}
+            first = await client.post(
+                f"/api/v1/bookings/{booking_oid}/payment/verify",
+                json={
+                    "razorpay_payment_id": "pay_test_123",
+                    "razorpay_signature": "sig_duplicate",
+                },
+                headers=headers,
+            )
+            assert first.status_code == 200
+
+            second = await client.post(
+                f"/api/v1/bookings/{booking_oid}/payment/verify",
+                json={
+                    "razorpay_payment_id": "pay_test_999",
+                    "razorpay_signature": "sig_changed",
+                },
+                headers=headers,
+            )
+            assert second.status_code == 409
+            body = second.json()
+            assert body.get("error", {}).get("code") == "CONFLICT_001"
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+
+class TestCreateBookingIdempotency:
+    """POST /api/v1/bookings strict idempotency header behavior."""
+
+    @pytest.mark.asyncio
+    async def test_create_booking_requires_idempotency_key(self, client, test_db):
+        from app.core.security import get_current_grihasta
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        fastapi_app.dependency_overrides[get_current_grihasta] = lambda: {
+            "id": str(ObjectId()),
+            "role": "grihasta",
+            "email": "g@example.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        booking_data = {
+            "acharya_id": str(ObjectId()),
+            "service_name": "Ganesh Pooja",
+            "booking_type": "only",
+            "booking_mode": "instant",
+            "date": "2026-12-15",
+            "time": "10:00",
+        }
+
+        try:
+            response = await client.post("/api/v1/bookings", json=booking_data)
+            assert response.status_code == 400
+            body = response.json()
+            assert body.get("error", {}).get("code") == "VAL_003"
         finally:
             fastapi_app.dependency_overrides = {}
 

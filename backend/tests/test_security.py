@@ -36,6 +36,14 @@ class TestSecurityHeaders:
         # Should not contain version numbers
         assert "uvicorn" not in server_header.lower() or "0." not in server_header
 
+    @pytest.mark.asyncio
+    async def test_correlation_id_echoed(self, client):
+        """Incoming correlation ID should be echoed in response headers."""
+        correlation_id = "corr-test-12345"
+        response = await client.get("/health", headers={"X-Correlation-ID": correlation_id})
+        assert response.status_code == 200
+        assert response.headers.get("x-correlation-id") == correlation_id
+
 
 class TestAuthEdgeCases:
     """Edge-case authentication tests"""
@@ -81,3 +89,16 @@ class TestAuthEdgeCases:
             headers={"Authorization": f"Bearer {long_token}"},
         )
         assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_http_error_taxonomy_shape(self, client):
+        """HTTPException responses should include machine-readable error code + metadata."""
+        response = await client.get("/api/v1/users/me")
+        assert response.status_code == 401
+        body = response.json()
+        assert body.get("success") is False
+        assert isinstance(body.get("error", {}).get("code"), str)
+        assert isinstance(body.get("error", {}).get("message"), str)
+        # request_id/correlation_id fields should exist in the standardized envelope
+        assert "request_id" in body
+        assert "correlation_id" in body

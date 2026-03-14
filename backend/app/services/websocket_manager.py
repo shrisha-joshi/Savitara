@@ -235,21 +235,6 @@ class ConnectionManager:
                     self._log_event("local_failed", user_id=user_id, error=str(e))
                     self.disconnect(user_id)
             return "queued"
-
-    async def emit_to_user(
-        self,
-        user_id: str,
-        event: str,
-        payload: Optional[dict] = None,
-    ) -> str:
-        """Backward-compatible event emitter wrapper for legacy services/tests."""
-        message = {
-            "type": event,
-            **(payload or {}),
-            "timestamp": datetime.now().isoformat(),
-        }
-        return await self.send_personal_message(user_id, message)
-
         channel = f"user:{user_id}"
         message_str = json.dumps(message)
 
@@ -287,6 +272,20 @@ class ConnectionManager:
                     logger.error(f"WS local fallback failed for {user_id}: {e2}")
                     self._log_event("local_fallback_failed", user_id=user_id, error=str(e2))
             return "queued"
+
+    async def emit_to_user(
+        self,
+        user_id: str,
+        event: str,
+        payload: Optional[dict] = None,
+    ) -> str:
+        """Backward-compatible event emitter wrapper for legacy services/tests."""
+        message = {
+            "type": event,
+            **(payload or {}),
+            "timestamp": datetime.now().isoformat(),
+        }
+        return await self.send_personal_message(user_id, message)
 
     async def broadcast(self, message: dict, exclude: List[str] = None):
         """Broadcast message to all connected users (Local Implementation for Phase 2)"""

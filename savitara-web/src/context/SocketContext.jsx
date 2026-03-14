@@ -209,11 +209,9 @@ export const SocketProvider = ({ children }) => {
         connectingRef.current = false;
         return;
       }
-      // In development, if ticket fails (e.g., Redis unavailable), skip WebSocket silently
-      console.debug('[WS] WebSocket ticket unavailable (Redis not running). Skipping WebSocket connection in development.');
-      setIsConnecting(false);
-      connectingRef.current = false;
-      return;
+      // Development fallback: use legacy JWT token query param so WS remains functional
+      console.debug('[WS] Ticket unavailable in development. Falling back to token-based WebSocket auth.');
+      wsAuthParam = `token=${encodeURIComponent(token)}`;
     }
     
     const wsUrl = `${protocol}//${wsHost}/ws/${user.id}?${wsAuthParam}`;

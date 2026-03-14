@@ -826,23 +826,24 @@ async def _enrich_open_chat_message(db, msg: dict) -> dict:
 
 
 async def _broadcast_message_via_websocket(
-    message_data: MessageSendRequest,
     message: Message,
     saved_id: str,
     conversation_id: str,
     sender_id: str,
+    is_open_chat: bool,
 ) -> None:
     """Broadcast message via WebSocket to participants"""
     try:
+        resolved_receiver_id = str(message.receiver_id) if message.receiver_id else None
         ws_message = {
             "type": "new_message",
             "id": saved_id,
             "_id": saved_id,
             "conversation_id": "open_chat"
-            if message_data.is_open_chat
+            if is_open_chat
             else conversation_id,
             "sender_id": sender_id,
-            "receiver_id": message_data.receiver_id,
+            "receiver_id": resolved_receiver_id,
             "content": message.content,
             "created_at": message.created_at.isoformat()
             if message.created_at
@@ -852,10 +853,11 @@ async def _broadcast_message_via_websocket(
             else datetime.now(timezone.utc).isoformat(),
         }
 
-        if message_data.is_open_chat:
+        if is_open_chat:
             logger.debug("Open chat message - skipping WebSocket broadcast")
         else:
-            await manager.send_personal_message(message_data.receiver_id, ws_message)
+            if resolved_receiver_id:
+                await manager.send_personal_message(resolved_receiver_id, ws_message)
             await manager.send_personal_message(sender_id, ws_message)
     except Exception as e:
         logger.error(f"Failed to broadcast real-time message: {e}")
@@ -935,7 +937,11 @@ async def send_message(
 
         # Broadcast via WebSocket
         await _broadcast_message_via_websocket(
-            message_data, message, saved_id, conversation_id, sender_id
+            message,
+            saved_id,
+            conversation_id,
+            sender_id,
+            message_data.is_open_chat,
         )
 
         # Send push notification for 1-to-1
@@ -955,7 +961,7 @@ async def send_message(
                 saved_id,
                 conversation_id,
                 sender_id,
-                message_data.receiver_id,
+                str(message.receiver_id) if message.receiver_id else None,
                 message_data.is_open_chat,
             ),
             message="Message sent successfully",
@@ -1066,13 +1072,14 @@ async def send_media_message(
 
         # WebSocket broadcast
         try:
+            resolved_receiver_id = str(message.receiver_id) if message.receiver_id else receiver_id
             ws_message = {
                 "type": "new_message",
                 "id": saved_id,
                 "_id": saved_id,
                 "conversation_id": conversation_id,
                 "sender_id": sender_id,
-                "receiver_id": receiver_id,
+                "receiver_id": resolved_receiver_id,
                 "content": content_label,
                 "message_type": message_type,
                 "media_url": media_url,
@@ -1082,7 +1089,8 @@ async def send_media_message(
                 if message.created_at
                 else datetime.now(timezone.utc).isoformat(),
             }
-            await manager.send_personal_message(receiver_id, ws_message)
+            if resolved_receiver_id:
+                await manager.send_personal_message(resolved_receiver_id, ws_message)
             await manager.send_personal_message(sender_id, ws_message)
         except Exception as ws_err:
             logger.error(f"WS broadcast error for media message: {ws_err}")
@@ -1100,7 +1108,7 @@ async def send_media_message(
                 "_id": saved_id,
                 "conversation_id": conversation_id,
                 "sender_id": sender_id,
-                "receiver_id": receiver_id,
+                "receiver_id": str(message.receiver_id) if message.receiver_id else receiver_id,
                 "content": content_label,
                 "message_type": message_type,
                 "media_url": media_url,

@@ -41,10 +41,16 @@ import api from '../../services/api'
 import logger from '../../utils/logger'
 async function fetchAcharyas() {
   try {
-    const res = await api.get('/users/acharyas/search', { params: { limit: 100 } })
-    return res.data?.data?.profiles || []
+    const res = await api.get('/users/acharyas', { params: { limit: 100 } })
+    return res.data?.data?.acharyas || res.data?.data?.profiles || []
   } catch {
-    return []
+    try {
+      // Backward-compat fallback for older deployments
+      const res = await api.get('/users/acharyas/search', { params: { limit: 100 } })
+      return res.data?.data?.acharyas || res.data?.data?.profiles || []
+    } catch {
+      return []
+    }
   }
 }
 
@@ -75,7 +81,13 @@ export default function AcharyaBookings() {
     if (!selectedAcharya) return
     setReferLoading(true)
     try {
-      await api.put(`/bookings/${referDialog.booking._id}/refer`, {
+      const bookingId = referDialog?.booking?._id || referDialog?.booking?.id
+      if (!bookingId) {
+        toast.error('Booking ID missing. Please refresh and try again.')
+        return
+      }
+
+      await api.put(`/bookings/${bookingId}/refer`, {
         new_acharya_id: selectedAcharya,
         notes: referNotes
       })
@@ -166,23 +178,33 @@ export default function AcharyaBookings() {
 
   const handleAction = async (action) => {
     try {
+      const bookingId = selectedBooking?._id || selectedBooking?.id
+      if (!bookingId) {
+        toast.error('Booking ID missing. Please refresh and try again.')
+        return
+      }
+
       let endpoint = ''
       let successMessage = ''
       let data = null
 
       switch (action) {
         case 'accept':
-          endpoint = `/bookings/${selectedBooking._id}/status`
+          endpoint = `/bookings/${bookingId}/status`
           successMessage = 'Booking request accepted'
-          data = {
-            status: 'confirmed',
-            amount: amount ? Number.parseFloat(amount) : undefined,
-            notes: 'Request approved by Acharya'
+          {
+            const parsedAmount = Number.parseFloat(amount)
+            const hasValidAmount = Number.isFinite(parsedAmount) && parsedAmount > 0
+            data = {
+              status: 'confirmed',
+              ...(hasValidAmount ? { amount: parsedAmount } : {}),
+              notes: 'Request approved by Acharya'
+            }
           }
           await api.put(endpoint, data)
           break
         case 'reject':
-          endpoint = `/bookings/${selectedBooking._id}/status`
+          endpoint = `/bookings/${bookingId}/status`
           successMessage = 'Booking request declined'
           data = {
             status: 'rejected',
@@ -191,7 +213,7 @@ export default function AcharyaBookings() {
           await api.put(endpoint, data)
           break
         case 'start': {
-          endpoint = `/bookings/${selectedBooking._id}/start`
+          endpoint = `/bookings/${bookingId}/start`
           successMessage = 'Booking started successfully'
           const otp = globalThis.prompt('Enter start OTP shared by Grihasta')
           if (!otp) {
@@ -202,13 +224,13 @@ export default function AcharyaBookings() {
           break
         }
         case 'complete': {
-          endpoint = `/bookings/${selectedBooking._id}/attendance/confirm`
+          endpoint = `/bookings/${bookingId}/attendance/confirm`
           successMessage = 'Attendance confirmed; booking completion queued'
           await api.post(endpoint, { confirmed: true })
           break
         }
         case 'cancel':
-          endpoint = `/bookings/${selectedBooking._id}/status`
+          endpoint = `/bookings/${bookingId}/status`
           successMessage = 'Booking cancelled successfully'
           await api.put(endpoint, { status: 'cancelled', notes: 'Cancelled by Acharya' })
           break

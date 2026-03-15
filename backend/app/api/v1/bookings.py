@@ -172,6 +172,7 @@ from app.services.booking_state_machine import (  # noqa: E402, PLC0415
 from app.services.idempotency_service import idempotency_service, IdempotencyContext
 from app.services.outbox_dispatcher import enqueue_fcm_single, enqueue_ws_personal
 from app.services.booking_event_stream_service import BookingEventStreamService
+from app.services.booking_discovery_service import BookingDiscoveryService
 from app.services.invoice_service import InvoiceService
 
 # Legacy transition table retained for reference only.
@@ -973,6 +974,13 @@ async def check_availability(
     # 4. Python-side overlap detection
     conflicts, latest_conflict_end = _find_conflicts(candidates, requested_start, requested_end)
     available = len(conflicts) == 0
+    confidence = await BookingDiscoveryService.calculate_slot_confidence(
+        db,
+        acharya_profile=acharya,
+        requested_start=requested_start,
+        requested_end=requested_end,
+        conflicts=conflicts,
+    )
 
     # 5. Suggest next free slot (first gap after all conflicts end)
     next_available_slot: Optional[str] = None
@@ -988,6 +996,11 @@ async def check_availability(
             "available": available,
             "next_available_slot": next_available_slot,
             "conflicts": conflicts,
+            "confidence_score": confidence["score"],
+            "confidence_tier": confidence["tier"],
+            "confidence_factors": confidence["factors"],
+            "daily_booking_load": confidence["daily_booking_load"],
+            "calendar_backed": confidence["calendar_backed"],
         },
     )
 
@@ -1420,6 +1433,17 @@ async def update_booking_status(
     if status_update.notes is not None:
         update_doc["notes"] = status_update.notes
 
+    alternative_acharyas = None
+    if status_update.status == BookingStatus.REJECTED.value:
+        alternative_acharyas = await BookingDiscoveryService.find_alternative_acharyas(
+            db,
+            booking_like=booking,
+            exclude_acharya_id=str(booking.get("acharya_id") or ""),
+            limit=3,
+        )
+        if alternative_acharyas:
+            update_doc["alternative_acharya_suggestions"] = alternative_acharyas
+
     # For request-mode bookings, when Acharya confirms, auto-generate start OTP and set status to confirmed
     if (
         status_update.status == BookingStatus.CONFIRMED.value
@@ -1444,7 +1468,11 @@ async def update_booking_status(
     # Note: _notify_booking_status_update also emits the booking_update WS event.
     await _notify_booking_status_update(db, booking, booking_id, status_update, update_doc)
 
-    return StandardResponse(success=True, message="Status updated")
+    return StandardResponse(
+        success=True,
+        data={"booking_id": booking_id, "alternative_acharyas": alternative_acharyas or []},
+        message="Status updated",
+    )
 
 
 async def _check_cancel_permission(
@@ -2475,6 +2503,58 @@ async def get_or_generate_booking_gst_invoice(
         data={
             "booking_id": booking_id,
             "invoice": invoice_doc,
+        },
+    )
+
+
+@router.get(
+    "/{booking_id}/alternatives",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get alternative Acharya suggestions for a booking",
+)
+async def get_booking_alternatives(
+    booking_id: str,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """Return fallback Acharya suggestions for declined or timed-out bookings."""
+    booking_oid = ensure_object_id(booking_id, "booking_id")
+    booking_doc = await db.bookings.find_one(
+        {"_id": booking_oid},
+        {
+            "_id": 1,
+            "status": 1,
+            "grihasta_id": 1,
+            "acharya_id": 1,
+            "date_time": 1,
+            "end_time": 1,
+            "location": 1,
+            "alternative_acharya_suggestions": 1,
+        },
+    )
+    if not booking_doc:
+        raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
+
+    authorized = await _can_view_booking_sla(db, booking_doc, current_user)
+    if not authorized:
+        raise PermissionDeniedError(action="View booking alternatives")
+
+    alternatives = booking_doc.get("alternative_acharya_suggestions") or []
+    if not alternatives:
+        alternatives = await BookingDiscoveryService.find_alternative_acharyas(
+            db,
+            booking_like=booking_doc,
+            exclude_acharya_id=str(booking_doc.get("acharya_id") or ""),
+            limit=3,
+        )
+
+    return StandardResponse(
+        success=True,
+        data={
+            "booking_id": booking_id,
+            "status": booking_doc.get("status"),
+            "alternative_acharyas": alternatives,
         },
     )
 

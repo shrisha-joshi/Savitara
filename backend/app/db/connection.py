@@ -561,6 +561,22 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             [("issued_at", -1)],
         )
 
+        # Booking waitlist / auto-match
+        await cls._create_index_safe(
+            cls.db.waitlist_entries,
+            [("user_id", 1), ("status", 1), ("desired_datetime", 1)],
+        )
+        await cls._create_index_safe(
+            cls.db.waitlist_entries,
+            [("acharya_id", 1), ("desired_datetime", 1), ("status", 1)],
+        )
+
+        # Booking reassignment history
+        await cls._create_index_safe(
+            cls.db.booking_reassignments,
+            [("booking_id", 1), ("created_at", -1)],
+        )
+
         # Reliability: Write-ahead audit logs
         await cls._create_index_safe(
             cls.db.write_ahead_audit_logs,

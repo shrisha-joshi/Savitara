@@ -33,6 +33,7 @@ from app.core.exceptions import (
 from app.db.connection import get_db
 from app.models.database import GrihastaProfile, AcharyaProfile, UserRole, UserStatus
 from app.models.moderation import BlockedUser
+from app.services.booking_discovery_service import BookingDiscoveryService
 
 # Optional: timezone resolution from coordinates
 try:
@@ -898,6 +899,17 @@ async def _search_with_elasticsearch(
     acharyas_list = result.get("results", result.get("hits", []))
     pagination_data = result.get("pagination", {})
     total = pagination_data.get("total", 0)
+    search_db = getattr(search_service, "db", None)
+
+    for acharya in acharyas_list:
+        acharya_profile = {
+            "_id": acharya.get("_id") or acharya.get("id"),
+            "user_id": acharya.get("user_id"),
+        }
+        acharya["response_time_badge"] = await BookingDiscoveryService.get_response_time_badge(
+            search_db,
+            acharya_profile,
+        )
 
     return StandardResponse(
         success=True,
@@ -1009,6 +1021,10 @@ async def _search_with_mongodb(
             acharya["_id"] = str(acharya["_id"])
         if "user_id" in acharya and isinstance(acharya["user_id"], ObjectId):
             acharya["user_id"] = str(acharya["user_id"])
+        acharya["response_time_badge"] = await BookingDiscoveryService.get_response_time_badge(
+            db,
+            acharya,
+        )
 
     # Get total count — M59 fix: use $count stage instead of fetching all docs
     count_pipeline = pipeline[:6]  # Up to and including rating filter
@@ -1179,6 +1195,10 @@ async def get_acharya_details(
                     "rating": profile_doc.get("ratings", {}).get("average", 0),
                     "total_bookings": profile_doc.get("total_bookings", 0),
                     "profile_picture": user_doc.get("profile_picture"),
+                    "response_time_badge": await BookingDiscoveryService.get_response_time_badge(
+                        db,
+                        profile_doc,
+                    ),
                 },
                 "reviews": reviews,
                 "poojas": poojas,

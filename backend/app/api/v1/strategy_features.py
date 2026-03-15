@@ -27,6 +27,7 @@ from app.db.connection import get_db
 from app.schemas.requests import StandardResponse, BookingCreateRequest, Location
 from app.services.penalty_service import PenaltyService
 from app.services.backup_acharya_service import BackupAcharyaService
+from app.services.booking_discovery_service import BookingDiscoveryService
 from app.services.guarantee_service import GuaranteeService
 from app.services.pricing_service import PricingService
 
@@ -76,6 +77,29 @@ class SubscriptionCreateRequest(BaseModel):
 class PenaltyReverseRequest(BaseModel):
     """Admin request to reverse a penalty"""
     reason: str = Field(..., min_length=5, max_length=500)
+
+
+class BundleRecommendationQuery(BaseModel):
+    """Bundle recommendation request payload."""
+
+    pooja_ids: List[str] = Field(default_factory=list, max_length=5)
+    limit: int = Field(3, ge=1, le=5)
+
+
+class WaitlistRequest(BaseModel):
+    """Waitlist join request for auto-match when the primary slot is unavailable."""
+
+    acharya_id: str
+    desired_datetime: datetime
+    duration_hours: int = Field(2, ge=1, le=12)
+    pooja_id: Optional[str] = None
+    service_name: Optional[str] = Field(None, max_length=120)
+    location: Optional[Location] = None
+
+
+def _current_user_id(current_user: Dict[str, Any]) -> str:
+    """Support both `id` and legacy `user_id` auth payload shapes."""
+    return str(current_user.get("id") or current_user.get("user_id") or "")
 
 
 # ============= Scarcity Display API (Strategy Report §6.5) =============
@@ -372,7 +396,7 @@ async def create_bundle_booking(
     Strategy Report §6.7 — Bundle pricing.
     10% automatic discount for 3+ poojas bundled together.
     """
-    user_id = current_user["user_id"]
+    user_id = _current_user_id(current_user)
 
     # Validate Acharya exists
     acharya = await db.users.find_one({"_id": ObjectId(request.acharya_id)})
@@ -519,7 +543,7 @@ async def create_subscription(
     Create a Devotee Plus subscription.
     Strategy Report §6.9: 10-15% of Y2 revenue.
     """
-    user_id = current_user["user_id"]
+    user_id = _current_user_id(current_user)
     plan = SUBSCRIPTION_PLANS.get(request.plan)
     if not plan:
         raise InvalidInputError(message="Invalid plan", field="plan")
@@ -601,7 +625,7 @@ async def get_my_subscription(
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Get current user's subscription status"""
-    user_id = current_user["user_id"]
+    user_id = _current_user_id(current_user)
 
     subscription = await db.subscriptions.find_one(
         {"user_id": user_id, "status": "active"},
@@ -615,7 +639,6 @@ async def get_my_subscription(
             message="No active subscription",
         )
 
-    # Check if expired
     if subscription["expires_at"] < datetime.now(timezone.utc):
         await db.subscriptions.update_one(
             {"_id": subscription["_id"]},
@@ -638,4 +661,80 @@ async def get_my_subscription(
             "expires_at": subscription["expires_at"].isoformat(),
             "benefits": subscription.get("benefits", SUBSCRIPTION_BENEFITS),
         },
+    )
+
+
+@router.get(
+    "/bookings/bundle/recommendations",
+    response_model=StandardResponse,
+    summary="Best-value bundle recommendations",
+    description="Returns high-savings ritual bundles based on selected or recent services.",
+)
+async def get_bundle_recommendations(
+    pooja_ids: Annotated[Optional[List[str]], Query(description="Anchor pooja/service IDs")] = None,
+    limit: Annotated[int, Query(ge=1, le=5)] = 3,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    bundles = await BookingDiscoveryService.get_best_value_bundles(
+        db,
+        user_id=_current_user_id(current_user),
+        service_ids=pooja_ids or [],
+        limit=limit,
+    )
+    return StandardResponse(
+        success=True,
+        data={"bundles": bundles, "count": len(bundles)},
+        message="Bundle recommendations ready",
+    )
+
+
+@router.get(
+    "/packages/recommendations",
+    response_model=StandardResponse,
+    summary="Personalized package recommendations",
+    description="Returns package suggestions personalized from the user's ritual history.",
+)
+async def get_personalized_package_recommendations(
+    limit: Annotated[int, Query(ge=1, le=5)] = 3,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    packages = await BookingDiscoveryService.get_personalized_packages(
+        db,
+        user_id=_current_user_id(current_user),
+        limit=limit,
+    )
+    return StandardResponse(
+        success=True,
+        data={"packages": packages, "count": len(packages)},
+        message="Personalized packages ready",
+    )
+
+
+@router.post(
+    "/bookings/waitlist",
+    response_model=StandardResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Join waitlist with auto-match",
+    description="Creates a waitlist entry and immediately suggests matching alternative Acharyas when possible.",
+)
+async def create_waitlist_entry(
+    request: WaitlistRequest,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    waitlist_entry = await BookingDiscoveryService.create_waitlist_entry(
+        db,
+        user_id=_current_user_id(current_user),
+        request_data=request.model_dump(mode="json", exclude_none=True),
+    )
+    return StandardResponse(
+        success=True,
+        data=waitlist_entry,
+        message=(
+            "Waitlist created with immediate matches"
+            if waitlist_entry.get("auto_match_candidates")
+            else "Waitlist created"
+        ),
     )

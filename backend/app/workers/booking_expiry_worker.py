@@ -21,6 +21,7 @@ from typing import Any, Dict, Optional
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.core.config import settings
+from app.services.booking_discovery_service import BookingDiscoveryService
 from app.services.outbox_dispatcher import (
     enqueue_email,
     enqueue_fcm_single,
@@ -468,12 +469,26 @@ async def _transition_expired_requested_with_sla(
         )
         if result.modified_count == 0:
             continue
+        alternatives = await BookingDiscoveryService.find_alternative_acharyas(
+            db,
+            booking_like=booking,
+            exclude_acharya_id=str(booking.get("acharya_id") or ""),
+            limit=3,
+        )
+        if alternatives:
+            await db.bookings.update_one(
+                {"_id": booking.get("_id")},
+                {"$set": {"alternative_acharya_suggestions": alternatives, "updated_at": now}},
+            )
         transitioned += 1
         await emit_booking_update(
             booking_id,
             booking,
             "rejected",
-            extra={"reason": SLA_AUTO_REJECT_REASON},
+            extra={
+                "reason": SLA_AUTO_REJECT_REASON,
+                "alternative_acharyas": alternatives,
+            },
         )
 
     return transitioned

@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 from dateutil.relativedelta import relativedelta
 
 from app.core.security import get_current_admin
-from app.db.connection import get_database
+from app.db.connection import get_read_db
 from app.models.database import User
 from app.services.investor_metrics_service import InvestorMetricsService
 from pydantic import BaseModel
@@ -29,7 +29,7 @@ class MetricsRequest(BaseModel):
 @router.post("/cac", dependencies=[Depends(get_current_admin)])
 async def calculate_cac_metric(
     request: MetricsRequest,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)],
 ):
     """
     Calculate Customer Acquisition Cost
@@ -81,7 +81,7 @@ async def calculate_cac_metric(
 @router.get("/ltv/{cohort_month}", dependencies=[Depends(get_current_admin)])
 async def calculate_ltv_metric(
     cohort_month: str,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)],
 ):
     """
     Calculate Lifetime Value for a cohort
@@ -113,7 +113,7 @@ async def calculate_ltv_metric(
 @router.post("/gmv", dependencies=[Depends(get_current_admin)])
 async def calculate_gmv_metric(
     request: MetricsRequest,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)],
 ):
     """
     Calculate Gross Merchandise Value
@@ -145,7 +145,7 @@ async def calculate_gmv_metric(
 @router.post("/repeat-rate", dependencies=[Depends(get_current_admin)])
 async def calculate_repeat_booking_metric(
     request: MetricsRequest,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)],
 ):
     """
     Calculate Repeat Booking Rate
@@ -179,7 +179,7 @@ async def calculate_repeat_booking_metric(
 @router.post("/churn", dependencies=[Depends(get_current_admin)])
 async def calculate_churn_metric(
     request: MetricsRequest,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)],
 ):
     """
     Calculate Acharya Churn Rate
@@ -212,7 +212,7 @@ async def calculate_churn_metric(
 
 @router.get("/dashboard", dependencies=[Depends(get_current_admin)])
 async def get_investor_dashboard(
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)],
     days: Annotated[int, Query(description="Period in days")] = 30,
 ):
     """
@@ -278,7 +278,7 @@ async def get_investor_dashboard(
 
 @router.get("/trends", dependencies=[Depends(get_current_admin)])
 async def get_metric_trends(
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)],
     metric: Annotated[str, Query(description="Metric name: gmv, repeat_rate, churn")],
     months: Annotated[int, Query(description="Number of months to show")] = 6,
 ):

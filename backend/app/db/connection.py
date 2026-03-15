@@ -27,6 +27,8 @@ class DatabaseManager(IConnectionManager, IIndexManager):
 
     client: Optional[AsyncIOMotorClient] = None
     db: Optional[AsyncIOMotorDatabase] = None
+    read_client: Optional[AsyncIOMotorClient] = None
+    read_db: Optional[AsyncIOMotorDatabase] = None
 
     @classmethod
     async def connect_to_database(cls):
@@ -50,12 +52,36 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             # Get database
             cls.db = cls.client[settings.MONGODB_DB_NAME]
 
-            # Verify connection
+            # Verify primary connection
             await cls.client.admin.command("ping")
 
             logger.info(
                 f"Successfully connected to MongoDB: {settings.MONGODB_DB_NAME}"
             )
+
+            # Optional read-replica connection
+            read_replica_url = getattr(settings, "MONGODB_READ_REPLICA_URL", None)
+            if read_replica_url:
+                try:
+                    cls.read_client = AsyncIOMotorClient(
+                        read_replica_url,
+                        minPoolSize=settings.MONGODB_MIN_POOL_SIZE,
+                        maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
+                        serverSelectionTimeoutMS=30000,
+                        connectTimeoutMS=20000,
+                        socketTimeoutMS=60000,
+                    )
+                    cls.read_db = cls.read_client[settings.MONGODB_DB_NAME]
+                    await cls.read_client.admin.command("ping")
+                    logger.info("Read replica connected successfully")
+                except Exception as read_err:
+                    logger.warning(
+                        f"Read replica unavailable, falling back to primary DB: {read_err}"
+                    )
+                    if cls.read_client is not None:
+                        cls.read_client.close()
+                    cls.read_client = None
+                    cls.read_db = None
 
             # Create indexes
             await cls.create_indexes()
@@ -64,6 +90,10 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             logger.error(f"Failed to connect to MongoDB: {e}")
             cls.client = None
             cls.db = None
+            if cls.read_client is not None:
+                cls.read_client.close()
+            cls.read_client = None
+            cls.read_db = None
             raise
 
     @classmethod
@@ -76,6 +106,15 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             logger.info("Closing MongoDB connection...")
             cls.client.close()
             logger.info("MongoDB connection closed")
+        if cls.read_client is not None:
+            logger.info("Closing MongoDB read-replica connection...")
+            cls.read_client.close()
+            logger.info("MongoDB read-replica connection closed")
+
+        cls.client = None
+        cls.db = None
+        cls.read_client = None
+        cls.read_db = None
 
     @classmethod
     async def _create_index_safe(cls, collection: Any, *args: Any, **kwargs: Any) -> None:
@@ -170,6 +209,9 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             cls.db.bookings, [("grihasta_id", 1), ("created_at", -1)]
         )
         await cls._create_index_safe(cls.db.bookings, [("date_time", 1), ("status", 1)])
+        await cls._create_index_safe(
+            cls.db.bookings, [("status", 1), ("request_sla_expires_at", 1)]
+        )
         await cls._create_index_safe(cls.db.bookings, "status")
         await cls._create_index_safe(cls.db.bookings, "created_at")
         await cls._create_index_safe(cls.db.bookings, "payment_status")
@@ -503,6 +545,58 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             [("status", 1), ("locked_at", 1)],
         )
 
+        # Reliability: Write-ahead audit logs
+        await cls._create_index_safe(
+            cls.db.write_ahead_audit_logs,
+            [("action", 1), ("created_at", -1)],
+        )
+        await cls._create_index_safe(
+            cls.db.write_ahead_audit_logs,
+            [("status", 1), ("updated_at", -1)],
+        )
+        await cls._create_index_safe(
+            cls.db.write_ahead_audit_logs,
+            [("correlation_id", 1)],
+        )
+
+        # Reliability: Booking event stream
+        await cls._create_index_safe(
+            cls.db.booking_event_stream,
+            [("booking_id", 1), ("sequence", 1)],
+            unique=True,
+        )
+        await cls._create_index_safe(
+            cls.db.booking_event_stream,
+            [("booking_id", 1), ("created_at", 1)],
+        )
+
+        # Reliability: Global controls
+        await cls._create_index_safe(
+            cls.db.global_controls,
+            "_id",
+            unique=True,
+        )
+
+        # Reliability: Anomaly events
+        await cls._create_index_safe(
+            cls.db.anomaly_events,
+            [("kind", 1), ("created_at", -1)],
+        )
+        await cls._create_index_safe(
+            cls.db.anomaly_events,
+            [("severity", 1), ("created_at", -1)],
+        )
+
+        # Reliability: Operational commands
+        await cls._create_index_safe(
+            cls.db.operational_commands,
+            [("status", 1), ("created_at", 1)],
+        )
+        await cls._create_index_safe(
+            cls.db.operational_commands,
+            [("command_type", 1), ("created_at", -1)],
+        )
+
         # Blocked users indexes
         await cls._create_index_safe(
             cls.db.blocked_users,
@@ -540,6 +634,11 @@ class DatabaseManager(IConnectionManager, IIndexManager):
         return cls.db
 
     @classmethod
+    def get_read_database(cls) -> AsyncIOMotorDatabase:
+        """Get read database instance; fallback to primary database."""
+        return cls.read_db if cls.read_db is not None else cls.db
+
+    @classmethod
     def is_connected(cls) -> bool:
         """Check if database is connected"""
         return cls.db is not None
@@ -553,6 +652,38 @@ def get_db() -> AsyncIOMotorDatabase:
     Raises ServiceUnavailableError if database is not connected
     """
     db = DatabaseManager.get_database()
+
+    # Test environment fallback
+    if db is None:
+        import sys
+
+        if "pytest" in sys.modules and hasattr(DatabaseManager, "_test_db"):
+            return DatabaseManager._test_db
+
+    if db is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "DB_001",
+                    "message": "Database service unavailable. Please try again later.",
+                    "details": {},
+                },
+            },
+        )
+    return wrap_database_with_query_budget(db)
+
+
+def get_read_db() -> AsyncIOMotorDatabase:
+    """
+    FastAPI dependency to get read database
+    Uses read replica when available and falls back to primary database.
+    Raises ServiceUnavailableError if database is not connected
+    """
+    db = DatabaseManager.get_read_database()
 
     # Test environment fallback
     if db is None:

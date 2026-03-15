@@ -21,7 +21,7 @@ from app.core.constants import (
     MONGO_PROJECT,
 )
 from app.core.security import get_current_admin
-from app.db.connection import get_db
+from app.db.connection import get_read_db
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
@@ -72,7 +72,7 @@ def calculate_growth(current: float, previous: float) -> float:
 async def get_analytics_overview(
     time_range: Annotated[str, Query(description=f"{TIME_RANGE_DESC}: 7days, 30days, 90days, 1year")] = "30days",
     current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)] = None,
 ):
     """Get comprehensive analytics overview"""
     try:
@@ -186,7 +186,7 @@ async def get_analytics_overview(
 async def get_revenue_trends(
     time_range: Annotated[str, Query(description=TIME_RANGE_DESC)] = "30days",
     current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)] = None,
 ):
     """Get daily revenue trends"""
     try:
@@ -247,7 +247,7 @@ async def get_revenue_trends(
 async def get_user_growth(
     time_range: Annotated[str, Query(description=TIME_RANGE_DESC)] = "30days",
     current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)] = None,
 ):
     """Get monthly user growth by role"""
     try:
@@ -309,7 +309,7 @@ async def get_user_growth(
 async def get_booking_status(
     time_range: Annotated[str, Query(description=TIME_RANGE_DESC)] = "30days",
     current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)] = None,
 ):
     """Get booking distribution by status"""
     try:
@@ -356,7 +356,7 @@ async def get_booking_status(
 async def get_top_acharyas(
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
     current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)] = None,
 ):
     """Get top performing acharyas"""
     try:
@@ -441,7 +441,7 @@ async def get_top_acharyas(
 async def get_popular_services(
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
     current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)] = None,
 ):
     """Get popular pooja services"""
     try:
@@ -490,7 +490,7 @@ async def get_popular_services(
 async def get_geographic_distribution(
     group_by: Annotated[str, Query(description="Group by: city, state")] = "city",
     current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)] = None,
 ):
     """Get geographic distribution of users"""
     try:
@@ -531,7 +531,7 @@ async def get_geographic_distribution(
 async def get_hourly_activity(
     time_range: Annotated[str, Query(description=TIME_RANGE_DESC)] = "30days",
     current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)] = None,
 ):
     """Get booking activity patterns by hour"""
     try:
@@ -577,7 +577,7 @@ async def get_hourly_activity(
 async def get_conversion_funnel(
     time_range: Annotated[str, Query(description=TIME_RANGE_DESC)] = "30days",
     current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)] = None,
 ):
     """Get conversion funnel from signup to completed booking"""
     try:
@@ -653,7 +653,7 @@ async def get_conversion_funnel(
 async def get_payment_methods(
     time_range: Annotated[str, Query(description=TIME_RANGE_DESC)] = "30days",
     current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)] = None,
 ):
     """Get payment method distribution"""
     try:
@@ -716,7 +716,7 @@ async def get_payment_methods(
 async def get_acharya_performance(
     acharya_id: Annotated[Optional[str], Query(description="Optional acharya ID")] = None,
     current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)] = None,
 ):
     """Get acharya performance metrics"""
     try:
@@ -799,7 +799,7 @@ async def get_acharya_performance(
 )
 async def get_retention_metrics(
     current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_read_db)] = None,
 ):
     """Get user retention by signup cohort"""
     try:

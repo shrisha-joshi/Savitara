@@ -48,3 +48,43 @@ async def enqueue_ws_personal(
         },
         dedupe_key=dedupe_key,
     )
+
+
+async def enqueue_email(
+    db: AsyncIOMotorDatabase,
+    *,
+    to_email: str,
+    subject: str,
+    body: str,
+    html_body: Optional[str] = None,
+    dedupe_key: Optional[str] = None,
+) -> str:
+    return await outbox_service.enqueue(
+        db,
+        channel="email",
+        payload={
+            "to_email": to_email,
+            "subject": subject,
+            "body": body,
+            "html_body": html_body,
+        },
+        dedupe_key=dedupe_key,
+    )
+
+
+async def enqueue_sms(
+    db: AsyncIOMotorDatabase,
+    *,
+    to_number: str,
+    message: str,
+    dedupe_key: Optional[str] = None,
+) -> str:
+    return await outbox_service.enqueue(
+        db,
+        channel="sms",
+        payload={
+            "to_number": to_number,
+            "message": message,
+        },
+        dedupe_key=dedupe_key,
+    )

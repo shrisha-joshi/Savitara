@@ -741,6 +741,682 @@ class TestCriticalBookingFlowValidation:
         finally:
             fastapi_app.dependency_overrides = {}
 
+
+class TestBookingSlaFeatures:
+    """Coverage for backlog item 56 (backend SLA countdown/reminders/expiry)."""
+
+    @pytest.mark.asyncio
+    async def test_request_mode_booking_sets_sla_fields(self, client, test_db):
+        from app.core.security import get_current_grihasta
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+        from app.core.config import settings
+
+        grihasta_oid = ObjectId()
+        acharya_profile_oid = ObjectId()
+
+        await test_db.acharya_profiles.insert_one(
+            {
+                "_id": acharya_profile_oid,
+                "user_id": ObjectId(),
+                "name": "Pandit SLA",
+            }
+        )
+
+        fastapi_app.dependency_overrides[get_current_grihasta] = lambda: {
+            "id": str(grihasta_oid),
+            "role": "grihasta",
+            "email": "g@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            response = await client.post(
+                "/api/v1/bookings",
+                json={
+                    "acharya_id": str(acharya_profile_oid),
+                    "service_name": "SLA Test Service",
+                    "booking_type": "only",
+                    "booking_mode": "request",
+                    "date": "2026-12-25",
+                    "time": "10:00",
+                },
+                headers={"X-Idempotency-Key": "create-sla-001"},
+            )
+            assert response.status_code == 201, response.text
+            booking_id = response.json().get("data", {}).get("booking_id")
+            assert booking_id
+
+            created = await test_db.bookings.find_one({"_id": ObjectId(booking_id)})
+            assert created is not None
+            assert created.get("request_sla_expires_at") is not None
+            assert created.get("request_sla_reminders_sent") == []
+
+            delta_seconds = int(
+                (
+                    created["request_sla_expires_at"] - created["created_at"]
+                ).total_seconds()
+            )
+            expected_seconds = settings.REQUEST_MODE_SLA_MINUTES * 60
+            assert expected_seconds - 10 <= delta_seconds <= expected_seconds + 10
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+
+class TestBookingRebook:
+    """Coverage for backlog item 57: one-tap rebook from completed bookings."""
+
+    @pytest.mark.asyncio
+    async def test_rebook_completed_instant_booking_success(self, client, test_db):
+        from app.core.security import get_current_grihasta
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        grihasta_oid = ObjectId()
+        acharya_profile_oid = ObjectId()
+        pooja_oid = ObjectId()
+        source_booking_oid = ObjectId()
+
+        await test_db.acharya_profiles.insert_one(
+            {
+                "_id": acharya_profile_oid,
+                "user_id": ObjectId(),
+                "name": "Pandit Rebook",
+            }
+        )
+        await test_db.poojas.insert_one(
+            {
+                "_id": pooja_oid,
+                "name": "Ganesh Pooja",
+                "base_price": 1000.0,
+                "duration_hours": 2,
+            }
+        )
+        await test_db.bookings.insert_one(
+            {
+                "_id": source_booking_oid,
+                "grihasta_id": grihasta_oid,
+                "acharya_id": acharya_profile_oid,
+                "pooja_id": pooja_oid,
+                "service_name": "Ganesh Pooja",
+                "booking_type": "only",
+                "booking_mode": "instant",
+                "requirements": "Bring flowers",
+                "location": {"city": "Mumbai", "country": "India"},
+                "notes": "Handle with care",
+                "date_time": datetime.now(timezone.utc) - timedelta(days=2),
+                "end_time": datetime.now(timezone.utc) - timedelta(days=2) + timedelta(hours=2),
+                "status": "completed",
+                "payment_status": "completed",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[get_current_grihasta] = lambda: {
+            "id": str(grihasta_oid),
+            "role": "grihasta",
+            "email": "g@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            response = await client.post(
+                f"/api/v1/bookings/{source_booking_oid}/rebook",
+            )
+            assert response.status_code == 201, response.text
+            body = response.json()
+            assert body["success"] is True
+            assert body["data"]["status"] == "pending_payment"
+            assert body["data"]["amount"] > 0
+
+            new_booking_id = body["data"]["booking_id"]
+            created = await test_db.bookings.find_one({"_id": ObjectId(new_booking_id)})
+            assert created is not None
+            assert created["status"] == "pending_payment"
+            assert created["payment_status"] == "pending"
+            assert str(created["grihasta_id"]) == str(grihasta_oid)
+            assert str(created["acharya_id"]) == str(acharya_profile_oid)
+            assert created.get("service_name") == "Ganesh Pooja"
+            assert created.get("requirements") == "Bring flowers"
+            assert created.get("location", {}).get("city") == "Mumbai"
+            assert created.get("notes") == "Handle with care"
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_rebook_completed_request_booking_success(self, client, test_db):
+        from app.core.security import get_current_grihasta
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        grihasta_oid = ObjectId()
+        acharya_profile_oid = ObjectId()
+        source_booking_oid = ObjectId()
+
+        await test_db.acharya_profiles.insert_one(
+            {
+                "_id": acharya_profile_oid,
+                "user_id": ObjectId(),
+                "name": "Pandit Request Rebook",
+            }
+        )
+        await test_db.bookings.insert_one(
+            {
+                "_id": source_booking_oid,
+                "grihasta_id": grihasta_oid,
+                "acharya_id": acharya_profile_oid,
+                "service_name": "Custom Ritual",
+                "booking_type": "only",
+                "booking_mode": "request",
+                "requirements": "Need guidance",
+                "location": {"city": "Pune", "country": "India"},
+                "notes": "Evening preferred",
+                "date_time": datetime.now(timezone.utc) - timedelta(days=5),
+                "end_time": datetime.now(timezone.utc) - timedelta(days=5) + timedelta(hours=2),
+                "status": "completed",
+                "payment_status": "completed",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[get_current_grihasta] = lambda: {
+            "id": str(grihasta_oid),
+            "role": "grihasta",
+            "email": "g2@test.com",
+            "full_name": "Rebook User",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            response = await client.post(
+                f"/api/v1/bookings/{source_booking_oid}/rebook",
+            )
+            assert response.status_code == 201, response.text
+            payload = response.json()
+            assert payload["success"] is True
+            assert payload["data"]["status"] == "requested"
+            assert payload["data"]["razorpay_order_id"] is None
+
+            new_booking = await test_db.bookings.find_one(
+                {"_id": ObjectId(payload["data"]["booking_id"])}
+            )
+            assert new_booking is not None
+            assert new_booking["status"] == "requested"
+            assert new_booking["payment_status"] == "not_required"
+            assert new_booking.get("request_sla_expires_at") is not None
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_rebook_rejects_non_completed_source(self, client, test_db):
+        from app.core.security import get_current_grihasta
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        grihasta_oid = ObjectId()
+        acharya_profile_oid = ObjectId()
+        source_booking_oid = ObjectId()
+
+        await test_db.acharya_profiles.insert_one(
+            {
+                "_id": acharya_profile_oid,
+                "user_id": ObjectId(),
+                "name": "Pandit Reject",
+            }
+        )
+        await test_db.bookings.insert_one(
+            {
+                "_id": source_booking_oid,
+                "grihasta_id": grihasta_oid,
+                "acharya_id": acharya_profile_oid,
+                "booking_type": "only",
+                "booking_mode": "instant",
+                "service_name": "Pooja",
+                "date_time": datetime.now(timezone.utc) - timedelta(days=1),
+                "end_time": datetime.now(timezone.utc) - timedelta(days=1) + timedelta(hours=2),
+                "status": "confirmed",
+                "payment_status": "completed",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[get_current_grihasta] = lambda: {
+            "id": str(grihasta_oid),
+            "role": "grihasta",
+            "email": "g3@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            response = await client.post(
+                f"/api/v1/bookings/{source_booking_oid}/rebook",
+            )
+            assert response.status_code == 400
+            error_message = response.json().get("error", {}).get("message", "").lower()
+            assert "completed" in error_message
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_rebook_rejects_other_user_booking(self, client, test_db):
+        from app.core.security import get_current_grihasta
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        owner_oid = ObjectId()
+        other_user_oid = ObjectId()
+        acharya_profile_oid = ObjectId()
+        source_booking_oid = ObjectId()
+
+        await test_db.acharya_profiles.insert_one(
+            {
+                "_id": acharya_profile_oid,
+                "user_id": ObjectId(),
+                "name": "Pandit Owner",
+            }
+        )
+        await test_db.bookings.insert_one(
+            {
+                "_id": source_booking_oid,
+                "grihasta_id": owner_oid,
+                "acharya_id": acharya_profile_oid,
+                "service_name": "Owner Pooja",
+                "booking_type": "only",
+                "booking_mode": "request",
+                "date_time": datetime.now(timezone.utc) - timedelta(days=3),
+                "end_time": datetime.now(timezone.utc) - timedelta(days=3) + timedelta(hours=2),
+                "status": "completed",
+                "payment_status": "completed",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[get_current_grihasta] = lambda: {
+            "id": str(other_user_oid),
+            "role": "grihasta",
+            "email": "other@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            response = await client.post(
+                f"/api/v1/bookings/{source_booking_oid}/rebook",
+            )
+            assert response.status_code == 403
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_rebook_accepts_date_time_override(self, client, test_db):
+        from app.core.security import get_current_grihasta
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        grihasta_oid = ObjectId()
+        acharya_profile_oid = ObjectId()
+        source_booking_oid = ObjectId()
+        target_date = "2031-01-15"
+        target_time = "09:30"
+
+        await test_db.acharya_profiles.insert_one(
+            {
+                "_id": acharya_profile_oid,
+                "user_id": ObjectId(),
+                "name": "Pandit Override",
+            }
+        )
+        await test_db.bookings.insert_one(
+            {
+                "_id": source_booking_oid,
+                "grihasta_id": grihasta_oid,
+                "acharya_id": acharya_profile_oid,
+                "service_name": "Override Service",
+                "booking_type": "only",
+                "booking_mode": "request",
+                "date_time": datetime.now(timezone.utc) - timedelta(days=2),
+                "end_time": datetime.now(timezone.utc) - timedelta(days=2) + timedelta(hours=2),
+                "status": "completed",
+                "payment_status": "completed",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[get_current_grihasta] = lambda: {
+            "id": str(grihasta_oid),
+            "role": "grihasta",
+            "email": "override@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            response = await client.post(
+                f"/api/v1/bookings/{source_booking_oid}/rebook",
+                json={"date": target_date, "time": target_time},
+            )
+            assert response.status_code == 201, response.text
+            payload = response.json()
+            new_booking = await test_db.bookings.find_one(
+                {"_id": ObjectId(payload["data"]["booking_id"])}
+            )
+            assert new_booking is not None
+            assert new_booking["date_time"].strftime("%Y-%m-%d") == target_date
+            assert new_booking["date_time"].strftime("%H:%M") == target_time
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+
+class TestBookingSlaFeaturesContinuation:
+    """Coverage for backlog item 56 (backend SLA countdown/reminders/expiry)."""
+
+    @pytest.mark.asyncio
+    async def test_get_booking_sla_math_and_participant_auth(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        grihasta_oid = ObjectId()
+        acharya_user_oid = ObjectId()
+        acharya_profile_oid = ObjectId()
+        outsider_oid = ObjectId()
+        booking_oid = ObjectId()
+
+        await test_db.acharya_profiles.insert_one(
+            {
+                "_id": acharya_profile_oid,
+                "user_id": acharya_user_oid,
+                "name": "Pandit SLA",
+            }
+        )
+        await test_db.bookings.insert_one(
+            {
+                "_id": booking_oid,
+                "grihasta_id": grihasta_oid,
+                "acharya_id": acharya_profile_oid,
+                "status": "requested",
+                "request_sla_expires_at": datetime.now(timezone.utc) + timedelta(minutes=10),
+                "request_sla_reminders_sent": [],
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            # outsider must be forbidden
+            fastapi_app.dependency_overrides[gcu] = lambda: {
+                "id": str(outsider_oid),
+                "role": "grihasta",
+                "email": "outsider@test.com",
+            }
+            denied = await client.get(f"/api/v1/bookings/{booking_oid}/sla")
+            assert denied.status_code == 403
+
+            # grihasta participant should succeed
+            fastapi_app.dependency_overrides[gcu] = lambda: {
+                "id": str(grihasta_oid),
+                "role": "grihasta",
+                "email": "g@test.com",
+            }
+            allowed = await client.get(f"/api/v1/bookings/{booking_oid}/sla")
+            assert allowed.status_code == 200, allowed.text
+            data = allowed.json().get("data", {})
+            assert data.get("booking_id") == str(booking_oid)
+            assert data.get("status") == "requested"
+            assert data.get("request_sla_expires_at") is not None
+            assert data.get("expired") is False
+
+            remaining = data.get("remaining_seconds")
+            assert isinstance(remaining, int)
+            assert 0 < remaining <= 10 * 60
+
+            # assigned acharya (resolved via acharya_profiles.user_id) should succeed
+            fastapi_app.dependency_overrides[gcu] = lambda: {
+                "id": str(acharya_user_oid),
+                "role": "acharya",
+                "email": "a@test.com",
+            }
+            acharya_view = await client.get(f"/api/v1/bookings/{booking_oid}/sla")
+            assert acharya_view.status_code == 200
+
+            # admin should also succeed
+            fastapi_app.dependency_overrides[gcu] = lambda: {
+                "id": str(ObjectId()),
+                "role": "admin",
+                "email": "admin@test.com",
+            }
+            admin_view = await client.get(f"/api/v1/bookings/{booking_oid}/sla")
+            assert admin_view.status_code == 200
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_expiry_worker_emits_sla_reminder_once_with_dedupe(self, test_db, monkeypatch):
+        from app.workers.booking_expiry_worker import expire_stale_bookings
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "REQUEST_MODE_SLA_REMINDER_SCHEDULE", [10], raising=False)
+
+        acharya_user_oid = ObjectId()
+        acharya_profile_oid = ObjectId()
+        booking_oid = ObjectId()
+
+        await test_db.users.insert_one(
+            {
+                "_id": acharya_user_oid,
+                "fcm_token": "token-123",
+            }
+        )
+        await test_db.acharya_profiles.insert_one(
+            {
+                "_id": acharya_profile_oid,
+                "user_id": acharya_user_oid,
+                "name": "Pandit Reminder",
+            }
+        )
+        await test_db.bookings.insert_one(
+            {
+                "_id": booking_oid,
+                "grihasta_id": ObjectId(),
+                "acharya_id": acharya_profile_oid,
+                "status": "requested",
+                "request_sla_expires_at": datetime.now(timezone.utc) + timedelta(minutes=9),
+                "request_sla_reminders_sent": [],
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        transitioned = await expire_stale_bookings(test_db)
+        assert transitioned == 0
+
+        updated = await test_db.bookings.find_one({"_id": booking_oid})
+        assert 10 in updated.get("request_sla_reminders_sent", [])
+
+        outbox_docs = await test_db.outbox_events.find(
+            {"dedupe_key": {"$regex": f"^booking_sla_reminder:.*:{booking_oid}:"}}
+        ).to_list(length=10)
+        assert len(outbox_docs) == 2, "Expected one WS + one FCM reminder event"
+
+        # Run again: reminder must not duplicate after being marked as sent.
+        transitioned_again = await expire_stale_bookings(test_db)
+        assert transitioned_again == 0
+        outbox_docs_again = await test_db.outbox_events.find(
+            {"dedupe_key": {"$regex": f"^booking_sla_reminder:.*:{booking_oid}:"}}
+        ).to_list(length=10)
+        assert len(outbox_docs_again) == 2
+
+    @pytest.mark.asyncio
+    async def test_expiry_worker_auto_rejects_sla_expired_and_keeps_active_requested(self, test_db):
+        from app.workers.booking_expiry_worker import expire_stale_bookings
+
+        expired_oid = ObjectId()
+        active_oid = ObjectId()
+
+        await test_db.bookings.insert_many(
+            [
+                {
+                    "_id": expired_oid,
+                    "grihasta_id": ObjectId(),
+                    "acharya_id": ObjectId(),
+                    "status": "requested",
+                    "request_sla_expires_at": datetime.now(timezone.utc) - timedelta(minutes=1),
+                    "request_sla_reminders_sent": [30, 10, 5],
+                    "created_at": datetime.now(timezone.utc) - timedelta(hours=2),
+                    "updated_at": datetime.now(timezone.utc) - timedelta(hours=2),
+                },
+                {
+                    "_id": active_oid,
+                    "grihasta_id": ObjectId(),
+                    "acharya_id": ObjectId(),
+                    "status": "requested",
+                    "request_sla_expires_at": datetime.now(timezone.utc) + timedelta(minutes=20),
+                    "request_sla_reminders_sent": [],
+                    "created_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(timezone.utc),
+                },
+            ]
+        )
+
+        transitioned = await expire_stale_bookings(test_db)
+        assert transitioned >= 1
+
+        expired_doc = await test_db.bookings.find_one({"_id": expired_oid})
+        active_doc = await test_db.bookings.find_one({"_id": active_oid})
+
+        assert expired_doc.get("status") == "rejected"
+        assert expired_doc.get("cancellation_reason") == (
+            "Auto-rejected: Acharya did not respond within SLA window."
+        )
+        assert active_doc.get("status") == "requested"
+
+    @pytest.mark.asyncio
+    async def test_expiry_worker_preserves_legacy_requested_48h_fallback(self, test_db):
+        from app.workers.booking_expiry_worker import expire_stale_bookings
+
+        legacy_oid = ObjectId()
+        await test_db.bookings.insert_one(
+            {
+                "_id": legacy_oid,
+                "grihasta_id": ObjectId(),
+                "acharya_id": ObjectId(),
+                "status": "requested",
+                "created_at": datetime.now(timezone.utc) - timedelta(hours=49),
+                "updated_at": datetime.now(timezone.utc) - timedelta(hours=49),
+            }
+        )
+
+        transitioned = await expire_stale_bookings(test_db)
+        assert transitioned >= 1
+
+        updated = await test_db.bookings.find_one({"_id": legacy_oid})
+        assert updated.get("status") == "cancelled"
+        assert "48" in updated.get("cancellation_reason", "")
+
+    @pytest.mark.asyncio
+    async def test_expiry_worker_emits_pending_payment_recovery_nudges_once(self, test_db, monkeypatch):
+        from app.core.config import settings
+        from app.workers.booking_expiry_worker import expire_stale_bookings
+
+        monkeypatch.setattr(
+            settings,
+            "PENDING_PAYMENT_RECOVERY_REMINDER_SCHEDULE",
+            [10],
+            raising=False,
+        )
+
+        grihasta_oid = ObjectId()
+        booking_oid = ObjectId()
+
+        await test_db.users.insert_one(
+            {
+                "_id": grihasta_oid,
+                "fcm_token": "g-token-123",
+                "email": "grihasta@example.com",
+                "phone": "+919999999999",
+            }
+        )
+        await test_db.bookings.insert_one(
+            {
+                "_id": booking_oid,
+                "grihasta_id": grihasta_oid,
+                "acharya_id": ObjectId(),
+                "status": "pending_payment",
+                "created_at": datetime.now(timezone.utc) - timedelta(minutes=22),
+                "updated_at": datetime.now(timezone.utc) - timedelta(minutes=22),
+                "pending_payment_recovery_reminders_sent": [],
+            }
+        )
+
+        transitioned = await expire_stale_bookings(test_db)
+        assert transitioned == 0
+
+        updated = await test_db.bookings.find_one({"_id": booking_oid})
+        assert 10 in updated.get("pending_payment_recovery_reminders_sent", [])
+
+        outbox_docs = await test_db.outbox_events.find(
+            {"dedupe_key": {"$regex": f"^pending_payment_recovery:.*:{booking_oid}:"}}
+        ).to_list(length=20)
+        assert len(outbox_docs) == 4, "Expected WS + FCM + Email + SMS recovery events"
+
+        transitioned_again = await expire_stale_bookings(test_db)
+        assert transitioned_again == 0
+        outbox_docs_again = await test_db.outbox_events.find(
+            {"dedupe_key": {"$regex": f"^pending_payment_recovery:.*:{booking_oid}:"}}
+        ).to_list(length=20)
+        assert len(outbox_docs_again) == 4
+
+    @pytest.mark.asyncio
+    async def test_expiry_worker_does_not_emit_pending_payment_recovery_after_deadline(self, test_db, monkeypatch):
+        from app.core.config import settings
+        from app.workers.booking_expiry_worker import expire_stale_bookings
+
+        monkeypatch.setattr(
+            settings,
+            "PENDING_PAYMENT_RECOVERY_REMINDER_SCHEDULE",
+            [10, 5],
+            raising=False,
+        )
+
+        grihasta_oid = ObjectId()
+        booking_oid = ObjectId()
+
+        await test_db.users.insert_one(
+            {
+                "_id": grihasta_oid,
+                "fcm_token": "g-token-123",
+                "email": "grihasta@example.com",
+                "phone": "+919999999999",
+            }
+        )
+        await test_db.bookings.insert_one(
+            {
+                "_id": booking_oid,
+                "grihasta_id": grihasta_oid,
+                "acharya_id": ObjectId(),
+                "status": "pending_payment",
+                "created_at": datetime.now(timezone.utc) - timedelta(minutes=31),
+                "updated_at": datetime.now(timezone.utc) - timedelta(minutes=31),
+                "pending_payment_recovery_reminders_sent": [],
+            }
+        )
+
+        transitioned = await expire_stale_bookings(test_db)
+        assert transitioned >= 1
+
+        updated = await test_db.bookings.find_one({"_id": booking_oid})
+        assert updated.get("status") == "failed"
+
+        outbox_docs = await test_db.outbox_events.find(
+            {"dedupe_key": {"$regex": f"^pending_payment_recovery:.*:{booking_oid}:"}}
+        ).to_list(length=10)
+        assert len(outbox_docs) == 0
+
     @pytest.mark.asyncio
     async def test_create_payment_order_invalid_booking_id_returns_400(self, client, test_db):
         from app.core.security import get_current_grihasta

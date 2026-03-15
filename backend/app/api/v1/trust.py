@@ -22,6 +22,7 @@ from app.models.trust import (
 )
 from app.services.trust_service import TrustScoreService
 from app.services.audit_service import AuditService
+from app.services.write_ahead_audit_service import WriteAheadAuditService
 from app.core.exceptions import ResourceNotFoundError, ValidationError
 from pydantic import BaseModel, Field
 
@@ -353,25 +354,44 @@ async def file_dispute(
     Available to: Grihasta or Acharya involved in booking
     """
     # Verify booking exists and user is involved
-    if db is not None:
-        booking = await db.bookings.find_one({"_id": ObjectId(request.booking_id)})
-        if not booking:
-            raise HTTPException(status_code=404, detail="Booking not found")
+    await _validate_dispute_booking_access(db, request.booking_id, str(current_user.id))
 
-        user_is_grihasta = str(booking["user_id"]) == str(current_user.id)
-        user_is_acharya = str(booking["acharya_id"]) == str(current_user.id)
-
-        if not (user_is_grihasta or user_is_acharya):
-            raise HTTPException(status_code=403, detail="You are not involved in this booking")
+    wa_service = WriteAheadAuditService(db) if db is not None else None
+    wa_op = "dispute file"
+    wa_intent_id = await _wa_log_intent(
+        wa_service,
+        operation=wa_op,
+        actor_id=str(current_user.id),
+        action="DISPUTE_FILE",
+        resource_type="dispute",
+        resource_id=request.booking_id,
+        payload={"category": request.category},
+    )
     
     # File dispute
-    dispute = await TrustScoreService.file_dispute(
-        db=db,
-        booking_id=request.booking_id,
-        filed_by_id=str(current_user.id),
-        filed_by_role=current_user.role,
-        category=request.category,
-        description=request.description
+    try:
+        dispute = await TrustScoreService.file_dispute(
+            db=db,
+            booking_id=request.booking_id,
+            filed_by_id=str(current_user.id),
+            filed_by_role=current_user.role,
+            category=request.category,
+            description=request.description
+        )
+    except Exception as exc:  # noqa: BLE001
+        await _wa_mark_aborted(
+            wa_service,
+            wa_intent_id,
+            operation=wa_op,
+            reason=str(exc),
+        )
+        raise
+
+    await _wa_mark_committed(
+        wa_service,
+        wa_intent_id,
+        operation=wa_op,
+        commit_payload=_build_dispute_commit_payload(dispute),
     )
     
     if db is not None:
@@ -517,6 +537,21 @@ async def claim_service_guarantee(
     """
     if current_user.role != "grihasta":
         raise HTTPException(status_code=403, detail="Only Grihastas can claim guarantees")
+
+    wa_service = WriteAheadAuditService(db) if db is not None else None
+    wa_op = "guarantee claim"
+    wa_intent_id = await _wa_log_intent(
+        wa_service,
+        operation=wa_op,
+        actor_id=str(current_user.id),
+        action="GUARANTEE_CLAIM",
+        resource_type="guarantee",
+        resource_id=request.booking_id,
+        payload={
+            "booking_id": request.booking_id,
+            "guarantee_type": request.guarantee_type,
+        },
+    )
     
     try:
         claim_reason = request.claim_reason or request.description or ""
@@ -525,6 +560,13 @@ async def claim_service_guarantee(
             booking_id=request.booking_id,
             guarantee_type=request.guarantee_type,
             claim_reason=claim_reason
+        )
+
+        await _wa_mark_committed(
+            wa_service,
+            wa_intent_id,
+            operation=wa_op,
+            commit_payload=_build_guarantee_commit_payload(guarantee),
         )
         
         if db is not None:
@@ -558,10 +600,24 @@ async def claim_service_guarantee(
             "status": guarantee.status
         }
     
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except ResourceNotFoundError as e:
+    except (ValidationError, ResourceNotFoundError) as e:
+        await _wa_mark_aborted(
+            wa_service,
+            wa_intent_id,
+            operation=wa_op,
+            reason=str(e),
+        )
+        if isinstance(e, ValidationError):
+            raise HTTPException(status_code=400, detail=str(e))
         raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        await _wa_mark_aborted(
+            wa_service,
+            wa_intent_id,
+            operation=wa_op,
+            reason=str(e),
+        )
+        raise
 
 
 # ==================== ADMIN ENDPOINTS ====================
@@ -570,6 +626,115 @@ async def claim_service_guarantee(
 import logging as _log  # noqa: E402
 
 _logger = _log.getLogger(__name__)
+
+_WA_INTENT_WARN = "Write-ahead audit intent logging failed for %s: %s"
+_WA_COMMIT_WARN = "Write-ahead audit commit failed for %s: %s"
+_WA_ABORT_WARN = "Write-ahead audit abort failed for %s: %s"
+
+
+async def _wa_log_intent(
+    wa_service: Optional[WriteAheadAuditService],
+    *,
+    operation: str,
+    actor_id: str,
+    action: str,
+    resource_type: str,
+    resource_id: str,
+    payload: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
+    if wa_service is None:
+        return None
+    try:
+        return await wa_service.log_intent(
+            actor_id=actor_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            payload=payload,
+        )
+    except Exception as audit_exc:  # noqa: BLE001
+        _logger.warning(_WA_INTENT_WARN, operation, audit_exc, exc_info=True)
+        return None
+
+
+async def _wa_mark_committed(
+    wa_service: Optional[WriteAheadAuditService],
+    intent_id: Optional[str],
+    *,
+    operation: str,
+    commit_payload: Optional[Dict[str, Any]] = None,
+) -> None:
+    if wa_service is None or not intent_id:
+        return
+    try:
+        await wa_service.mark_committed(intent_id, commit_payload=commit_payload)
+    except Exception as audit_exc:  # noqa: BLE001
+        _logger.warning(_WA_COMMIT_WARN, operation, audit_exc, exc_info=True)
+
+
+async def _wa_mark_aborted(
+    wa_service: Optional[WriteAheadAuditService],
+    intent_id: Optional[str],
+    *,
+    operation: str,
+    reason: str,
+) -> None:
+    if wa_service is None or not intent_id:
+        return
+    try:
+        await wa_service.mark_aborted(intent_id, reason=reason)
+    except Exception as audit_exc:  # noqa: BLE001
+        _logger.warning(_WA_ABORT_WARN, operation, audit_exc, exc_info=True)
+
+
+def _build_dispute_commit_payload(dispute: Any) -> Dict[str, Any]:
+    if isinstance(dispute, dict):
+        return {
+            "dispute_id": (
+                dispute.get("dispute_id")
+                or dispute.get("id")
+                or dispute.get("_id")
+            ),
+            "status": dispute.get("status"),
+        }
+    return {
+        "dispute_id": getattr(dispute, "id", None),
+        "status": getattr(dispute, "status", None),
+    }
+
+
+def _build_guarantee_commit_payload(guarantee: Any) -> Dict[str, Any]:
+    if isinstance(guarantee, dict):
+        return {
+            "guarantee_id": (
+                guarantee.get("guarantee_id")
+                or guarantee.get("id")
+                or guarantee.get("_id")
+            ),
+            "status": guarantee.get("status"),
+        }
+    return {
+        "guarantee_id": getattr(guarantee, "id", None),
+        "status": getattr(guarantee, "status", None),
+    }
+
+
+async def _validate_dispute_booking_access(
+    db: Optional[AsyncIOMotorDatabase],
+    booking_id: str,
+    user_id: str,
+) -> None:
+    if db is None:
+        return
+    booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    user_is_grihasta = str(booking["user_id"]) == user_id
+    user_is_acharya = str(booking["acharya_id"]) == user_id
+
+    if not (user_is_grihasta or user_is_acharya):
+        raise HTTPException(status_code=403, detail="You are not involved in this booking")
 
 
 async def _trigger_dispute_refund(db, dispute: dict, dispute_id: str, compensation_pct: float) -> None:
@@ -605,6 +770,62 @@ async def _notify_dispute_parties(db, dispute: dict, dispute_id: str) -> None:
                     body="Your dispute has been reviewed and resolved by our team.",
                     data={"type": "dispute_resolved", "dispute_id": dispute_id},
                 )
+
+
+async def _apply_dispute_resolution(
+    db: AsyncIOMotorDatabase,
+    *,
+    dispute_id: str,
+    request: DisputeResolveRequest,
+    current_user_id: str,
+    dispute: Dict[str, Any],
+    compensation_value: Optional[float],
+    resolution_notes: str,
+) -> None:
+    # Update dispute
+    await db.dispute_resolutions.update_one(
+        {"_id": ObjectId(dispute_id)},
+        {
+            "$set": {
+                "status": request.resolution,
+                "resolution_notes": resolution_notes,
+                "compensation_amount": compensation_value,
+                "resolved_at": datetime.now(timezone.utc),
+                "resolved_by_admin_id": current_user_id,
+            }
+        },
+    )
+
+    # Audit log
+    audit = AuditService(db)
+    await audit.log_action(
+        user_id=current_user_id,
+        action="DISPUTE_RESOLVED",
+        resource_type="dispute",
+        resource_id=dispute_id,
+        details={
+            "resolution": request.resolution,
+            "compensation_amount": compensation_value,
+        },
+    )
+
+    # Trigger Razorpay refund if compensation percentage awarded
+    if compensation_value and compensation_value > 0:
+        try:
+            await _trigger_dispute_refund(db, dispute, dispute_id, compensation_value)
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("Dispute refund failed for %s: %s", dispute_id, exc)
+
+    # Notify both parties about the resolution
+    try:
+        await _notify_dispute_parties(db, dispute, dispute_id)
+    except Exception as notify_exc:  # noqa: BLE001
+        _logger.error(
+            "Failed to notify dispute parties for dispute %s: %s",
+            dispute_id,
+            notify_exc,
+            exc_info=True,
+        )
 
 
 @router.post("/admin/disputes/{dispute_id}/resolve", responses={404: {"description": "Dispute not found"}})
@@ -644,57 +865,57 @@ async def resolve_dispute(
     dispute = await db.dispute_resolutions.find_one({"_id": ObjectId(dispute_id)})
     if not dispute:
         raise HTTPException(status_code=404, detail=_DISPUTE_NOT_FOUND)
-    
-    # Update dispute
-    await db.dispute_resolutions.update_one(
-        {"_id": ObjectId(dispute_id)},
-        {
-            "$set": {
-                "status": request.resolution,
-                "resolution_notes": resolution_notes,
-                "compensation_amount": compensation_value,
-                "resolved_at": datetime.now(timezone.utc),
-                "resolved_by_admin_id": str(current_user.id)
-            }
-        }
-    )
-    
-    # Audit log
-    audit = AuditService(db)
-    await audit.log_action(
-        user_id=str(current_user.id),
-        action="DISPUTE_RESOLVED",
+
+    wa_service = WriteAheadAuditService(db)
+    wa_op = "dispute resolve"
+    wa_intent_id = await _wa_log_intent(
+        wa_service,
+        operation=wa_op,
+        actor_id=str(current_user.id),
+        action="DISPUTE_RESOLVE",
         resource_type="dispute",
         resource_id=dispute_id,
-        details={
+        payload={
             "resolution": request.resolution,
-            "compensation_amount": compensation_value
-        }
+            "compensation_amount": compensation_value,
+        },
     )
     
-    # Trigger Razorpay refund if compensation percentage awarded
-    if compensation_value and compensation_value > 0:
-        try:
-            await _trigger_dispute_refund(db, dispute, dispute_id, compensation_value)
-        except Exception as exc:  # noqa: BLE001
-            _logger.warning("Dispute refund failed for %s: %s", dispute_id, exc)
-
-    # Notify both parties about the resolution
     try:
-        await _notify_dispute_parties(db, dispute, dispute_id)
-    except Exception as _notify_exc:  # noqa: BLE001
-        _logger.error(
-            "Failed to notify dispute parties for dispute %s: %s",
-            dispute_id,
-            _notify_exc,
-            exc_info=True,
+        await _apply_dispute_resolution(
+            db,
+            dispute_id=dispute_id,
+            request=request,
+            current_user_id=str(current_user.id),
+            dispute=dispute,
+            compensation_value=compensation_value,
+            resolution_notes=resolution_notes,
         )
 
-    return {
-        "message": "Dispute resolved successfully",
-        "dispute_id": dispute_id,
-        "resolution": request.resolution
-    }
+        await _wa_mark_committed(
+            wa_service,
+            wa_intent_id,
+            operation=wa_op,
+            commit_payload={
+                "dispute_id": dispute_id,
+                "status": request.resolution,
+                "compensation_amount": compensation_value,
+            },
+        )
+
+        return {
+            "message": "Dispute resolved successfully",
+            "dispute_id": dispute_id,
+            "resolution": request.resolution
+        }
+    except Exception as exc:  # noqa: BLE001
+        await _wa_mark_aborted(
+            wa_service,
+            wa_intent_id,
+            operation=wa_op,
+            reason=str(exc),
+        )
+        raise
 
 
 @router.post("/admin/guarantees/{guarantee_id}/approve", responses={404: {"description": "Service guarantee not found"}})

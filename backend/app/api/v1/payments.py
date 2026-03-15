@@ -13,6 +13,7 @@ import logging
 from app.db.connection import get_db
 from app.core.security import get_current_user
 from app.services.payment_service import RazorpayService
+from app.services.write_ahead_audit_service import WriteAheadAuditService
 from app.core.exceptions import ResourceNotFoundError, PaymentFailedError
 from app.schemas.requests import StandardResponse
 
@@ -22,6 +23,81 @@ logger = logging.getLogger(__name__)
 
 # Constants
 PAYMENT_NOT_FOUND_MSG = "Payment not found"
+
+
+async def _safe_wa_abort(
+    wa_service: WriteAheadAuditService,
+    intent_id: Optional[str],
+    reason: str,
+    app_logger: logging.Logger,
+) -> None:
+    if not intent_id:
+        return
+    try:
+        await wa_service.mark_aborted(intent_id, reason=reason)
+    except Exception as audit_exc:
+        app_logger.warning(
+            f"Write-ahead audit abort failed for payment verify: {audit_exc}",
+            exc_info=True,
+        )
+
+
+async def _safe_wa_commit(
+    wa_service: WriteAheadAuditService,
+    intent_id: Optional[str],
+    payload: Dict[str, Any],
+    app_logger: logging.Logger,
+) -> None:
+    if not intent_id:
+        return
+    try:
+        await wa_service.mark_committed(intent_id, commit_payload=payload)
+    except Exception as audit_exc:
+        app_logger.warning(
+            f"Write-ahead audit commit failed for payment verify: {audit_exc}",
+            exc_info=True,
+        )
+
+
+async def _create_verify_wa_intent(
+    wa_service: WriteAheadAuditService,
+    current_user_id: str,
+    request: "PaymentVerifyRequest",
+) -> Optional[str]:
+    try:
+        return await wa_service.log_intent(
+            actor_id=current_user_id,
+            action="PAYMENT_VERIFY",
+            resource_type="payment",
+            resource_id=request.razorpay_order_id,
+            payload={
+                "razorpay_order_id": request.razorpay_order_id,
+                "razorpay_payment_id": request.razorpay_payment_id,
+            },
+        )
+    except Exception as audit_exc:
+        logger.warning(
+            f"Write-ahead audit intent logging failed for payment verify: {audit_exc}",
+            exc_info=True,
+        )
+        return None
+
+
+def _handle_verify_signature(
+    razorpay: RazorpayService,
+    request: "PaymentVerifyRequest",
+) -> bool:
+    is_valid = razorpay.verify_payment_signature(
+        request.razorpay_order_id,
+        request.razorpay_payment_id,
+        request.razorpay_signature,
+    )
+    if not is_valid:
+        raise PaymentFailedError(
+            order_id=request.razorpay_order_id,
+            details={"reason": "Invalid Signature"},
+        )
+    return True
 
 
 # --- Request Schemas ---
@@ -55,6 +131,26 @@ async def initiate_payment(
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Initiate a Razorpay payment"""
+    wa_service = WriteAheadAuditService(db)
+    intent_id: Optional[str] = None
+    try:
+        intent_id = await wa_service.log_intent(
+            actor_id=current_user["id"],
+            action="PAYMENT_INITIATE",
+            resource_type="payment",
+            resource_id=request.booking_id or "wallet",
+            payload={
+                "amount": request.amount,
+                "currency": "INR",
+                "purpose": request.purpose,
+            },
+        )
+    except Exception as audit_exc:
+        logger.warning(
+            f"Write-ahead audit intent logging failed for payment initiate: {audit_exc}",
+            exc_info=True,
+        )
+
     try:
         # Create Razorpay Order
         order_data = razorpay_service.create_order(
@@ -80,6 +176,25 @@ async def initiate_payment(
 
         result = await db.payments.insert_one(payment_record)
 
+        if intent_id:
+            try:
+                await wa_service.mark_committed(
+                    intent_id,
+                    commit_payload={
+                        "payment_id": str(result.inserted_id),
+                        "razorpay_order_id": order_data["order_id"],
+                        "amount": request.amount,
+                        "currency": order_data["currency"],
+                        "purpose": request.purpose,
+                        "status": "created",
+                    },
+                )
+            except Exception as audit_exc:
+                logger.warning(
+                    f"Write-ahead audit commit failed for payment initiate: {audit_exc}",
+                    exc_info=True,
+                )
+
         return StandardResponse(
             success=True,
             data={
@@ -90,6 +205,14 @@ async def initiate_payment(
             },
         )
     except Exception as e:
+        if intent_id:
+            try:
+                await wa_service.mark_aborted(intent_id, reason=str(e))
+            except Exception as audit_exc:
+                logger.warning(
+                    f"Write-ahead audit abort failed for payment initiate: {audit_exc}",
+                    exc_info=True,
+                )
         logger.error(f"Payment initiation error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -112,21 +235,21 @@ async def verify_payment(
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     """Verify Razorpay signature"""
+    wa_service = WriteAheadAuditService(db)
+    intent_id = await _create_verify_wa_intent(wa_service, current_user["id"], request)
+
     try:
-        # Verify signature
-        is_valid = razorpay_service.verify_payment_signature(
-            request.razorpay_order_id,
-            request.razorpay_payment_id,
-            request.razorpay_signature,
-        )
+        _handle_verify_signature(razorpay_service, request)
+    except PaymentFailedError as e:
+        await _safe_wa_abort(wa_service, intent_id, str(e), logger)
+        raise HTTPException(status_code=400, detail="Signature verification failed")
+    except Exception as e:
+        await _safe_wa_abort(wa_service, intent_id, str(e), logger)
+        logger.error(f"Payment verification error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Payment verification failed")
 
-        if not is_valid:
-            raise PaymentFailedError(
-                order_id=request.razorpay_order_id,
-                details={"reason": "Invalid Signature"},
-            )
-
-        # Update Payment Record — filter by user_id to prevent IDOR
+    # Update Payment Record — filter by user_id to prevent IDOR
+    try:
         update_result = await db.payments.find_one_and_update(
             {
                 "razorpay_order_id": request.razorpay_order_id,
@@ -142,25 +265,34 @@ async def verify_payment(
             },
             return_document=True,
         )
-
-        if not update_result:
-            raise ResourceNotFoundError(message="Payment order not found")
-
-        # Note: Post-payment logic (booking status update, wallet credit) is handled
-        # by the /bookings/{id}/payment/verify endpoint which updates booking status
-
-        return StandardResponse(
-            success=True,
-            data={"status": "captured", "payment_id": str(update_result["_id"])},
-        )
-
-    except PaymentFailedError:
-        raise HTTPException(status_code=400, detail="Signature verification failed")
-    except ResourceNotFoundError:
-        raise HTTPException(status_code=404, detail="Payment record not found")
     except Exception as e:
+        await _safe_wa_abort(wa_service, intent_id, str(e), logger)
         logger.error(f"Payment verification error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Payment verification failed")
+
+    if not update_result:
+        resource_not_found_error = ResourceNotFoundError(message="Payment order not found")
+        await _safe_wa_abort(wa_service, intent_id, str(resource_not_found_error), logger)
+        raise HTTPException(status_code=404, detail="Payment record not found")
+
+    # Note: Post-payment logic (booking status update, wallet credit) is handled
+    # by the /bookings/{id}/payment/verify endpoint which updates booking status
+    await _safe_wa_commit(
+        wa_service,
+        intent_id,
+        {
+            "payment_id": str(update_result["_id"]),
+            "razorpay_order_id": request.razorpay_order_id,
+            "razorpay_payment_id": request.razorpay_payment_id,
+            "status": "captured",
+        },
+        logger,
+    )
+
+    return StandardResponse(
+        success=True,
+        data={"status": "captured", "payment_id": str(update_result["_id"])},
+    )
 
 
 @router.get("/history", response_model=StandardResponse)
@@ -247,6 +379,26 @@ async def initiate_refund(
             detail="No Razorpay payment ID found for this payment",
         )
 
+    wa_service = WriteAheadAuditService(db)
+    intent_id: Optional[str] = None
+    try:
+        intent_id = await wa_service.log_intent(
+            actor_id=current_user["id"],
+            action="PAYMENT_REFUND_INITIATE",
+            resource_type="payment",
+            resource_id=payment_id,
+            payload={
+                "refund_amount": refund_amount,
+                "payment_status": payment.get("status"),
+                "razorpay_payment_id": razorpay_payment_id,
+            },
+        )
+    except Exception as audit_exc:
+        logger.warning(
+            f"Write-ahead audit intent logging failed for refund initiate: {audit_exc}",
+            exc_info=True,
+        )
+
     try:
         refund_result = razorpay_service.initiate_refund(
             payment_id=razorpay_payment_id,
@@ -254,6 +406,14 @@ async def initiate_refund(
             notes={"internal_payment_id": payment_id},
         )
     except Exception as exc:
+        if intent_id:
+            try:
+                await wa_service.mark_aborted(intent_id, reason=str(exc))
+            except Exception as audit_exc:
+                logger.warning(
+                    f"Write-ahead audit abort failed for refund initiate: {audit_exc}",
+                    exc_info=True,
+                )
         logger.error(f"Razorpay refund failed for {payment_id}: {exc}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -271,6 +431,24 @@ async def initiate_refund(
             }
         },
     )
+
+    if intent_id:
+        try:
+            await wa_service.mark_committed(
+                intent_id,
+                commit_payload={
+                    "payment_id": payment_id,
+                    "razorpay_payment_id": razorpay_payment_id,
+                    "razorpay_refund_id": refund_result.get("refund_id"),
+                    "refund_amount": refund_result.get("amount"),
+                    "status": "refunded",
+                },
+            )
+        except Exception as audit_exc:
+            logger.warning(
+                f"Write-ahead audit commit failed for refund initiate: {audit_exc}",
+                exc_info=True,
+            )
 
     return StandardResponse(success=True, data={"status": "refunded", **refund_result})
 

@@ -88,3 +88,60 @@ class TestOutboxWorker:
         assert attempts == 2
         assert max_attempts == 5
         assert "boom" in error
+
+    @pytest.mark.asyncio
+    async def test_dispatch_event_email_channel(self, monkeypatch):
+        from app.workers import outbox_worker
+
+        captured = {"args": None}
+
+        async def fake_send_email(*, to_email, subject, body, html_body=None):
+            await asyncio.sleep(0)
+            captured["args"] = (to_email, subject, body, html_body)
+            return True
+
+        monkeypatch.setattr(outbox_worker.email_service, "send_email", fake_send_email)
+
+        await outbox_worker._dispatch_event(
+            "email",
+            {
+                "to_email": "user@example.com",
+                "subject": "Hello",
+                "body": "World",
+                "html_body": "<p>World</p>",
+            },
+        )
+
+        assert captured["args"] == (
+            "user@example.com",
+            "Hello",
+            "World",
+            "<p>World</p>",
+        )
+
+    @pytest.mark.asyncio
+    async def test_dispatch_event_sms_channel(self, monkeypatch):
+        from app.workers import outbox_worker
+
+        captured = {"args": None}
+
+        async def fake_send_sms(*, to_number, message, media_url=None):
+            await asyncio.sleep(0)
+            captured["args"] = (to_number, message, media_url)
+            return {"success": True, "message_sid": "sid-1"}
+
+        monkeypatch.setattr(outbox_worker.sms_service, "send_sms", fake_send_sms)
+
+        await outbox_worker._dispatch_event(
+            "sms",
+            {
+                "to_number": "+919999999999",
+                "message": "Pay now",
+            },
+        )
+
+        assert captured["args"] == (
+            "+919999999999",
+            "Pay now",
+            None,
+        )

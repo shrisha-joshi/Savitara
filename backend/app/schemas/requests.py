@@ -22,6 +22,12 @@ def utcnow():
 T = TypeVar("T")
 
 
+DATE_FORMAT_DESCRIPTION = "Date in YYYY-MM-DD format"
+TIME_FORMAT_DESCRIPTION = "Time in HH:MM format"
+DATE_FORMAT_ERROR = "Date must be in YYYY-MM-DD format"
+TIME_FORMAT_ERROR = "Time must be in HH:MM format"
+
+
 # ============= Authentication Schemas =============
 
 
@@ -221,8 +227,8 @@ class BookingCreateRequest(BaseModel):
     booking_type: str = Field(..., pattern="^(only|with_samagri)$")
     booking_mode: str = Field("instant", pattern="^(instant|request)$")
     requirements: Optional[str] = Field(None, max_length=1000)
-    date: str = Field(..., description="Date in YYYY-MM-DD format")
-    time: str = Field(..., description="Time in HH:MM format")
+    date: str = Field(..., description=DATE_FORMAT_DESCRIPTION)
+    time: str = Field(..., description=TIME_FORMAT_DESCRIPTION)
     location: Optional[Location] = None
     coupon_code: Optional[str] = None
     notes: Optional[str] = Field(None, max_length=500)
@@ -235,7 +241,7 @@ class BookingCreateRequest(BaseModel):
             datetime.strptime(v, "%Y-%m-%d")
             return v
         except ValueError:
-            raise ValueError("Date must be in YYYY-MM-DD format")
+            raise ValueError(DATE_FORMAT_ERROR)
 
     @field_validator("time")
     @classmethod
@@ -245,7 +251,7 @@ class BookingCreateRequest(BaseModel):
             datetime.strptime(v, "%H:%M")
             return v
         except ValueError:
-            raise ValueError("Time must be in HH:MM format")
+            raise ValueError(TIME_FORMAT_ERROR)
 
     @model_validator(mode="after")
     def validate_service(self) -> "BookingCreateRequest":
@@ -271,6 +277,44 @@ class BookingCreateRequest(BaseModel):
             }
         }
     )
+
+
+class RebookRequest(BaseModel):
+    """Optional schedule override for rebooking."""
+
+    date: Optional[str] = Field(None, description=DATE_FORMAT_DESCRIPTION)
+    time: Optional[str] = Field(None, description=TIME_FORMAT_DESCRIPTION)
+
+    @field_validator("date")
+    @classmethod
+    def validate_date(cls, v: Optional[str]) -> Optional[str]:
+        """Validate date format when provided."""
+        if v is None:
+            return v
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+            return v
+        except ValueError:
+            raise ValueError(DATE_FORMAT_ERROR)
+
+    @field_validator("time")
+    @classmethod
+    def validate_time(cls, v: Optional[str]) -> Optional[str]:
+        """Validate time format when provided."""
+        if v is None:
+            return v
+        try:
+            datetime.strptime(v, "%H:%M")
+            return v
+        except ValueError:
+            raise ValueError(TIME_FORMAT_ERROR)
+
+    @model_validator(mode="after")
+    def validate_date_time_pair(self) -> "RebookRequest":
+        """Require date/time to be provided together."""
+        if bool(self.date) ^ bool(self.time):
+            raise ValueError("Both date and time must be provided together")
+        return self
 
 
 class BookingResponse(BaseModel):
@@ -312,6 +356,41 @@ class AttendanceConfirmRequest(BaseModel):
 
     confirmed: bool
     notes: Optional[str] = None
+
+
+class RebookRequest(BaseModel):
+    """Optional schedule override for rebooking a completed booking."""
+
+    date: Optional[str] = Field(None, description="Date in YYYY-MM-DD format")
+    time: Optional[str] = Field(None, description="Time in HH:MM format")
+
+    @field_validator("date")
+    @classmethod
+    def validate_date(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+            return v
+        except ValueError as exc:
+            raise ValueError("Date must be in YYYY-MM-DD format") from exc
+
+    @field_validator("time")
+    @classmethod
+    def validate_time(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        try:
+            datetime.strptime(v, "%H:%M")
+            return v
+        except ValueError as exc:
+            raise ValueError("Time must be in HH:MM format") from exc
+
+    @model_validator(mode="after")
+    def validate_schedule_pair(self) -> "RebookRequest":
+        if (self.date is None) ^ (self.time is None):
+            raise ValueError("Both date and time must be provided together")
+        return self
 
 
 # ============= Chat Schemas =============
@@ -420,7 +499,7 @@ class AnalyticsResponse(BaseModel):
 class AvailabilitySlotRequest(BaseModel):
     """Add/update availability slot"""
 
-    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    date: str = Field(..., description=DATE_FORMAT_DESCRIPTION)
     time_slots: List[Dict[str, str]] = Field(..., description="List of time ranges")
 
     @field_validator("date")
@@ -430,7 +509,7 @@ class AvailabilitySlotRequest(BaseModel):
             datetime.strptime(v, "%Y-%m-%d")
             return v
         except ValueError:
-            raise ValueError("Date must be in YYYY-MM-DD format")
+            raise ValueError(DATE_FORMAT_ERROR)
 
     model_config = ConfigDict(
         json_schema_extra={

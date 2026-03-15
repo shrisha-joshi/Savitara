@@ -11,6 +11,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.services.notification_service import NotificationService
 from app.services.outbox_service import outbox_service
 from app.services.websocket_manager import manager
+from app.utils.email import email_service
+from app.utils.sms import sms_service
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,26 @@ async def _dispatch_event(channel: str, payload: Dict[str, Any]) -> None:
 
     if channel == "ws_personal":
         await manager.send_personal_message(payload["user_id"], payload["message"])
+        return
+
+    if channel == "email":
+        delivered = await email_service.send_email(
+            to_email=payload["to_email"],
+            subject=payload["subject"],
+            body=payload["body"],
+            html_body=payload.get("html_body"),
+        )
+        if not delivered:
+            raise RuntimeError("Email delivery failed")
+        return
+
+    if channel == "sms":
+        result = await sms_service.send_sms(
+            to_number=payload["to_number"],
+            message=payload["message"],
+        )
+        if not result.get("success"):
+            raise RuntimeError(result.get("error") or "SMS delivery failed")
         return
 
     raise ValueError(f"Unsupported outbox channel: {channel}")

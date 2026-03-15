@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.core.security import SecurityManager
 from app.core.tracing import resolve_trace_context
+from app.services.kill_switch_service import DEFAULT_CONTROLS
 from app.db.query_budget import (
     clear_query_budget,
     get_query_budget,
@@ -92,6 +93,18 @@ def _normalize_endpoint(path: str) -> str:
     return normalized
 
 
+def _cache_hint_for_request(request: Request) -> str:
+    """Suggest cache strategy based on endpoint profile."""
+    path = request.url.path
+    if path.startswith("/api/v1/chat") or path.startswith("/api/v1/bookings"):
+        return "short"
+    if path.startswith("/api/v1/panchanga") or path.startswith("/api/v1/analytics"):
+        return "medium"
+    if path.startswith("/api/v1/services") or path.startswith("/api/v1/content"):
+        return "long"
+    return "bypass"
+
+
 def _resolve_schema_version(request: Request) -> str:
     """Resolve requested schema version from header/query and validate support."""
     requested = (
@@ -121,6 +134,19 @@ def _resolve_schema_version(request: Request) -> str:
     return normalized
 
 
+async def _resolve_kill_switch_controls(request: Request) -> dict:
+    """Resolve global controls with safe defaults and graceful failure handling."""
+    service = getattr(request.app.state, "kill_switch_service", None)
+    if service is None:
+        return dict(DEFAULT_CONTROLS)
+    try:
+        controls = dict(DEFAULT_CONTROLS)
+        controls.update(await service.get_controls())
+        return controls
+    except Exception:
+        return dict(DEFAULT_CONTROLS)
+
+
 async def _enforce_rate_limit(request: Request, user_id: Optional[str]) -> None:
     """Apply composite distributed rate limiting for incoming request."""
     if not settings.ENABLE_RATE_LIMITING:
@@ -129,11 +155,42 @@ async def _enforce_rate_limit(request: Request, user_id: Optional[str]) -> None:
     client_ip = request.client.host if request.client else "unknown-ip"
     device_fp = _device_fingerprint(request)
     path = request.url.path
+    controls = await _resolve_kill_switch_controls(request)
     limit = (
         settings.RATE_LIMIT_AUTH_PER_MINUTE
         if path.startswith("/api/v1/auth")
         else settings.RATE_LIMIT_PER_MINUTE
     )
+    if controls.get("incident_mode"):
+        incident_multiplier = controls.get("incident_throttle_multiplier", 0.5)
+        try:
+            incident_multiplier = float(incident_multiplier)
+        except (TypeError, ValueError):
+            incident_multiplier = 0.5
+        limit = max(5, int(limit * incident_multiplier))
+
+    risk_policy_engine = getattr(request.app.state, "risk_policy_engine", None)
+    if risk_policy_engine is not None:
+        assessment = risk_policy_engine.assess_request(request, user_id)
+        if assessment.blocked:
+            from fastapi import HTTPException, status as http_status  # noqa: PLC0415
+
+            raise HTTPException(
+                status_code=http_status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={
+                    "success": False,
+                    "error": {
+                        "code": "RATE_LIMIT_001",
+                        "message": "Request blocked by risk policy.",
+                        "details": {
+                            "risk_level": assessment.level,
+                            "risk_score": assessment.score,
+                        },
+                    },
+                },
+            )
+        limit = max(5, int(limit * assessment.throttle_factor))
+
     principal = user_id or "anonymous"
     bucket_key = (
         f"rate:v2:u:{principal}:ip:{client_ip}:d:{device_fp}:"
@@ -192,6 +249,131 @@ def _resolve_query_budget(request: Request) -> int:
     return 100
 
 
+def _build_schema_error_response(
+    request_id: str,
+    correlation_id: str,
+    request: Request,
+    exc: HTTPException,
+    trace_context,
+) -> JSONResponse:
+    """Build consistent schema-validation error response and required headers."""
+    content = exc.detail if isinstance(exc.detail, dict) else {
+        "success": False,
+        "error": {
+            "code": "VAL_003",
+            "message": str(exc.detail),
+            "details": {},
+        },
+    }
+    content.setdefault("timestamp", time.time())
+    content.setdefault("request_id", request_id)
+    content.setdefault("correlation_id", correlation_id)
+    content.setdefault("schema_version", getattr(request.state, "schema_version", "v1"))
+
+    response = JSONResponse(status_code=exc.status_code, content=content)
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Correlation-ID"] = correlation_id
+    response.headers["X-API-Schema-Version"] = getattr(request.state, "schema_version", "v1")
+    response.headers["traceparent"] = trace_context.traceparent
+    if trace_context.tracestate:
+        response.headers["tracestate"] = trace_context.tracestate
+    return response
+
+
+def _build_kill_switch_response(
+    message: str,
+    request_id: str,
+    correlation_id: str,
+    schema_version: str,
+    trace_context,
+) -> JSONResponse:
+    """Build standard 503 kill-switch response payload and invariant headers."""
+    response = JSONResponse(
+        status_code=503,
+        content={
+            "success": False,
+            "error": {
+                "code": "SERVICE_503",
+                "message": message,
+                "details": {},
+            },
+            "timestamp": time.time(),
+            "request_id": request_id,
+            "correlation_id": correlation_id,
+            "schema_version": schema_version,
+        },
+    )
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Correlation-ID"] = correlation_id
+    response.headers["X-API-Schema-Version"] = schema_version
+    response.headers["traceparent"] = trace_context.traceparent
+    if trace_context.tracestate:
+        response.headers["tracestate"] = trace_context.tracestate
+    return response
+
+
+def _attach_success_response_headers(
+    response,
+    request_id: str,
+    correlation_id: str,
+    schema_version: str,
+    process_time: float,
+    request: Request,
+    trace_context,
+) -> None:
+    """Attach canonical success response headers for observability and controls."""
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Correlation-ID"] = correlation_id
+    response.headers["X-Process-Time"] = str(process_time)
+    response.headers["X-API-Schema-Version"] = schema_version
+    response.headers["X-Cache-Hint"] = _cache_hint_for_request(request)
+    if get_query_budget() is not None:
+        response.headers["X-DB-Query-Budget"] = str(get_query_budget())
+        response.headers["X-DB-Query-Count"] = str(get_query_count())
+    response.headers["traceparent"] = trace_context.traceparent
+    if trace_context.tracestate:
+        response.headers["tracestate"] = trace_context.tracestate
+    # Fix for Firebase Auth cross-origin popup
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+
+
+def _enforce_route_kill_switches(
+    request: Request,
+    controls: dict,
+    request_id: str,
+    correlation_id: str,
+    schema_version: str,
+    trace_context,
+) -> Optional[JSONResponse]:
+    """Return a 503 response when route-level kill switches disable a capability."""
+    path = request.url.path
+
+    if path.startswith("/api/v1/payments") and not controls.get("payments_enabled", True):
+        response = _build_kill_switch_response(
+            "Payments are temporarily disabled",
+            request_id,
+            correlation_id,
+            schema_version,
+            trace_context,
+        )
+    elif path.startswith("/api/v1/chat") and not controls.get("chat_enabled", True):
+        response = _build_kill_switch_response(
+            "Chat is temporarily disabled",
+            request_id,
+            correlation_id,
+            schema_version,
+            trace_context,
+        )
+    else:
+        return None
+
+    response.headers["X-Cache-Hint"] = _cache_hint_for_request(request)
+    if get_query_budget() is not None:
+        response.headers["X-DB-Query-Budget"] = str(get_query_budget())
+        response.headers["X-DB-Query-Count"] = str(get_query_count())
+    return response
+
+
 def register_middleware(app: FastAPI) -> None:
     """
     Register all application middleware in correct order.
@@ -240,6 +422,7 @@ def register_middleware(app: FastAPI) -> None:
             "X-API-Schema-Version",
             "X-DB-Query-Budget",
             "X-DB-Query-Count",
+            "X-Cache-Hint",
             "traceparent",
             "tracestate",
         ],
@@ -264,28 +447,13 @@ def register_middleware(app: FastAPI) -> None:
         try:
             schema_version = _resolve_schema_version(request)
         except HTTPException as exc:
-            content = exc.detail if isinstance(exc.detail, dict) else {
-                "success": False,
-                "error": {
-                    "code": "VAL_003",
-                    "message": str(exc.detail),
-                    "details": {},
-                },
-            }
-            content.setdefault("timestamp", time.time())
-            content.setdefault("request_id", request_id)
-            content.setdefault("correlation_id", correlation_id)
-            content.setdefault("schema_version", getattr(request.state, "schema_version", "v1"))
-            response = JSONResponse(status_code=exc.status_code, content=content)
-            response.headers["X-Request-ID"] = request_id
-            response.headers["X-Correlation-ID"] = correlation_id
-            response.headers["X-API-Schema-Version"] = getattr(
-                request.state, "schema_version", "v1"
+            return _build_schema_error_response(
+                request_id,
+                correlation_id,
+                request,
+                exc,
+                trace_context,
             )
-            response.headers["traceparent"] = trace_context.traceparent
-            if trace_context.tracestate:
-                response.headers["tracestate"] = trace_context.tracestate
-            return response
         request.state.request_id = request_id
         request.state.correlation_id = correlation_id
         request.state.schema_version = schema_version
@@ -304,22 +472,31 @@ def register_middleware(app: FastAPI) -> None:
         set_user_id(user_id or "")
         await _enforce_rate_limit(request, user_id)
 
+        controls = await _resolve_kill_switch_controls(request)
+        kill_switch_response = _enforce_route_kill_switches(
+            request,
+            controls,
+            request_id,
+            correlation_id,
+            schema_version,
+            trace_context,
+        )
+        if kill_switch_response is not None:
+            return kill_switch_response
+
         start_time = time.time()
         response = await call_next(request)
         process_time = time.time() - start_time
 
-        response.headers["X-Request-ID"] = request_id
-        response.headers["X-Correlation-ID"] = correlation_id
-        response.headers["X-Process-Time"] = str(process_time)
-        response.headers["X-API-Schema-Version"] = schema_version
-        if get_query_budget() is not None:
-            response.headers["X-DB-Query-Budget"] = str(get_query_budget())
-            response.headers["X-DB-Query-Count"] = str(get_query_count())
-        response.headers["traceparent"] = trace_context.traceparent
-        if trace_context.tracestate:
-            response.headers["tracestate"] = trace_context.tracestate
-        # Fix for Firebase Auth cross-origin popup
-        response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+        _attach_success_response_headers(
+            response,
+            request_id,
+            correlation_id,
+            schema_version,
+            process_time,
+            request,
+            trace_context,
+        )
 
         _record_api_metrics(request, response.status_code, process_time)
 

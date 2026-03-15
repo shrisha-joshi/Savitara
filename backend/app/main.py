@@ -66,6 +66,7 @@ from app.api.v1 import (
     strategy_features,
     trust,  # Trust score and dispute resolution
     investor_metrics,  # Investor dashboard metrics
+    reliability_admin,
 )
 
 from slowapi.errors import RateLimitExceeded  # type: ignore
@@ -441,6 +442,7 @@ app.include_router(
 )  # Strategy features (subscriptions, bundles, penalties, guarantee)
 app.include_router(trust.router, prefix=API_V1_PREFIX)  # Trust scores, disputes, checkpoints
 app.include_router(investor_metrics.router, prefix=API_V1_PREFIX)  # Investor metrics (CAC, LTV, GMV)
+app.include_router(reliability_admin.router, prefix=API_V1_PREFIX)  # Reliability control-plane (kill switches, command bus)
 
 # Serve uploaded files (voice/images/documents) as static files
 _uploads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")

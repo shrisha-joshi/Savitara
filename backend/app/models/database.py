@@ -233,6 +233,9 @@ class Booking(BaseModel):
     booking_type: str  # "only" or "with_samagri"
     booking_mode: str = "instant"  # "instant" or "request"
     requirements: Optional[str] = None  # User requirements for "request" mode
+    request_sla_expires_at: Optional[datetime] = None
+    request_sla_reminders_sent: List[int] = Field(default_factory=list)
+    pending_payment_recovery_reminders_sent: List[int] = Field(default_factory=list)
     date_time: datetime
     end_time: Optional[datetime] = None
     location: Optional[Location] = None

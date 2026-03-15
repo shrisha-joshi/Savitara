@@ -30,6 +30,7 @@ from app.api.v1 import (
     strategy_features,
     trust,
     investor_metrics,
+    reliability_admin,
 )
 
 __all__ = [
@@ -61,4 +62,5 @@ __all__ = [
     "strategy_features",
     "trust",
     "investor_metrics",
+    "reliability_admin",
 ]

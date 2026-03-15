@@ -10,11 +10,67 @@ SonarQube: S6437 — secrets must come from environment variables, never default
 from __future__ import annotations
 
 import secrets
+import json
 from pathlib import Path
 from typing import List, Optional, Union
 
 from pydantic import field_validator, ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+DEFAULT_REQUEST_MODE_SLA_MINUTES = 60
+DEFAULT_REQUEST_MODE_SLA_REMINDER_SCHEDULE = [30, 10, 5]
+DEFAULT_PENDING_PAYMENT_RECOVERY_REMINDER_SCHEDULE = [20, 10, 5]
+
+
+def _parse_sla_schedule_items(value: Union[str, List[int]]) -> List[Union[int, str]]:
+    if isinstance(value, list):
+        return value
+    if not isinstance(value, str):
+        raise ValueError(
+            "REQUEST_MODE_SLA_REMINDER_SCHEDULE must be a comma-separated string or JSON list"
+        )
+
+    raw_value = value.strip()
+    if not raw_value:
+        return DEFAULT_REQUEST_MODE_SLA_REMINDER_SCHEDULE
+
+    if raw_value.startswith("["):
+        try:
+            parsed = json.loads(raw_value)
+        except ValueError as exc:
+            raise ValueError(
+                "REQUEST_MODE_SLA_REMINDER_SCHEDULE JSON must be a list of positive integers"
+            ) from exc
+        if not isinstance(parsed, list):
+            raise ValueError(
+                "REQUEST_MODE_SLA_REMINDER_SCHEDULE JSON must decode to a list"
+            )
+        return parsed
+
+    return [part.strip() for part in raw_value.split(",") if part.strip()]
+
+
+def _normalize_sla_schedule(items: List[Union[int, str]]) -> List[int]:
+    schedule: List[int] = []
+    for item in items:
+        try:
+            minute = int(item)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "REQUEST_MODE_SLA_REMINDER_SCHEDULE must contain only integers"
+            ) from exc
+
+        if minute <= 0:
+            raise ValueError(
+                "REQUEST_MODE_SLA_REMINDER_SCHEDULE values must be > 0"
+            )
+
+        if minute not in schedule:
+            schedule.append(minute)
+
+    schedule.sort(reverse=True)
+    return schedule or DEFAULT_REQUEST_MODE_SLA_REMINDER_SCHEDULE
 
 
 class BaseAppSettings(BaseSettings):
@@ -79,6 +135,7 @@ class BaseAppSettings(BaseSettings):
 
     # ── Database – MongoDB ────────────────────────────────────────────────
     MONGODB_URL: Optional[str] = None
+    MONGODB_READ_REPLICA_URL: Optional[str] = None
     MONGODB_DB_NAME: str = "savitara"
     MONGODB_MIN_POOL_SIZE: int = 10
     MONGODB_MAX_POOL_SIZE: int = 100
@@ -171,6 +228,11 @@ class BaseAppSettings(BaseSettings):
     MIN_BOOKING_AMOUNT: float = 500.0
     MAX_BOOKING_AMOUNT: float = 100000.0
     REFERRAL_CREDITS: float = 50.0
+    REQUEST_MODE_SLA_MINUTES: int = DEFAULT_REQUEST_MODE_SLA_MINUTES
+    REQUEST_MODE_SLA_REMINDER_SCHEDULE: Union[List[int], str] = DEFAULT_REQUEST_MODE_SLA_REMINDER_SCHEDULE
+    PENDING_PAYMENT_RECOVERY_REMINDER_SCHEDULE: Union[List[int], str] = (
+        DEFAULT_PENDING_PAYMENT_RECOVERY_REMINDER_SCHEDULE
+    )
 
     # ── Testing Helpers ───────────────────────────────────────────────────
     TEST_MODE: bool = False
@@ -196,3 +258,32 @@ class BaseAppSettings(BaseSettings):
     @property
     def is_development(self) -> bool:
         return self.APP_ENV == "development"
+
+    @field_validator("REQUEST_MODE_SLA_MINUTES", mode="before")
+    @classmethod
+    def validate_request_mode_sla_minutes(cls, v: Union[str, int]) -> int:
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return DEFAULT_REQUEST_MODE_SLA_MINUTES
+            try:
+                v = int(v)
+            except ValueError as exc:
+                raise ValueError("REQUEST_MODE_SLA_MINUTES must be a positive integer") from exc
+        if int(v) <= 0:
+            raise ValueError("REQUEST_MODE_SLA_MINUTES must be > 0")
+        return int(v)
+
+    @field_validator("REQUEST_MODE_SLA_REMINDER_SCHEDULE", mode="before")
+    @classmethod
+    def parse_request_mode_sla_reminder_schedule(
+        cls, v: Union[str, List[int]]
+    ) -> List[int]:
+        return _normalize_sla_schedule(_parse_sla_schedule_items(v))
+
+    @field_validator("PENDING_PAYMENT_RECOVERY_REMINDER_SCHEDULE", mode="before")
+    @classmethod
+    def parse_pending_payment_recovery_reminder_schedule(
+        cls, v: Union[str, List[int]]
+    ) -> List[int]:
+        return _normalize_sla_schedule(_parse_sla_schedule_items(v))

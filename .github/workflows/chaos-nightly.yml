@@ -1,0 +1,47 @@
+name: Nightly Chaos Reliability
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  chaos-nightly:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run chaos automation
+        env:
+          APP_ENV: development
+          MONGODB_URL: mongodb://localhost:27017
+          REDIS_URL: redis://localhost:6379
+          SECRET_KEY: nightly-chaos-secret-key-minimum-32-characters
+          JWT_SECRET_KEY: nightly-chaos-jwt-secret-key-minimum-32
+          JWT_ALGORITHM: HS256
+        run: |
+          python scripts/chaos_experiment.py

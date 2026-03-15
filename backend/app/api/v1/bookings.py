@@ -80,7 +80,7 @@ Booking API Endpoints
 Handles booking creation, management, and attendance confirmation
 SonarQube: S5659 - Secure OTP generation
 """
-from fastapi import APIRouter, Body, Depends, HTTPException, status, Query, Header
+from fastapi import APIRouter, Body, Depends, HTTPException, status, Query, Header, Path
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import Annotated, Dict, Any, Optional
 import logging
@@ -113,6 +113,7 @@ class PaymentVerificationData(BaseModel):
 
 from app.schemas.requests import (
     BookingCreateRequest,
+    RebookRequest,
     BookingStatusUpdateRequest,
     BookingReferRequest,
     AttendanceConfirmRequest,
@@ -154,6 +155,10 @@ from app.utils.id_utils import ensure_object_id, maybe_object_id, object_id_or_r
 
 # Constants to avoid duplication (S1192)
 ACTION_CANCEL_BOOKING = "Cancel booking"
+ACTION_REBOOK_BOOKING = "Rebook booking"
+BOOKING_MODE_INSTANT = "instant"
+BOOKING_MODE_REQUEST = "request"
+REBOOK_COMPLETED_ONLY_MESSAGE = "Only completed bookings can be rebooked"
 
 
 # Module-level constants
@@ -166,6 +171,7 @@ from app.services.booking_state_machine import (  # noqa: E402, PLC0415
 )
 from app.services.idempotency_service import idempotency_service, IdempotencyContext
 from app.services.outbox_dispatcher import enqueue_fcm_single, enqueue_ws_personal
+from app.services.booking_event_stream_service import BookingEventStreamService
 
 # Legacy transition table retained for reference only.
 # Enforcement is now handled by booking_state_machine.VALID_TRANSITIONS.
@@ -184,6 +190,84 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/bookings", tags=["Bookings"])
 
 from app.core.exceptions import ResourceNotFoundError
+
+
+SLA_AUTO_REJECT_REASON = "Auto-rejected: Acharya did not respond within SLA window."
+LEGACY_REQUEST_EXPIRY_HOURS = 48
+
+
+def _coerce_utc_datetime(value: Any) -> Optional[datetime]:
+    """Normalize datetime-like values to timezone-aware UTC datetimes."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value.replace("Z", TIMEZONE_UTC_OFFSET))
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+    return None
+
+
+async def _resolve_acharya_identity_ids(db: AsyncIOMotorDatabase, user_id: str) -> set[str]:
+    """Resolve all possible acharya identifiers for authorization checks."""
+    acharya_ids = {user_id}
+    acharya_obj = maybe_object_id(user_id)
+    acharya_profile = await db.acharya_profiles.find_one(
+        {"user_id": acharya_obj or user_id}, {"_id": 1}
+    )
+    if acharya_profile and acharya_profile.get("_id") is not None:
+        acharya_ids.add(str(acharya_profile.get("_id")))
+    return acharya_ids
+
+
+async def _can_view_booking_sla(
+    db: AsyncIOMotorDatabase,
+    booking_doc: Dict[str, Any],
+    current_user: Dict[str, Any],
+) -> bool:
+    """Authorize SLA visibility for booking participants or admins."""
+    role = current_user.get("role")
+    user_id = str(current_user.get("id"))
+    if role == UserRole.ADMIN.value:
+        return True
+    if role == UserRole.GRIHASTA.value and str(booking_doc.get("grihasta_id")) == user_id:
+        return True
+    if role == UserRole.ACHARYA.value:
+        acharya_ids = await _resolve_acharya_identity_ids(db, user_id)
+        return str(booking_doc.get("acharya_id")) in acharya_ids
+    return False
+
+
+async def _append_booking_transition_event(
+    db,
+    booking_id,
+    from_status,
+    to_status,
+    current_user,
+    metadata=None,
+):
+    """Append immutable booking transition event in a non-blocking manner."""
+    try:
+        event_stream_service = BookingEventStreamService(db)
+        actor_id = str((current_user or {}).get("id") or "system")
+        actor_role = str((current_user or {}).get("role") or "system")
+        await event_stream_service.append_transition(
+            booking_id=str(booking_id),
+            from_status=str(from_status or ""),
+            to_status=str(to_status or ""),
+            actor_id=actor_id,
+            actor_role=actor_role,
+            metadata=metadata or None,
+        )
+    except Exception as exc:  # noqa: BLE001 - non-blocking audit append
+        logger.warning(
+            "Failed to append booking transition event for booking %s (%s -> %s): %s",
+            booking_id,
+            from_status,
+            to_status,
+            exc,
+        )
 
 @router.put(
     "/{booking_id}/refer",
@@ -477,6 +561,259 @@ def _parse_grihasta_id(user_id_str: str) -> Any:
     return object_id_or_raw(user_id_str)
 
 
+def _normalize_booking_datetime(value: Any, field_name: str) -> datetime:
+    """Normalize stored datetime values to timezone-aware UTC."""
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value.replace("Z", TIMEZONE_UTC_OFFSET))
+
+    if not isinstance(value, datetime):
+        raise InvalidInputError(message=f"Invalid {field_name} in source booking", field=field_name)
+
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _resolve_rebook_datetime(
+    source_booking: Dict[str, Any],
+    rebook_data: Optional[RebookRequest],
+) -> datetime:
+    """Resolve target datetime for rebook from override or safe default."""
+    if rebook_data and rebook_data.date and rebook_data.time:
+        target_datetime = datetime.strptime(
+            f"{rebook_data.date} {rebook_data.time}",
+            "%Y-%m-%d %H:%M",
+        ).replace(tzinfo=timezone.utc)
+    else:
+        source_datetime = _normalize_booking_datetime(
+            source_booking.get("date_time"),
+            "date_time",
+        )
+        target_datetime = source_datetime + timedelta(days=1)
+        now_utc = datetime.now(timezone.utc)
+        while target_datetime <= now_utc:
+            target_datetime += timedelta(days=1)
+
+    if target_datetime <= datetime.now(timezone.utc):
+        raise InvalidInputError(
+            message="Rebook time must be in the future",
+            field="date_time",
+        )
+
+    return target_datetime
+
+
+def _resolve_rebook_duration_hours(
+    source_booking: Dict[str, Any],
+    pooja: Optional[Dict[str, Any]],
+) -> int:
+    """Resolve booking duration for rebook without stale assumptions."""
+    if pooja and pooja.get("duration_hours"):
+        return max(1, int(pooja.get("duration_hours")))
+
+    source_duration = source_booking.get("duration_hours")
+    if source_duration is not None:
+        return max(1, int(source_duration))
+
+    source_start = source_booking.get("date_time")
+    source_end = source_booking.get("end_time")
+    if source_start and source_end:
+        normalized_start = _normalize_booking_datetime(source_start, "date_time")
+        normalized_end = _normalize_booking_datetime(source_end, "end_time")
+        hours = int((normalized_end - normalized_start).total_seconds() // 3600)
+        if hours > 0:
+            return hours
+
+    return 2
+
+
+def _compute_rebook_pricing_context(
+    pooja: Optional[Dict[str, Any]],
+    booking_mode: str,
+    booking_type: str,
+    booking_datetime: datetime,
+    duration_hours: int,
+) -> Dict[str, float]:
+    """Recalculate pricing for rebook using current pricing rules."""
+    if pooja:
+        pricing_result = PricingService.calculate_price(
+            base_price=float(pooja.get("base_price", 500.0)),
+            booking_datetime=booking_datetime,
+            has_samagri=(booking_type == "with_samagri"),
+            duration_hours=duration_hours,
+        )
+
+        return {
+            "base_price": pricing_result.get("base_price", 0.0),
+            "samagri_price": pricing_result.get("fees", {}).get("samagri", 0.0),
+            "platform_fee": pricing_result.get("fees", {}).get("platform_fee", 0.0),
+            "discount": 0.0,
+            "total_amount": pricing_result.get("total", 0.0),
+        }
+
+    if booking_mode != BOOKING_MODE_REQUEST:
+        raise InvalidInputError(
+            message="Custom service rebook must use request mode",
+            field="booking_mode",
+        )
+
+    return {
+        "base_price": 0.0,
+        "samagri_price": 0.0,
+        "platform_fee": 0.0,
+        "discount": 0.0,
+        "total_amount": 0.0,
+    }
+
+
+def _create_rebook_razorpay_order(
+    booking_mode: str,
+    total_amount: float,
+    grihasta_id: str,
+    acharya_id: str,
+    pooja_id: Optional[str],
+) -> Optional[str]:
+    """Create Razorpay order for instant rebook with payable amount."""
+    if booking_mode != BOOKING_MODE_INSTANT or total_amount <= 0:
+        return None
+
+    try:
+        from app.services.payment_service import RazorpayService
+
+        payment_service = RazorpayService()
+        razorpay_order = payment_service.create_order(
+            amount=total_amount,
+            currency="INR",
+            notes={
+                "grihasta_id": grihasta_id,
+                "acharya_id": acharya_id,
+                "pooja_id": pooja_id,
+                "rebook": True,
+            },
+        )
+        return razorpay_order.get("order_id")
+    except Exception as exc:  # noqa: BLE001 - payment gateway boundary
+        logger.warning(f"Razorpay order creation warning: {exc}")
+        if not settings.is_production:
+            return f"order_dev_{secrets.token_hex(8)}"
+        raise
+
+
+async def _load_rebook_source_booking(
+    db: AsyncIOMotorDatabase,
+    booking_id: str,
+    current_user_id: str,
+) -> Dict[str, Any]:
+    """Load and validate source booking for rebook authorization and status."""
+    source_booking_oid = ensure_object_id(booking_id, "booking_id")
+    source_booking = await db.bookings.find_one({"_id": source_booking_oid})
+    if not source_booking:
+        raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
+
+    if str(source_booking.get("grihasta_id")) != current_user_id:
+        raise PermissionDeniedError(action=ACTION_REBOOK_BOOKING)
+
+    if source_booking.get("status") != BookingStatus.COMPLETED.value:
+        raise InvalidInputError(
+            message=REBOOK_COMPLETED_ONLY_MESSAGE,
+            field="status",
+        )
+
+    return source_booking
+
+
+async def _resolve_rebook_entities(
+    db: AsyncIOMotorDatabase,
+    source_booking: Dict[str, Any],
+) -> tuple[Any, Any, Dict[str, Any], Optional[Dict[str, Any]]]:
+    """Resolve and validate Acharya/Pooja entities from source booking."""
+    acharya_id_value = source_booking.get("acharya_id")
+    if not acharya_id_value:
+        raise InvalidInputError(
+            message="Source booking has invalid acharya_id",
+            field="acharya_id",
+        )
+
+    acharya_id = maybe_object_id(str(acharya_id_value)) or acharya_id_value
+    acharya = await db.acharya_profiles.find_one({"_id": acharya_id})
+    if not acharya:
+        raise ResourceNotFoundError(resource_type="Acharya", resource_id=str(acharya_id_value))
+
+    pooja = None
+    pooja_id = None
+    pooja_id_value = source_booking.get("pooja_id")
+    if pooja_id_value:
+        pooja_id = maybe_object_id(str(pooja_id_value)) or pooja_id_value
+        pooja = await db.poojas.find_one({"_id": pooja_id})
+        if not pooja:
+            raise ResourceNotFoundError(resource_type="Pooja", resource_id=str(pooja_id_value))
+
+    return acharya_id_value, pooja_id_value, acharya, pooja
+
+
+def _resolve_rebook_initial_state(
+    booking_mode: str,
+) -> tuple[BookingStatus, PaymentStatus, Optional[datetime], list[int]]:
+    """Resolve initial booking/payment state for rebook mode."""
+    if booking_mode == BOOKING_MODE_REQUEST:
+        request_sla_expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.REQUEST_MODE_SLA_MINUTES
+        )
+        return (
+            BookingStatus.REQUESTED,
+            PaymentStatus.NOT_REQUIRED,
+            request_sla_expires_at,
+            [],
+        )
+
+    return BookingStatus.PENDING_PAYMENT, PaymentStatus.PENDING, None, []
+
+
+def _build_rebook_booking_model(
+    source_booking: Dict[str, Any],
+    current_user: Dict[str, Any],
+    acharya_id_value: Any,
+    pooja_id_value: Any,
+    pooja: Optional[Dict[str, Any]],
+    target_datetime: datetime,
+    slot_end: datetime,
+    initial_status: BookingStatus,
+    payment_status: PaymentStatus,
+    request_sla_expires_at: Optional[datetime],
+    request_sla_reminders_sent: list[int],
+    pricing_context: Dict[str, float],
+    razorpay_order_id: Optional[str],
+) -> Booking:
+    """Build rebook Booking model with cloned + recalculated fields."""
+    booking_mode = str(source_booking.get("booking_mode") or BOOKING_MODE_INSTANT)
+    booking_type = str(source_booking.get("booking_type") or "only")
+
+    return Booking(
+        grihasta_id=_parse_grihasta_id(current_user["id"]),
+        acharya_id=str(acharya_id_value),
+        pooja_id=str(pooja_id_value) if pooja_id_value else None,
+        service_name=source_booking.get("service_name")
+        or (pooja.get("name") if pooja else None),
+        booking_type=booking_type,
+        booking_mode=booking_mode,
+        requirements=source_booking.get("requirements"),
+        request_sla_expires_at=request_sla_expires_at,
+        request_sla_reminders_sent=request_sla_reminders_sent,
+        date_time=target_datetime,
+        end_time=slot_end,
+        location=source_booking.get("location"),
+        status=initial_status,
+        payment_status=payment_status,
+        base_price=pricing_context["base_price"],
+        samagri_price=pricing_context["samagri_price"],
+        platform_fee=pricing_context["platform_fee"],
+        discount=pricing_context["discount"],
+        total_amount=pricing_context["total_amount"],
+        razorpay_order_id=razorpay_order_id,
+        notes=source_booking.get("notes"),
+    )
+
+
 @router.get(
     "/price-estimate",
     response_model=StandardResponse,
@@ -753,6 +1090,13 @@ async def create_booking(
                 PaymentStatus.NOT_REQUIRED
             )  # Payment happens after approval
 
+        request_sla_expires_at = None
+        request_sla_reminders_sent: list[int] = []
+        if booking_data.booking_mode == "request":
+            request_sla_expires_at = datetime.now(timezone.utc) + timedelta(
+                minutes=settings.REQUEST_MODE_SLA_MINUTES
+            )
+
         # 8. Create booking
         booking = Booking(
             grihasta_id=grihasta_id,
@@ -763,6 +1107,8 @@ async def create_booking(
             booking_type=booking_data.booking_type,
             booking_mode=booking_data.booking_mode,
             requirements=booking_data.requirements,
+            request_sla_expires_at=request_sla_expires_at,
+            request_sla_reminders_sent=request_sla_reminders_sent,
             date_time=booking_datetime,
             end_time=slot_end,
             location=booking_data.location,
@@ -823,6 +1169,119 @@ async def create_booking(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create booking",
+        )
+
+
+@router.post(
+    "/{booking_id}/rebook",
+    response_model=StandardResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Instant rebook from completed booking",
+    description="Create a new booking by cloning details from a completed booking",
+)
+async def rebook_booking(
+    booking_id: Annotated[str, Path(description="Completed booking ID to rebook")],
+    rebook_data: Annotated[Optional[RebookRequest], Body()] = None,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_grihasta)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """Create a one-tap rebook from a completed source booking."""
+    try:
+        source_booking = await _load_rebook_source_booking(
+            db=db,
+            booking_id=booking_id,
+            current_user_id=current_user["id"],
+        )
+        acharya_id_value, pooja_id_value, acharya, pooja = await _resolve_rebook_entities(
+            db=db,
+            source_booking=source_booking,
+        )
+        acharya_id = maybe_object_id(str(acharya_id_value)) or acharya_id_value
+
+        booking_mode = str(source_booking.get("booking_mode") or BOOKING_MODE_INSTANT)
+        booking_type = str(source_booking.get("booking_type") or "only")
+
+        target_datetime = _resolve_rebook_datetime(source_booking, rebook_data)
+        duration_hours = _resolve_rebook_duration_hours(source_booking, pooja)
+        slot_end = target_datetime + timedelta(hours=duration_hours)
+
+        if booking_mode == BOOKING_MODE_INSTANT:
+            await _check_slot_availability(db, acharya_id, target_datetime, slot_end)
+
+        pricing_context = _compute_rebook_pricing_context(
+            pooja=pooja,
+            booking_mode=booking_mode,
+            booking_type=booking_type,
+            booking_datetime=target_datetime,
+            duration_hours=duration_hours,
+        )
+
+        (
+            initial_status,
+            payment_status,
+            request_sla_expires_at,
+            request_sla_reminders_sent,
+        ) = _resolve_rebook_initial_state(booking_mode)
+
+        razorpay_order_id = _create_rebook_razorpay_order(
+            booking_mode=booking_mode,
+            total_amount=pricing_context["total_amount"],
+            grihasta_id=current_user["id"],
+            acharya_id=str(acharya_id_value),
+            pooja_id=str(pooja_id_value) if pooja_id_value else None,
+        )
+
+        rebook_booking_doc = _build_rebook_booking_model(
+            source_booking=source_booking,
+            current_user=current_user,
+            acharya_id_value=acharya_id_value,
+            pooja_id_value=pooja_id_value,
+            pooja=pooja,
+            target_datetime=target_datetime,
+            slot_end=slot_end,
+            initial_status=initial_status,
+            payment_status=payment_status,
+            request_sla_expires_at=request_sla_expires_at,
+            request_sla_reminders_sent=request_sla_reminders_sent,
+            pricing_context=pricing_context,
+            razorpay_order_id=razorpay_order_id,
+        )
+
+        booking_dict = _prepare_booking_dict(rebook_booking_doc)
+        result = await db.bookings.insert_one(booking_dict)
+        new_booking_id = str(result.inserted_id)
+
+        if booking_mode == BOOKING_MODE_REQUEST:
+            await _send_booking_notification(
+                db,
+                acharya,
+                current_user,
+                pooja,
+                new_booking_id,
+            )
+
+        return StandardResponse(
+            success=True,
+            data={
+                "booking_id": new_booking_id,
+                "status": initial_status.value,
+                "amount": pricing_context["total_amount"],
+                "razorpay_order_id": razorpay_order_id,
+            },
+            message="Booking rebooked successfully",
+        )
+    except (
+        ResourceNotFoundError,
+        PermissionDeniedError,
+        InvalidInputError,
+        SlotUnavailableError,
+    ):
+        raise
+    except Exception as exc:  # noqa: BLE001 — boundary: log and surface as 500
+        logger.error(f"Rebook booking error: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to rebook booking",
         )
 
 
@@ -972,6 +1431,14 @@ async def update_booking_status(
 
     await db.bookings.update_one({"_id": booking_oid}, {"$set": update_doc})
 
+    await _append_booking_transition_event(
+        db,
+        booking_id,
+        current_status,
+        status_update.status,
+        current_user,
+    )
+
     # Send notifications after status update (includes FCM for payment_required)
     # Note: _notify_booking_status_update also emits the booking_update WS event.
     await _notify_booking_status_update(db, booking, booking_id, status_update, update_doc)
@@ -1030,6 +1497,14 @@ async def cancel_booking(
                 "updated_at": datetime.now(timezone.utc),
             }
         },
+    )
+
+    await _append_booking_transition_event(
+        db,
+        booking_id,
+        current_status,
+        BookingStatus.CANCELLED.value,
+        current_user,
     )
 
     # Emit booking_update WS event to both parties
@@ -1302,6 +1777,7 @@ async def verify_payment(
             )
 
         # Update booking status
+        previous_status = booking_doc.get("status", "")
         start_otp = generate_otp()
         await db.bookings.update_one(
             {"_id": ObjectId(booking_id)},
@@ -1314,6 +1790,15 @@ async def verify_payment(
                     "updated_at": datetime.now(timezone.utc),
                 }
             },
+        )
+
+        await _append_booking_transition_event(
+            db,
+            booking_id,
+            previous_status,
+            BookingStatus.CONFIRMED.value,
+            current_user,
+            metadata={"payment_status": PaymentStatus.COMPLETED.value},
         )
 
         # Send confirmation notifications
@@ -1438,6 +1923,7 @@ async def start_booking(
             raise InvalidInputError(message="Invalid OTP", field="otp")
 
         # Update to IN_PROGRESS
+        previous_status = booking_doc.get("status", "")
         await db.bookings.update_one(
             {"_id": booking_oid},
             {
@@ -1447,6 +1933,14 @@ async def start_booking(
                     "updated_at": datetime.now(timezone.utc),
                 }
             },
+        )
+
+        await _append_booking_transition_event(
+            db,
+            booking_id,
+            previous_status,
+            BookingStatus.IN_PROGRESS.value,
+            current_user,
         )
 
         # Emit booking_update WS event to both parties
@@ -1491,6 +1985,14 @@ async def _complete_booking_with_notifications(db, booking_id: str, booking_doc:
                 "updated_at": datetime.now(timezone.utc),
             }
         },
+    )
+
+    await _append_booking_transition_event(
+        db,
+        booking_id,
+        booking_doc.get("status", ""),
+        BookingStatus.COMPLETED.value,
+        {"id": "system", "role": "system"},
     )
 
     # Emit booking_update WS event immediately after DB write
@@ -1803,6 +2305,69 @@ async def get_my_bookings(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch bookings",
         )
+
+
+@router.get(
+    "/{booking_id}/sla",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get request-mode SLA countdown status",
+)
+async def get_booking_sla_status(
+    booking_id: str,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """Return SLA countdown status for a booking, with participant/admin authorization."""
+    booking_oid = ensure_object_id(booking_id, "booking_id")
+    booking_doc = await db.bookings.find_one(
+        {"_id": booking_oid},
+        {
+            "_id": 1,
+            "status": 1,
+            "grihasta_id": 1,
+            "acharya_id": 1,
+            "created_at": 1,
+            "request_sla_expires_at": 1,
+        },
+    )
+    if not booking_doc:
+        raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
+
+    authorized = await _can_view_booking_sla(db, booking_doc, current_user)
+    if not authorized:
+        raise PermissionDeniedError(action="View booking SLA")
+
+    now = datetime.now(timezone.utc)
+    expires_at = _coerce_utc_datetime(booking_doc.get("request_sla_expires_at"))
+
+    # Backward compatibility: preserve the existing 48h fallback for legacy records.
+    if (
+        booking_doc.get("status") == BookingStatus.REQUESTED.value
+        and expires_at is None
+    ):
+        created_at = _coerce_utc_datetime(booking_doc.get("created_at"))
+        if created_at is not None:
+            expires_at = created_at + timedelta(hours=LEGACY_REQUEST_EXPIRY_HOURS)
+
+    remaining_seconds: Optional[int] = None
+    expired = False
+    if expires_at is not None:
+        remaining_seconds = max(0, int((expires_at - now).total_seconds()))
+        expired = now >= expires_at
+
+    return StandardResponse(
+        success=True,
+        data={
+            "booking_id": booking_id,
+            "status": booking_doc.get("status"),
+            "request_sla_expires_at": expires_at.isoformat() if expires_at else None,
+            "now": now.isoformat(),
+            "remaining_seconds": remaining_seconds,
+            "reminder_schedule_minutes": settings.REQUEST_MODE_SLA_REMINDER_SCHEDULE,
+            "expired": expired,
+        },
+    )
 
 
 @router.get(

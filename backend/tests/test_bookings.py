@@ -2013,6 +2013,250 @@ class TestBookingNextWaveFeatures:
         finally:
             fastapi_app.dependency_overrides = {}
 
+
+class TestBookingGrowthWave72To85:
+    """Coverage for strategy backlog wave 72-85 endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_recurring_subscription_create_and_list(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        user_oid = ObjectId()
+        user = {"id": str(user_oid), "role": "grihasta", "email": "recurring@test.com"}
+
+        fastapi_app.dependency_overrides[gcu] = lambda: user
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            create_resp = await client.post(
+                "/api/v1/subscriptions/rituals/create",
+                json={
+                    "ritual_slug": "sankashta-chaturthi",
+                    "cadence": "lunar_monthly",
+                    "start_date": "2031-04-01",
+                    "city": "Pune",
+                },
+            )
+            assert create_resp.status_code == 201, create_resp.text
+
+            list_resp = await client.get("/api/v1/subscriptions/rituals/my")
+            assert list_resp.status_code == 200, list_resp.text
+            data = list_resp.json()["data"]
+            assert data["count"] >= 1
+            assert data["subscriptions"][0]["ritual_slug"] == "sankashta-chaturthi"
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_family_account_upsert_and_get(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        user_oid = ObjectId()
+        await test_db.grihasta_profiles.insert_one(
+            {
+                "_id": ObjectId(),
+                "user_id": str(user_oid),
+                "name": "Family User",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[gcu] = lambda: {
+            "id": str(user_oid),
+            "role": "grihasta",
+            "email": "family@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            upsert_resp = await client.post(
+                "/api/v1/family/accounts",
+                json={
+                    "family_members": [{"name": "Mother", "relation": "parent", "age": 62}],
+                    "guardian_booking_enabled": True,
+                    "elder_friendly_mode": True,
+                },
+            )
+            assert upsert_resp.status_code == 200, upsert_resp.text
+
+            get_resp = await client.get("/api/v1/family/accounts/my")
+            assert get_resp.status_code == 200, get_resp.text
+            payload = get_resp.json()["data"]
+            assert payload["configured"] is True
+            assert payload["elder_friendly_mode"] is True
+            assert len(payload["family_members"]) == 1
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_financing_and_smart_pricing_endpoints(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        user_oid = ObjectId()
+        booking_oid = ObjectId()
+
+        await test_db.bookings.insert_one(
+            {
+                "_id": booking_oid,
+                "grihasta_id": user_oid,
+                "acharya_id": ObjectId(),
+                "status": "confirmed",
+                "total_amount": 12000.0,
+                "date_time": datetime.now(timezone.utc) + timedelta(days=3),
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[gcu] = lambda: {
+            "id": str(user_oid),
+            "role": "grihasta",
+            "email": "pricing@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            financing_resp = await client.get(f"/api/v1/bookings/{booking_oid}/financing/options")
+            assert financing_resp.status_code == 200, financing_resp.text
+            financing_data = financing_resp.json()["data"]
+            assert financing_data["eligible"] is True
+            assert financing_data["plans"]
+
+            pricing_resp = await client.get(
+                "/api/v1/pricing/smart-estimate",
+                params={
+                    "city": "Mumbai",
+                    "base_price": 2000,
+                    "date_time": "2031-05-15T11:00:00Z",
+                    "duration_hours": 2,
+                    "has_samagri": True,
+                },
+            )
+            assert pricing_resp.status_code == 200, pricing_resp.text
+            pricing_data = pricing_resp.json()["data"]
+            assert pricing_data["final_total"] >= pricing_data["fairness_bounds"]["min"]
+            assert pricing_data["final_total"] <= pricing_data["fairness_bounds"]["max"]
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_timeline_calendar_journal_nps_and_concierge(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        user_oid = ObjectId()
+        booking_oid = ObjectId()
+        start_dt = datetime.now(timezone.utc) + timedelta(days=1)
+
+        await test_db.bookings.insert_one(
+            {
+                "_id": booking_oid,
+                "grihasta_id": user_oid,
+                "acharya_id": ObjectId(),
+                "service_name": "Satyanarayana Puja",
+                "status": "confirmed",
+                "total_amount": 3500.0,
+                "location": {"city": "Bengaluru"},
+                "date_time": start_dt,
+                "end_time": start_dt + timedelta(hours=2),
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[gcu] = lambda: {
+            "id": str(user_oid),
+            "role": "grihasta",
+            "email": "timeline@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            timeline_post = await client.post(
+                f"/api/v1/bookings/{booking_oid}/timeline/events",
+                json={"stage": "prep", "note": "Samagri arranged", "metadata": {"checklist": "ok"}},
+            )
+            assert timeline_post.status_code == 200, timeline_post.text
+
+            timeline_get = await client.get(f"/api/v1/bookings/{booking_oid}/timeline")
+            assert timeline_get.status_code == 200, timeline_get.text
+            assert timeline_get.json()["data"]["count"] >= 1
+
+            calendar_get = await client.get(f"/api/v1/bookings/{booking_oid}/calendar/export")
+            assert calendar_get.status_code == 200, calendar_get.text
+            calendar_data = calendar_get.json()["data"]
+            assert "google_calendar_url" in calendar_data
+            assert "BEGIN:VCALENDAR" in calendar_data["apple_ics"]
+
+            journal_post = await client.post(
+                f"/api/v1/bookings/{booking_oid}/journal",
+                json={
+                    "mood": "peaceful",
+                    "reflections": "The ceremony felt grounding and deeply meaningful for the family.",
+                    "follow_up_interest": ["monthly_puja"],
+                },
+            )
+            assert journal_post.status_code == 201, journal_post.text
+
+            nps_post = await client.post(
+                f"/api/v1/bookings/{booking_oid}/nps",
+                json={"score": 5, "feedback": "Need clearer pre-ceremony instructions."},
+            )
+            assert nps_post.status_code == 200, nps_post.text
+            assert nps_post.json()["data"]["rescue_ticket_id"] is not None
+
+            concierge_get = await client.get(
+                "/api/v1/concierge/hotline",
+                params={"city": "Bengaluru", "festival": "Ganesh Chaturthi"},
+            )
+            assert concierge_get.status_code == 200, concierge_get.text
+            assert concierge_get.json()["data"]["hotline"].startswith("+91")
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_gift_ritual_checkout_creation(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        user_oid = ObjectId()
+
+        fastapi_app.dependency_overrides[gcu] = lambda: {
+            "id": str(user_oid),
+            "role": "grihasta",
+            "email": "gift@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            response = await client.post(
+                "/api/v1/bookings/gift",
+                json={
+                    "recipient_name": "Ravi Sharma",
+                    "recipient_phone": "+919812345678",
+                    "recipient_email": "ravi@example.com",
+                    "city": "Delhi",
+                    "service_name": "Lakshmi Puja",
+                    "scheduled_date": "2031-06-10",
+                    "message": "With blessings and love",
+                },
+            )
+            assert response.status_code == 201, response.text
+            data = response.json()["data"]
+            assert data["status"] == "pending_payment"
+            assert data["recipient_name"] == "Ravi Sharma"
+        finally:
+            fastapi_app.dependency_overrides = {}
+
     @pytest.mark.asyncio
     async def test_defer_lite_flow_and_worker_nudge(self, client, test_db):
         from app.core.security import get_current_user as gcu

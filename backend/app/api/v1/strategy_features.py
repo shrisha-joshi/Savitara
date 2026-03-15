@@ -976,3 +976,675 @@ async def get_booking_no_show_risk(
         data={"booking_id": booking_id, **risk},
         message="No-show risk forecast ready",
     )
+
+
+class RecurringRitualSubscriptionRequest(BaseModel):
+    """Create recurring ritual subscription request."""
+
+    ritual_slug: str = Field(..., min_length=3, max_length=80)
+    cadence: str = Field(..., pattern="^(weekly|monthly|lunar_monthly)$")
+    start_date: str = Field(..., description="Date in YYYY-MM-DD format")
+    city: Optional[str] = Field(None, max_length=80)
+    notes: Optional[str] = Field(None, max_length=300)
+
+
+class FamilyAccountRequest(BaseModel):
+    """Family account configuration for guardian booking flows."""
+
+    family_members: List[Dict[str, Any]] = Field(default_factory=list, max_length=12)
+    guardian_booking_enabled: bool = True
+    elder_friendly_mode: bool = False
+
+
+class TimelineEventRequest(BaseModel):
+    """Ceremony timeline update event."""
+
+    stage: str = Field(..., pattern="^(prep|travel|check_in|completion)$")
+    note: Optional[str] = Field(None, max_length=300)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class OutcomeJournalRequest(BaseModel):
+    """Ritual outcome journal entry payload."""
+
+    mood: str = Field(..., min_length=2, max_length=40)
+    reflections: str = Field(..., min_length=10, max_length=1500)
+    follow_up_interest: List[str] = Field(default_factory=list, max_length=8)
+
+
+class NpsFeedbackRequest(BaseModel):
+    """NPS feedback payload for rescue workflow."""
+
+    score: int = Field(..., ge=0, le=10)
+    feedback: Optional[str] = Field(None, max_length=1000)
+
+
+class GiftRitualCheckoutRequest(BaseModel):
+    """Gift-a-ritual checkout payload for diaspora use-cases."""
+
+    recipient_name: str = Field(..., min_length=2, max_length=120)
+    recipient_phone: Optional[str] = Field(None, max_length=30)
+    recipient_email: Optional[str] = Field(None, max_length=120)
+    city: str = Field(..., min_length=2, max_length=80)
+    pooja_id: Optional[str] = None
+    service_name: str = Field(..., min_length=3, max_length=120)
+    scheduled_date: str = Field(..., description="Date in YYYY-MM-DD format")
+    message: Optional[str] = Field(None, max_length=300)
+
+
+RECURRING_RITUAL_CATALOG = [
+    {
+        "slug": "sankashta-chaturthi",
+        "label": "Sankashta Chaturthi",
+        "default_cadence": "lunar_monthly",
+    },
+    {
+        "slug": "monday-rudra-abhisheka",
+        "label": "Every Monday Rudra Abhisheka",
+        "default_cadence": "weekly",
+    },
+    {
+        "slug": "pournima-satyanarayana",
+        "label": "Every Pournima Satyanarayana Pooja",
+        "default_cadence": "lunar_monthly",
+    },
+]
+
+
+def _is_valid_date_string(value: str) -> bool:
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
+
+
+async def _load_authorized_booking(
+    db: AsyncIOMotorDatabase,
+    booking_id: str,
+    current_user: Dict[str, Any],
+) -> Dict[str, Any]:
+    booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+    if not booking:
+        raise ResourceNotFoundError(message=BOOKING_NOT_FOUND_MESSAGE, resource_id=booking_id)
+
+    user_id = _current_user_id(current_user)
+    participant_ids = {str(booking.get("grihasta_id")), str(booking.get("acharya_id"))}
+    if user_id not in participant_ids and current_user.get("role") != "admin":
+        raise InsufficientPermissionsError(message=NOT_A_PARTICIPANT_MESSAGE)
+    return booking
+
+
+@router.get(
+    "/subscriptions/rituals/catalog",
+    response_model=StandardResponse,
+    summary="Recurring ritual subscription catalog",
+)
+async def get_recurring_ritual_catalog():
+    return StandardResponse(
+        success=True,
+        data={"rituals": RECURRING_RITUAL_CATALOG, "count": len(RECURRING_RITUAL_CATALOG)},
+    )
+
+
+@router.post(
+    "/subscriptions/rituals/create",
+    response_model=StandardResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create recurring ritual subscription",
+    description="Creates recurring ritual reminders for monthly/weekly sankalp and vrat journeys.",
+)
+async def create_recurring_ritual_subscription(
+    request: RecurringRitualSubscriptionRequest,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    if not _is_valid_date_string(request.start_date):
+        raise InvalidInputError(message="start_date must be YYYY-MM-DD", field="start_date")
+
+    user_id = _current_user_id(current_user)
+    start_dt = datetime.strptime(request.start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    cadence_days = 7 if request.cadence == "weekly" else 30
+
+    doc = {
+        "user_id": user_id,
+        "ritual_slug": request.ritual_slug,
+        "cadence": request.cadence,
+        "city": request.city,
+        "notes": request.notes,
+        "status": "active",
+        "starts_at": start_dt,
+        "next_ritual_at": start_dt,
+        "cadence_days": cadence_days,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    }
+    result = await db.recurring_ritual_subscriptions.insert_one(doc)
+    return StandardResponse(
+        success=True,
+        data={
+            "subscription_id": str(result.inserted_id),
+            "ritual_slug": request.ritual_slug,
+            "cadence": request.cadence,
+            "next_ritual_at": start_dt.isoformat(),
+        },
+        message="Recurring ritual subscription created",
+    )
+
+
+@router.get(
+    "/subscriptions/rituals/my",
+    response_model=StandardResponse,
+    summary="Get my recurring ritual subscriptions",
+)
+async def get_my_recurring_ritual_subscriptions(
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    user_id = _current_user_id(current_user)
+    docs = await db.recurring_ritual_subscriptions.find(
+        {"user_id": user_id, "status": {"$in": ["active", "paused"]}}
+    ).sort("created_at", -1).to_list(length=50)
+    for item in docs:
+        item["id"] = str(item["_id"])
+        item["_id"] = str(item["_id"])
+    return StandardResponse(success=True, data={"subscriptions": docs, "count": len(docs)})
+
+
+@router.post(
+    "/family/accounts",
+    response_model=StandardResponse,
+    summary="Upsert family account preferences",
+    description="Stores guardian booking settings and elder-friendly family details for future bookings.",
+)
+async def upsert_family_account(
+    request: FamilyAccountRequest,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    user_id = _current_user_id(current_user)
+    now = datetime.now(timezone.utc)
+    payload = {
+        "user_id": user_id,
+        "family_members": request.family_members,
+        "guardian_booking_enabled": request.guardian_booking_enabled,
+        "elder_friendly_mode": request.elder_friendly_mode,
+        "updated_at": now,
+    }
+    await db.family_accounts.update_one(
+        {"user_id": user_id},
+        {"$set": payload, "$setOnInsert": {"created_at": now}},
+        upsert=True,
+    )
+
+    await db.grihasta_profiles.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                "family_members": request.family_members,
+                "guardian_booking_enabled": request.guardian_booking_enabled,
+                "elder_friendly_mode": request.elder_friendly_mode,
+                "updated_at": now,
+            }
+        },
+    )
+
+    return StandardResponse(
+        success=True,
+        data={"user_id": user_id, **payload},
+        message="Family account preferences saved",
+    )
+
+
+@router.get(
+    "/family/accounts/my",
+    response_model=StandardResponse,
+    summary="Get family account preferences",
+)
+async def get_my_family_account(
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    user_id = _current_user_id(current_user)
+    doc = await db.family_accounts.find_one({"user_id": user_id})
+    if not doc:
+        return StandardResponse(success=True, data={"configured": False, "family_members": []})
+    doc["id"] = str(doc["_id"])
+    doc["_id"] = str(doc["_id"])
+    return StandardResponse(success=True, data={"configured": True, **doc})
+
+
+@router.get(
+    "/bookings/{booking_id}/financing/options",
+    response_model=StandardResponse,
+    summary="Get in-flow financing options",
+    description="Returns installment options for high-ticket rituals inside checkout flow.",
+)
+async def get_financing_options(
+    booking_id: str,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    booking = await _load_authorized_booking(db, booking_id, current_user)
+    total_amount = float(booking.get("total_amount") or 0)
+    if total_amount < 5000:
+        return StandardResponse(
+            success=True,
+            data={"eligible": False, "reason": "Financing available for bookings above ₹5000"},
+        )
+
+    plans = []
+    for months, apr in ((3, 0.10), (6, 0.12), (9, 0.14)):
+        interest = round(total_amount * apr * (months / 12), 2)
+        repayable = round(total_amount + interest, 2)
+        monthly_emi = round(repayable / months, 2)
+        plans.append(
+            {
+                "plan_months": months,
+                "apr": apr,
+                "interest": interest,
+                "total_repayable": repayable,
+                "monthly_emi": monthly_emi,
+            }
+        )
+
+    return StandardResponse(
+        success=True,
+        data={"eligible": True, "booking_id": booking_id, "total_amount": total_amount, "plans": plans},
+        message="Financing options ready",
+    )
+
+
+@router.get(
+    "/pricing/smart-estimate",
+    response_model=StandardResponse,
+    summary="Smart pricing estimate with fairness guardrails",
+)
+async def get_smart_pricing_estimate(
+    city: Annotated[str, Query(..., description="City name")],
+    base_price: Annotated[float, Query(..., gt=0)],
+    date_time: Annotated[str, Query(..., description="ISO-8601 datetime")],
+    duration_hours: Annotated[int, Query(ge=1, le=12)] = 2,
+    has_samagri: Annotated[bool, Query()] = False,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    try:
+        booking_dt = datetime.fromisoformat(date_time.replace("Z", "+00:00"))
+        if booking_dt.tzinfo is None:
+            booking_dt = booking_dt.replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise InvalidInputError(message=f"Invalid date_time: {exc}", field="date_time") from exc
+
+    dynamic = PricingService.calculate_price(
+        base_price=base_price,
+        booking_datetime=booking_dt,
+        has_samagri=has_samagri,
+        duration_hours=duration_hours,
+    )
+    raw_total = float(dynamic.get("total", 0))
+
+    window_start = booking_dt - timedelta(hours=2)
+    window_end = booking_dt + timedelta(hours=2)
+    demand_count = await db.bookings.count_documents(
+        {
+            "status": {"$in": ["requested", "confirmed", "pending_payment", "in_progress"]},
+            "date_time": {"$gte": window_start, "$lte": window_end},
+            "location.city": {"$regex": f"^{city}$", "$options": "i"},
+        }
+    )
+
+    demand_multiplier = 1.0
+    if demand_count >= 12:
+        demand_multiplier = 1.2
+    elif demand_count >= 6:
+        demand_multiplier = 1.1
+
+    seasonal_multiplier = 1.15 if booking_dt.month in {9, 10, 11} else 1.0
+    unconstrained_total = round(raw_total * demand_multiplier * seasonal_multiplier, 2)
+
+    fairness_min = round(raw_total * 0.8, 2)
+    fairness_max = round(raw_total * 1.35, 2)
+    final_total = max(fairness_min, min(unconstrained_total, fairness_max))
+
+    return StandardResponse(
+        success=True,
+        data={
+            "base_dynamic_total": raw_total,
+            "demand_multiplier": demand_multiplier,
+            "seasonal_multiplier": seasonal_multiplier,
+            "unconstrained_total": unconstrained_total,
+            "fairness_bounds": {"min": fairness_min, "max": fairness_max},
+            "final_total": round(final_total, 2),
+            "demand_count_window": demand_count,
+        },
+    )
+
+
+@router.post(
+    "/bookings/{booking_id}/timeline/events",
+    response_model=StandardResponse,
+    summary="Append ceremony timeline event",
+    description="Tracks ceremony journey stages (prep, travel, check-in, completion).",
+)
+async def append_timeline_event(
+    booking_id: str,
+    request: TimelineEventRequest,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    booking = await _load_authorized_booking(db, booking_id, current_user)
+    now = datetime.now(timezone.utc)
+    event_doc = {
+        "booking_id": booking_id,
+        "stage": request.stage,
+        "note": request.note,
+        "metadata": request.metadata,
+        "actor_id": _current_user_id(current_user),
+        "actor_role": current_user.get("role"),
+        "created_at": now,
+    }
+    inserted = await db.booking_timeline_events.insert_one(dict(event_doc))
+    await db.bookings.update_one(
+        {"_id": booking["_id"]},
+        {"$set": {"timeline_stage": request.stage, "updated_at": now}},
+    )
+    return StandardResponse(
+        success=True,
+        data={"timeline_event_id": str(inserted.inserted_id), **event_doc},
+        message="Timeline event recorded",
+    )
+
+
+@router.get(
+    "/bookings/{booking_id}/timeline",
+    response_model=StandardResponse,
+    summary="Get ceremony timeline",
+)
+async def get_booking_timeline(
+    booking_id: str,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    booking = await _load_authorized_booking(db, booking_id, current_user)
+    events = await db.booking_timeline_events.find({"booking_id": booking_id}).sort("created_at", 1).to_list(length=100)
+    for event in events:
+        event["id"] = str(event["_id"])
+        event["_id"] = str(event["_id"])
+    return StandardResponse(
+        success=True,
+        data={
+            "booking_id": booking_id,
+            "current_stage": booking.get("timeline_stage"),
+            "events": events,
+            "count": len(events),
+        },
+    )
+
+
+@router.get(
+    "/bookings/{booking_id}/calendar/export",
+    response_model=StandardResponse,
+    summary="Export booking to external/internal calendar",
+    description="Provides Google/Apple/WhatsApp export payloads compatible with Savitara's internal calendar model.",
+)
+async def export_booking_calendar_links(
+    booking_id: str,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    booking = await _load_authorized_booking(db, booking_id, current_user)
+    start_dt = booking.get("date_time")
+    if not isinstance(start_dt, datetime):
+        raise InvalidInputError(message="Booking date/time unavailable", field="booking_id")
+    if start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=timezone.utc)
+    end_dt = booking.get("end_time") or (start_dt + timedelta(hours=2))
+
+    title = booking.get("service_name") or "Savitara Ritual Booking"
+    city = (booking.get("location") or {}).get("city", "India")
+    description = f"{title} in {city}"
+    g_start = start_dt.strftime("%Y%m%dT%H%M%SZ")
+    g_end = end_dt.strftime("%Y%m%dT%H%M%SZ") if isinstance(end_dt, datetime) else g_start
+
+    google_url = (
+        "https://calendar.google.com/calendar/render?action=TEMPLATE"
+        f"&text={title}&dates={g_start}/{g_end}&details={description}&location={city}"
+    )
+    apple_ics = (
+        "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\n"
+        f"UID:{booking_id}@savitara\n"
+        f"DTSTART:{g_start}\nDTEND:{g_end}\n"
+        f"SUMMARY:{title}\nDESCRIPTION:{description}\nLOCATION:{city}\n"
+        "END:VEVENT\nEND:VCALENDAR"
+    )
+    whatsapp_text = (
+        f"Ritual booking reminder: {title} on {start_dt.strftime('%d %b %Y %I:%M %p')} ({city})."
+    )
+
+    internal_event_payload = {
+        "event_type": "booking",
+        "title": title,
+        "description": description,
+        "date": start_dt.date().isoformat(),
+        "start_time": start_dt.isoformat(),
+        "end_time": end_dt.isoformat() if isinstance(end_dt, datetime) else start_dt.isoformat(),
+        "booking_id": booking_id,
+        "reminder_before": 60,
+    }
+
+    return StandardResponse(
+        success=True,
+        data={
+            "google_calendar_url": google_url,
+            "apple_ics": apple_ics,
+            "whatsapp_text": whatsapp_text,
+            "internal_event_payload": internal_event_payload,
+        },
+        message="Calendar export payloads ready",
+    )
+
+
+@router.get(
+    "/checkout/variant",
+    response_model=StandardResponse,
+    summary="Get checkout variant by segment",
+)
+async def get_checkout_variant(
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    user_id = _current_user_id(current_user)
+    bookings_count = await db.bookings.count_documents({"grihasta_id": user_id})
+    if bookings_count == 0:
+        variant = "guided_first_booking"
+    elif bookings_count < 5:
+        variant = "trust_badge_focus"
+    else:
+        variant = "express_repeat_checkout"
+
+    return StandardResponse(
+        success=True,
+        data={"user_id": user_id, "bookings_count": bookings_count, "variant": variant},
+    )
+
+
+@router.post(
+    "/bookings/{booking_id}/journal",
+    response_model=StandardResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create ritual outcome journal entry",
+)
+async def create_outcome_journal_entry(
+    booking_id: str,
+    request: OutcomeJournalRequest,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    _ = await _load_authorized_booking(db, booking_id, current_user)
+    now = datetime.now(timezone.utc)
+    entry = {
+        "booking_id": booking_id,
+        "user_id": _current_user_id(current_user),
+        "mood": request.mood,
+        "reflections": request.reflections,
+        "follow_up_interest": request.follow_up_interest,
+        "created_at": now,
+        "updated_at": now,
+    }
+    inserted = await db.booking_outcome_journals.insert_one(dict(entry))
+
+    follow_ups = await BookingDiscoveryService.get_personalized_packages(
+        db,
+        user_id=_current_user_id(current_user),
+        limit=3,
+    )
+    return StandardResponse(
+        success=True,
+        data={"journal_id": str(inserted.inserted_id), "entry": entry, "follow_up_recommendations": follow_ups},
+        message="Ritual outcome journal saved",
+    )
+
+
+@router.get(
+    "/bookings/{booking_id}/journal",
+    response_model=StandardResponse,
+    summary="Get ritual outcome journal entries",
+)
+async def get_outcome_journal_entries(
+    booking_id: str,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    _ = await _load_authorized_booking(db, booking_id, current_user)
+    docs = await db.booking_outcome_journals.find({"booking_id": booking_id}).sort("created_at", -1).to_list(length=50)
+    for doc in docs:
+        doc["id"] = str(doc["_id"])
+        doc["_id"] = str(doc["_id"])
+    return StandardResponse(success=True, data={"entries": docs, "count": len(docs)})
+
+
+@router.post(
+    "/bookings/{booking_id}/nps",
+    response_model=StandardResponse,
+    summary="Submit NPS and trigger rescue workflow",
+)
+async def submit_booking_nps(
+    booking_id: str,
+    request: NpsFeedbackRequest,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    _ = await _load_authorized_booking(db, booking_id, current_user)
+    now = datetime.now(timezone.utc)
+    payload = {
+        "booking_id": booking_id,
+        "user_id": _current_user_id(current_user),
+        "score": request.score,
+        "feedback": request.feedback,
+        "created_at": now,
+    }
+    await db.booking_nps_feedback.insert_one(payload)
+
+    rescue_ticket = None
+    if request.score <= 6:
+        rescue_doc = {
+            "booking_id": booking_id,
+            "user_id": _current_user_id(current_user),
+            "score": request.score,
+            "feedback": request.feedback,
+            "status": "open",
+            "priority": "high" if request.score <= 3 else "medium",
+            "created_at": now,
+            "updated_at": now,
+        }
+        rescue = await db.nps_rescue_workflows.insert_one(rescue_doc)
+        rescue_ticket = str(rescue.inserted_id)
+
+    return StandardResponse(
+        success=True,
+        data={"booking_id": booking_id, "score": request.score, "rescue_ticket_id": rescue_ticket},
+        message="NPS feedback recorded",
+    )
+
+
+@router.post(
+    "/bookings/gift",
+    response_model=StandardResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Gift a ritual checkout",
+)
+async def create_gift_ritual_checkout(
+    request: GiftRitualCheckoutRequest,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    if not _is_valid_date_string(request.scheduled_date):
+        raise InvalidInputError(message="scheduled_date must be YYYY-MM-DD", field="scheduled_date")
+
+    user_id = _current_user_id(current_user)
+    gift_doc = {
+        "sender_user_id": user_id,
+        "recipient_name": request.recipient_name,
+        "recipient_phone": request.recipient_phone,
+        "recipient_email": request.recipient_email,
+        "city": request.city,
+        "pooja_id": request.pooja_id,
+        "service_name": request.service_name,
+        "scheduled_date": request.scheduled_date,
+        "message": request.message,
+        "status": "pending_payment",
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    }
+    result = await db.gift_ritual_checkouts.insert_one(dict(gift_doc))
+    return StandardResponse(
+        success=True,
+        data={"gift_checkout_id": str(result.inserted_id), **gift_doc},
+        message="Gift ritual checkout created",
+    )
+
+
+@router.get(
+    "/concierge/hotline",
+    response_model=StandardResponse,
+    summary="City-wise concierge hotline escalation",
+)
+async def get_concierge_hotline(
+    city: Annotated[str, Query(..., description="City name")],
+    festival: Annotated[Optional[str], Query(description="Festival context")] = None,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    normalized_city = city.strip().lower()
+    hotlines = {
+        "mumbai": "+91-22-6200-1085",
+        "bengaluru": "+91-80-6200-1085",
+        "delhi": "+91-11-6200-1085",
+        "chennai": "+91-44-6200-1085",
+        "pune": "+91-20-6200-1085",
+    }
+    hotline = hotlines.get(normalized_city, "+91-120-6200-1085")
+    peak_festival = bool(festival)
+
+    escalation_doc = {
+        "user_id": _current_user_id(current_user),
+        "city": city,
+        "festival": festival,
+        "hotline": hotline,
+        "peak_festival": peak_festival,
+        "status": "opened",
+        "created_at": datetime.now(timezone.utc),
+    }
+    await db.concierge_escalations.insert_one(escalation_doc)
+
+    return StandardResponse(
+        success=True,
+        data={
+            "city": city,
+            "festival": festival,
+            "hotline": hotline,
+            "peak_festival": peak_festival,
+            "available_hours": "06:00-23:00 IST",
+        },
+        message="Concierge hotline details ready",
+    )

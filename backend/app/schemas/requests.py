@@ -205,6 +205,18 @@ class AcharyaOnboardingRequest(BaseModel):
 class ProfileUpdateRequest(BaseModel):
     """Profile update request"""
 
+    class FamilyMemberProfile(BaseModel):
+        """Family member details maintained from profile update flow."""
+
+        name: str = Field(..., min_length=2, max_length=100)
+        relationship: str = Field(..., min_length=2, max_length=40)
+        date_of_birth: Optional[str] = Field(None, description=DATE_FORMAT_DESCRIPTION)
+        gotra: Optional[str] = Field(None, max_length=80)
+        rashi: Optional[str] = Field(None, max_length=80)
+        nakshatra: Optional[str] = Field(None, max_length=80)
+        elder_friendly_mode: bool = False
+        guardian_contact: Optional[str] = Field(None, max_length=40)
+
     name: Optional[str] = Field(None, min_length=2, max_length=100)
     phone: Optional[str] = Field(None, pattern=r"^\+?[1-9]\d{1,14}$")
     location: Optional[Location] = None
@@ -212,6 +224,9 @@ class ProfileUpdateRequest(BaseModel):
     specializations: Optional[List[str]] = None
     languages: Optional[List[str]] = None
     preferred_language: Optional[str] = Field(None, min_length=2, max_length=10)
+    family_members: Optional[List[FamilyMemberProfile]] = Field(None, max_length=12)
+    guardian_booking_enabled: Optional[bool] = None
+    elder_friendly_mode: Optional[bool] = None
     panchanga_type: Optional[str] = Field(None, pattern="^(lunar|solar)$")
     location_approved: Optional[bool] = None
 

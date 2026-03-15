@@ -99,36 +99,36 @@
 55. [ ] P2: Introduce automated secure SDLC gates in CI/CD.
 
 ## C. Booking Experience & Revenue Engine (56-85)
-56. [ ] P0: Introduce request-mode SLA countdown (accept/reject timers) with reminders.
-57. [ ] P0: Add instant rebook from completed booking with one tap.
-58. [ ] P0: Add booking abandonment recovery (email/SMS/push nudges/ notifications).
-59. [ ] P0: Add transparent fee breakdown and GST invoice generation.
-60. [ ] P0: Add dynamic slot confidence score (likelihood of completion).
-61. [ ] P0: Add Acharya response-time badges in listing and checkout.
-62. [ ] P0: Add “best-value bundles” for multi-ritual journeys.
-63. [ ] P0: Add personalized package recommendation at booking step.
-64. [ ] P1: Add waitlist + auto-match when preferred slot opens.
-65. [ ] P1: Add alternative Acharya suggestions on decline/timeout.
-66. [ ] P1: Add pre-ritual checklist with auto reminders by ritual type.
-# 67. [ ] P1: Add multilingual booking forms (Hindi + regional language packs).( as this we want to cover like in the sign up form or setting form the language they select the whole application is going to there prefered languages so this one whould cover there so make that strong and fucntional automatically this one covers)
-68. [ ] P1: Add low-data “lite booking flow” for weaker networks.( but the other things should be taken after by some other further notifications like complete the things like these)
-69. [ ] P1: Add trust-backed “On-time or compensation” badge logic.
-70. [ ] P1: Add no-show prediction model and proactive intervention flows.
+56. [x] P0: Introduce request-mode SLA countdown (accept/reject timers) with reminders.
+57. [x] P0: Add instant rebook from completed booking with one tap.
+58. [x] P0: Add booking abandonment recovery (email/SMS/push nudges/ notifications).
+59. [x] P0: Add transparent fee breakdown and GST invoice generation.
+60. [x] P0: Add dynamic slot confidence score (likelihood of completion).
+61. [x] P0: Add Acharya response-time badges in listing and checkout.
+62. [x] P0: Add “best-value bundles” for multi-ritual journeys.
+63. [x] P0: Add personalized package recommendation at booking step.
+64. [x] P1: Add waitlist + auto-match when preferred slot opens.
+65. [x] P1: Add alternative Acharya suggestions on decline/timeout.
+66. [x] P1: Add pre-ritual checklist with auto reminders by ritual type.
+# 67. [x] P1: Add multilingual booking forms (Hindi + regional language packs).( as this we want to cover like in the sign up form or setting form the language they select the whole application is going to there prefered languages so this one whould cover there so make that strong and fucntional automatically this one covers)
+68. [x] P1: Add low-data “lite booking flow” for weaker networks.( but the other things should be taken after by some other further notifications like complete the things like these)
+69. [x] P1: Add trust-backed “On-time or compensation” badge logic.
+70. [x] P1: Add no-show prediction model and proactive intervention flows.
 
-72. [ ] P1: Add recurring ritual subscriptions (monthly sankalp/vrat reminders this we will inculde in the services section where monthly things like sankasta chatrutri , every monday rudra abhisheka, every poornima satyanarayana pooja, like this many things we can add in service etc etc).
-73. [ ] P1: Add family accounts with guardian booking and elder-friendly mode.( add in there profile update not while signing up add family details with there rashi nakshatra, gotra, date of bith with there details also we are not taking this in the sign up so dont make there u can add in the profile upate itself.)
-74. [ ] P1: Add in-flow financing for high-ticket rituals.
+72. [x] P1: Add recurring ritual subscriptions (monthly sankalp/vrat reminders this we will inculde in the services section where monthly things like sankasta chatrutri , every monday rudra abhisheka, every poornima satyanarayana pooja, like this many things we can add in service etc etc).
+73. [x] P1: Add family accounts with guardian booking and elder-friendly mode.( add in there profile update not while signing up add family details with there rashi nakshatra, gotra, date of bith with there details also we are not taking this in the sign up so dont make there u can add in the profile upate itself.)
+74. [x] P1: Add in-flow financing for high-ticket rituals.
 
 
-77. [ ] P2: Add smart pricing model based on region, demand, seasonality.
-78. [ ] P2: Add surge protection + fairness constraints to avoid user distrust.
-79. [ ] P2: Add ceremony timeline tracking (prep→travel→check-in→completion).
-80. [ ] P2: Add family event calendar integration (Google/Apple/WhatsApp export).( here we are also intigrating our own calander for this so this one have to compatable with it so use solid priniples so we can extend it to that one too in future)
-81. [ ] P2: Add conversion-optimized checkout variants by user segment.
-82. [ ] P2: Add “ritual outcome journal” + follow-up recommendations.
-83. [ ] P2: Add NPS-triggered rescue workflow for unhappy bookings.
-84. [ ] P2: Add gift-a-ritual checkout for diaspora family use-cases.
-85. [ ] P2: Add city-wise concierge hotline escalations during peak festivals.
+77. [x] P2: Add smart pricing model based on region, demand, seasonality.
+78. [x] P2: Add surge protection + fairness constraints to avoid user distrust.
+79. [x] P2: Add ceremony timeline tracking (prep→travel→check-in→completion).
+80. [x] P2: Add family event calendar integration (Google/Apple/WhatsApp export).( here we are also intigrating our own calander for this so this one have to compatable with it so use solid priniples so we can extend it to that one too in future)
+81. [x] P2: Add conversion-optimized checkout variants by user segment.
+82. [x] P2: Add “ritual outcome journal” + follow-up recommendations.
+83. [x] P2: Add NPS-triggered rescue workflow for unhappy bookings.
+84. [x] P2: Add gift-a-ritual checkout for diaspora family use-cases.
+85. [x] P2: Add city-wise concierge hotline escalations during peak festivals.
 
 ## D. Payments, Wallet & Finance Ops (86-105)
 86. [ ] P0: Add UPI intent + collect flows with fallbacks.
@@ -183,28 +183,25 @@
 131. [ ] P0: Add city-level defaults for Panchanga instead of Delhi fallback when profile missing.
 132. [ ] P0: Add timezone confidence + geolocation accuracy indicator.
 133. [ ] P0: Add panchanga source/explanation notes for user trust.
-134. [ ] P0: Add “what this means today” plain-language daily summary.
+
 135. [ ] P0: Add one-tap reminders for Ekadashi/Pradosh/Amavasya/Purnima.
-136. [ ] P1: Add regional calendar modes (Amanta/Purnimanta + state-specific variants).
+
 137. [ ] P1: Add regional festival priority by user language/state.
 138. [ ] P1: Add personalized muhurat by activity with confidence score.
-139. [ ] P1: Add temple crowd/holiday advisory overlays for planning.
+
 140. [ ] P1: Add ritual material checklist generated from booking + date.
-141. [ ] P1: Add multilingual Sanskrit transliteration support.
+
 142. [ ] P1: Add Panchanga API caching strategy for monthly/yearly views.
 143. [ ] P1: Add structured educational cards (Tithi/Nakshatra significance).
 144. [ ] P2: Add family astro profile for life-event planning timeline.
-145. [ ] P2: Add “best windows” recommender with travel buffer constraints.
+
 146. [ ] P2: Add Panchanga widgets for lockscreen/home screen.
-147. [ ] P2: Add explainable astrologic rationale view for recommendations.
-148. [ ] P2: Add religious-school preference settings (tradition variants).
+
+
 149. [ ] P2: Add panchanga diff tool for location/date comparisons.
-150. [ ] P2: Add event prediction calendar integrations for yearly planning.
-151. [ ] P2: Add Vedic learning journeys linked to calendar events.
+
+
 152. [ ] P2: Add sharable family ritual planner with permissions.
-153. [ ] P2: Add machine-assisted transliteration for regional scripts.
-154. [ ] P2: Add AR-based temple direction guidance for local events.
-155. [ ] P2: Add curated content partnerships with trusted scholars.
 
 ## G. UX, Growth, Retention & India-Market Fit (156-180)
 156. [ ] P0: Build true low-end Android performance budget (RAM <2GB mode).

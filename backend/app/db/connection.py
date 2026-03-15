@@ -597,6 +597,63 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             [("booking_id", 1), ("user_id", 1), ("status", 1)],
         )
 
+        # Growth wave (72-85): recurring rituals, family, smart checkout, and concierge flows
+        await cls._create_index_safe(
+            cls.db.recurring_ritual_subscriptions,
+            [("user_id", 1), ("status", 1), ("created_at", -1)],
+        )
+        await cls._create_index_safe(
+            cls.db.recurring_ritual_subscriptions,
+            [("status", 1), ("next_ritual_at", 1)],
+        )
+
+        await cls._create_index_safe(
+            cls.db.family_accounts,
+            "user_id",
+            unique=True,
+        )
+
+        await cls._create_index_safe(
+            cls.db.booking_timeline_events,
+            [("booking_id", 1), ("created_at", 1)],
+        )
+
+        await cls._create_index_safe(
+            cls.db.booking_outcome_journals,
+            [("booking_id", 1), ("created_at", -1)],
+        )
+        await cls._create_index_safe(
+            cls.db.booking_outcome_journals,
+            [("user_id", 1), ("created_at", -1)],
+        )
+
+        await cls._create_index_safe(
+            cls.db.booking_nps_feedback,
+            [("booking_id", 1), ("created_at", -1)],
+        )
+        await cls._create_index_safe(
+            cls.db.nps_rescue_workflows,
+            [("status", 1), ("priority", -1), ("created_at", -1)],
+        )
+
+        await cls._create_index_safe(
+            cls.db.gift_ritual_checkouts,
+            [("sender_user_id", 1), ("created_at", -1)],
+        )
+        await cls._create_index_safe(
+            cls.db.gift_ritual_checkouts,
+            [("status", 1), ("scheduled_date", 1)],
+        )
+
+        await cls._create_index_safe(
+            cls.db.concierge_escalations,
+            [("city", 1), ("created_at", -1)],
+        )
+        await cls._create_index_safe(
+            cls.db.concierge_escalations,
+            [("user_id", 1), ("created_at", -1)],
+        )
+
         # Reliability: Write-ahead audit logs
         await cls._create_index_safe(
             cls.db.write_ahead_audit_logs,

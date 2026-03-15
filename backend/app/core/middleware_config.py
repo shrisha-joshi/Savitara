@@ -17,10 +17,22 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.security import SecurityManager
+from app.core.tracing import resolve_trace_context
+from app.db.query_budget import (
+    clear_query_budget,
+    get_query_budget,
+    get_query_count,
+    set_query_budget,
+)
 from app.middleware.compression import CompressionMiddleware
 from app.middleware.rate_limit import rate_limiter
 from app.middleware.security_headers import SecurityHeadersMiddleware
-from app.utils.logging_config import set_correlation_id, set_user_id
+from app.utils.logging_config import (
+    set_correlation_id,
+    set_span_id,
+    set_trace_id,
+    set_user_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +182,16 @@ def _record_api_metrics(request: Request, response_status: int, process_time: fl
     ).observe(process_time)
 
 
+def _resolve_query_budget(request: Request) -> int:
+    """Resolve request query budget guard to catch N+1-style query explosions."""
+    path = request.url.path
+    if path.startswith("/api/v1/admin/analytics") or path.startswith("/api/v1/admin/dashboard"):
+        return 140
+    if request.method == "GET":
+        return 80
+    return 100
+
+
 def register_middleware(app: FastAPI) -> None:
     """
     Register all application middleware in correct order.
@@ -216,6 +238,10 @@ def register_middleware(app: FastAPI) -> None:
             "X-RateLimit-Reset",
             "X-Correlation-ID",
             "X-API-Schema-Version",
+            "X-DB-Query-Budget",
+            "X-DB-Query-Count",
+            "traceparent",
+            "tracestate",
         ],
         max_age=86400,          # Cache preflight for 24 hours
     )
@@ -230,6 +256,10 @@ def register_middleware(app: FastAPI) -> None:
         """
         incoming_correlation_id = request.headers.get("X-Correlation-ID")
         correlation_id = incoming_correlation_id or str(uuid.uuid4())
+        trace_context = resolve_trace_context(
+            request.headers.get("traceparent"),
+            request.headers.get("tracestate"),
+        )
         request_id = str(int(time.time() * 1000))
         try:
             schema_version = _resolve_schema_version(request)
@@ -252,11 +282,22 @@ def register_middleware(app: FastAPI) -> None:
             response.headers["X-API-Schema-Version"] = getattr(
                 request.state, "schema_version", "v1"
             )
+            response.headers["traceparent"] = trace_context.traceparent
+            if trace_context.tracestate:
+                response.headers["tracestate"] = trace_context.tracestate
             return response
         request.state.request_id = request_id
         request.state.correlation_id = correlation_id
         request.state.schema_version = schema_version
+        request.state.trace_id = trace_context.trace_id
+        request.state.span_id = trace_context.span_id
+        request.state.parent_span_id = trace_context.parent_span_id
+        query_budget_limit = _resolve_query_budget(request)
+        request.state.query_budget = query_budget_limit
+        set_query_budget(query_budget_limit)
         set_correlation_id(correlation_id)
+        set_trace_id(trace_context.trace_id)
+        set_span_id(trace_context.span_id)
 
         user_id = _extract_user_id_from_bearer(request)
         request.state.user_id = user_id
@@ -271,6 +312,12 @@ def register_middleware(app: FastAPI) -> None:
         response.headers["X-Correlation-ID"] = correlation_id
         response.headers["X-Process-Time"] = str(process_time)
         response.headers["X-API-Schema-Version"] = schema_version
+        if get_query_budget() is not None:
+            response.headers["X-DB-Query-Budget"] = str(get_query_budget())
+            response.headers["X-DB-Query-Count"] = str(get_query_count())
+        response.headers["traceparent"] = trace_context.traceparent
+        if trace_context.tracestate:
+            response.headers["tracestate"] = trace_context.tracestate
         # Fix for Firebase Auth cross-origin popup
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
 
@@ -285,6 +332,9 @@ def register_middleware(app: FastAPI) -> None:
             request_id,
         )
         set_correlation_id("")
+        set_trace_id("")
+        set_span_id("")
         set_user_id("")
+        clear_query_budget()
 
         return response

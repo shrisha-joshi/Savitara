@@ -1,4 +1,6 @@
 """Security Tests — headers, CORS, rate limiting, auth edge cases"""
+import re
+
 import pytest
 
 
@@ -67,6 +69,45 @@ class TestSecurityHeaders:
         assert body.get("success") is False
         assert body.get("error", {}).get("code") == "VAL_003"
         assert body.get("schema_version") == "v2"
+
+    @pytest.mark.asyncio
+    async def test_traceparent_is_continued_from_client(self, client):
+        """Valid incoming traceparent should be continued with same trace-id and new span-id."""
+        incoming_traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+        incoming_tracestate = "rojo=00f067aa0ba902b7"
+
+        response = await client.get(
+            "/health",
+            headers={
+                "traceparent": incoming_traceparent,
+                "tracestate": incoming_tracestate,
+            },
+        )
+
+        assert response.status_code == 200
+        response_traceparent = response.headers.get("traceparent")
+        assert response_traceparent is not None
+        match = re.match(
+            r"^00-(?P<trace_id>[0-9a-f]{32})-(?P<span_id>[0-9a-f]{16})-(?P<flags>[0-9a-f]{2})$",
+            response_traceparent,
+        )
+        assert match is not None
+        assert match.group("trace_id") == "4bf92f3577b34da6a3ce929d0e0e4736"
+        assert match.group("span_id") != "00f067aa0ba902b7"
+        assert match.group("flags") == "01"
+        assert response.headers.get("tracestate") == incoming_tracestate
+
+    @pytest.mark.asyncio
+    async def test_traceparent_is_generated_when_missing(self, client):
+        """Middleware should generate a new traceparent when client header is absent."""
+        response = await client.get("/health")
+        assert response.status_code == 200
+        response_traceparent = response.headers.get("traceparent")
+        assert response_traceparent is not None
+        assert re.match(
+            r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            response_traceparent,
+        ) is not None
 
 
 class TestAuthEdgeCases:

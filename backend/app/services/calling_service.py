@@ -6,8 +6,16 @@ from twilio.rest import Client
 from app.core.config import settings
 from datetime import datetime, timezone
 import logging
+from app.utils.resilience import IntegrationResiliencePolicy, execute_with_resilience
 
 logger = logging.getLogger(__name__)
+
+TWILIO_WRITE_POLICY = IntegrationResiliencePolicy(
+    name="twilio.write",
+    timeout_seconds=10.0,
+    max_retries=0,
+    hedging_enabled=False,
+)
 
 
 class CallingService:
@@ -64,11 +72,15 @@ class CallingService:
 
         # Create call to the initiator first.
         # When they answer, Twilio fetches TwiML from the url to know what to do next (call the other person)
-        call = self.client.calls.create(
-            to=to_number,
-            from_=self.proxy_number,
-            url=f"{settings.API_BASE_URL}/webhooks/twilio/connect/{booking_id}/{callee_user_id}",
-            status_callback=f"{settings.API_BASE_URL}/webhooks/twilio/status/{booking_id}",
+        call = execute_with_resilience(
+            lambda: self.client.calls.create(
+                to=to_number,
+                from_=self.proxy_number,
+                url=f"{settings.API_BASE_URL}/webhooks/twilio/connect/{booking_id}/{callee_user_id}",
+                status_callback=f"{settings.API_BASE_URL}/webhooks/twilio/status/{booking_id}",
+            ),
+            policy=TWILIO_WRITE_POLICY,
+            logger=logger,
         )
 
         # Log call initiation

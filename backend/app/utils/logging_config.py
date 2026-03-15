@@ -79,6 +79,8 @@ class RequestContextFilter(logging.Filter):
         record.correlation_id = (
             getattr(record, "correlation_id", None) or get_correlation_id()
         )
+        record.trace_id = getattr(record, "trace_id", None) or get_trace_id()
+        record.span_id = getattr(record, "span_id", None) or get_span_id()
         record.user_id = getattr(record, "user_id", None) or get_user_id()
         record.request_path = getattr(record, "request_path", None)
         record.request_method = getattr(record, "request_method", None)
@@ -95,6 +97,12 @@ _user_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
 )
 _request_path: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "request_path", default=None
+)
+_trace_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "trace_id", default=None
+)
+_span_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "span_id", default=None
 )
 
 
@@ -121,6 +129,26 @@ def get_user_id() -> Optional[str]:
 def set_request_path(path: str) -> None:
     """Set request path for current request context"""
     _request_path.set(path)
+
+
+def set_trace_id(trace_id: str) -> None:
+    """Set trace ID for current request context"""
+    _trace_id.set(trace_id)
+
+
+def get_trace_id() -> Optional[str]:
+    """Get trace ID for current request context"""
+    return _trace_id.get()
+
+
+def set_span_id(span_id: str) -> None:
+    """Set span ID for current request context"""
+    _span_id.set(span_id)
+
+
+def get_span_id() -> Optional[str]:
+    """Get span ID for current request context"""
+    return _span_id.get()
 
 
 def setup_logging(
@@ -211,6 +239,12 @@ class LogContext:
             if key == "correlation_id":
                 self.old_values[key] = get_correlation_id()
                 set_correlation_id(value)
+            elif key == "trace_id":
+                self.old_values[key] = get_trace_id()
+                set_trace_id(value)
+            elif key == "span_id":
+                self.old_values[key] = get_span_id()
+                set_span_id(value)
             elif key == "user_id":
                 self.old_values[key] = get_user_id()
                 set_user_id(value)
@@ -221,6 +255,10 @@ class LogContext:
         for key, value in self.old_values.items():
             if key == "correlation_id":
                 set_correlation_id(value)
+            elif key == "trace_id":
+                set_trace_id(value)
+            elif key == "span_id":
+                set_span_id(value)
             elif key == "user_id":
                 set_user_id(value)
         return False

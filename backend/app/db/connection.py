@@ -9,6 +9,7 @@ import logging
 
 from app.core.config import settings
 from app.core.constants import FIELD_LOCATION_CITY
+from app.db.query_budget import wrap_database_with_query_budget
 # SOLID: DatabaseManager satisfies both IConnectionManager and IIndexManager.
 # - Code that only needs a DB handle should type-annotate against IConnectionManager.
 # - Startup code that also creates indexes can use DatabaseManager directly.
@@ -486,6 +487,22 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             [("is_active", 1), ("updated_at", -1)],
         )
 
+        # Reliability: Async job queue (heavy background computations)
+        await cls._create_index_safe(
+            cls.db.async_jobs,
+            [("kind", 1), ("status", 1), ("next_attempt_at", 1), ("created_at", 1)],
+        )
+        await cls._create_index_safe(
+            cls.db.async_jobs,
+            "job_key",
+            unique=True,
+            sparse=True,
+        )
+        await cls._create_index_safe(
+            cls.db.async_jobs,
+            [("status", 1), ("locked_at", 1)],
+        )
+
         # Blocked users indexes
         await cls._create_index_safe(
             cls.db.blocked_users,
@@ -558,7 +575,7 @@ def get_db() -> AsyncIOMotorDatabase:
                 },
             },
         )
-    return db
+    return wrap_database_with_query_budget(db)
 
 
 # Alias for compatibility

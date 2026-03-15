@@ -14,9 +14,27 @@ from app.core.config import get_settings
 from app.core.exceptions import PaymentFailedError
 from app.core.interfaces import IPaymentService
 from app.utils.circuit_breaker import payment_circuit
+from app.utils.resilience import IntegrationResiliencePolicy, execute_with_resilience
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+RAZORPAY_WRITE_POLICY = IntegrationResiliencePolicy(
+    name="razorpay.write",
+    timeout_seconds=12.0,
+    max_retries=0,
+    hedging_enabled=False,
+)
+
+RAZORPAY_READ_POLICY = IntegrationResiliencePolicy(
+    name="razorpay.read",
+    timeout_seconds=8.0,
+    max_retries=2,
+    initial_backoff_seconds=0.2,
+    backoff_factor=2.0,
+    hedging_enabled=True,
+    hedging_delay_seconds=0.15,
+)
 
 
 class RazorpayService(IPaymentService):
@@ -81,7 +99,11 @@ class RazorpayService(IPaymentService):
                 order_data["notes"] = notes
 
             # Create order via Razorpay SDK
-            order = self.client.order.create(data=order_data)
+            order = execute_with_resilience(
+                lambda: self.client.order.create(data=order_data),
+                policy=RAZORPAY_WRITE_POLICY,
+                logger=logger,
+            )
             payment_circuit._record_success()  # noqa: SLF001
 
             logger.info(f"Razorpay order created: {order['id']}")
@@ -196,7 +218,11 @@ class RazorpayService(IPaymentService):
             Payment details
         """
         try:
-            payment = self.client.payment.fetch(payment_id)
+            payment = execute_with_resilience(
+                lambda: self.client.payment.fetch(payment_id),
+                policy=RAZORPAY_READ_POLICY,
+                logger=logger,
+            )
 
             return {
                 "id": payment["id"],
@@ -228,7 +254,11 @@ class RazorpayService(IPaymentService):
             Order details
         """
         try:
-            order = self.client.order.fetch(order_id)
+            order = execute_with_resilience(
+                lambda: self.client.order.fetch(order_id),
+                policy=RAZORPAY_READ_POLICY,
+                logger=logger,
+            )
 
             return {
                 "id": order["id"],
@@ -275,7 +305,11 @@ class RazorpayService(IPaymentService):
                 refund_data["notes"] = notes
 
             # Create refund
-            refund = self.client.payment.refund(payment_id, refund_data)
+            refund = execute_with_resilience(
+                lambda: self.client.payment.refund(payment_id, refund_data),
+                policy=RAZORPAY_WRITE_POLICY,
+                logger=logger,
+            )
 
             logger.info(f"Refund initiated: {refund['id']} for payment {payment_id}")
 
@@ -308,7 +342,11 @@ class RazorpayService(IPaymentService):
             Refund details
         """
         try:
-            refund = self.client.payment.fetch_refund(payment_id, refund_id)
+            refund = execute_with_resilience(
+                lambda: self.client.payment.fetch_refund(payment_id, refund_id),
+                policy=RAZORPAY_READ_POLICY,
+                logger=logger,
+            )
 
             return {
                 "refund_id": refund["id"],

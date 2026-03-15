@@ -123,14 +123,18 @@ async def startup(app) -> None:
     if DatabaseManager.db is not None:
         from app.workers.booking_expiry_worker import start_expiry_worker  # noqa: PLC0415
         from app.workers.outbox_worker import start_outbox_worker  # noqa: PLC0415
+        from app.workers.panchanga_precompute_worker import start_panchanga_precompute_worker  # noqa: PLC0415
 
         app.state.booking_expiry_task = start_expiry_worker(DatabaseManager.db)
         app.state.outbox_task = start_outbox_worker(DatabaseManager.db)
+        app.state.panchanga_precompute_task = start_panchanga_precompute_worker(DatabaseManager.db)
         logger.info("Booking expiry worker started")
         logger.info("Outbox worker started")
+        logger.info("Panchanga precompute worker started")
     else:
         logger.warning("Booking expiry worker not started - database unavailable")
         logger.warning("Outbox worker not started - database unavailable")
+        logger.warning("Panchanga precompute worker not started - database unavailable")
 
     logger.info("Application startup complete")
 
@@ -143,7 +147,7 @@ async def shutdown(app) -> None:  # noqa: ARG001 - app reserved for future use
     logger.info("Shutting down Savitara application...")
 
     # Graceful background worker shutdown
-    for task_name in ["outbox_task", "booking_expiry_task"]:
+    for task_name in ["outbox_task", "booking_expiry_task", "panchanga_precompute_task"]:
         task = getattr(app.state, task_name, None)
         if task and not task.done():
             task.cancel()

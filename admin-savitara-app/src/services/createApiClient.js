@@ -15,6 +15,37 @@
 
 import axios from 'axios';
 
+function randomHex(length) {
+  const bytes = Math.ceil(length / 2);
+  if (globalThis.crypto?.getRandomValues) {
+    const array = new Uint8Array(bytes);
+    globalThis.crypto.getRandomValues(array);
+    return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('').slice(0, length);
+  }
+
+  let value = '';
+  for (let i = 0; i < length; i += 1) {
+    value += Math.floor(Math.random() * 16).toString(16);
+  }
+  return value;
+}
+
+function parseTraceparent(headerValue) {
+  if (!headerValue || typeof headerValue !== 'string') return null;
+  const match = /^([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/i.exec(headerValue.trim());
+  if (!match) return null;
+  return {
+    version: match[1].toLowerCase(),
+    traceId: match[2].toLowerCase(),
+    spanId: match[3].toLowerCase(),
+    traceFlags: match[4].toLowerCase(),
+  };
+}
+
+function buildTraceparent(traceId, spanId, traceFlags = '01') {
+  return `00-${traceId}-${spanId}-${traceFlags}`;
+}
+
 export function createApiClient({
   baseURL,
   getToken,
@@ -24,6 +55,8 @@ export function createApiClient({
   clearAuth,
   onAuthFailure = () => {},
 }) {
+  let traceContext = null;
+
   const client = axios.create({
     baseURL,
     headers: { 'Content-Type': 'application/json' },
@@ -32,10 +65,20 @@ export function createApiClient({
   // ── Request interceptor ────────────────────────────────────────────────
   client.interceptors.request.use(
     async (config) => {
+      const activeTraceId = traceContext?.traceId || randomHex(32);
+      const traceFlags = traceContext?.traceFlags || '01';
+      const requestSpanId = randomHex(16);
+
       const token = await getToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
+
+      config.headers.traceparent = buildTraceparent(activeTraceId, requestSpanId, traceFlags);
+      if (traceContext?.tracestate) {
+        config.headers.tracestate = traceContext.tracestate;
+      }
+
       return config;
     },
     (error) => Promise.reject(error)
@@ -53,8 +96,29 @@ export function createApiClient({
   };
 
   client.interceptors.response.use(
-    (response) => response,
+    (response) => {
+      const nextTraceparent = response?.headers?.traceparent;
+      const parsed = parseTraceparent(nextTraceparent);
+      if (parsed) {
+        traceContext = {
+          traceId: parsed.traceId,
+          traceFlags: parsed.traceFlags,
+          tracestate: response?.headers?.tracestate || traceContext?.tracestate || null,
+        };
+      }
+      return response;
+    },
     async (error) => {
+      const nextTraceparent = error?.response?.headers?.traceparent;
+      const parsed = parseTraceparent(nextTraceparent);
+      if (parsed) {
+        traceContext = {
+          traceId: parsed.traceId,
+          traceFlags: parsed.traceFlags,
+          tracestate: error?.response?.headers?.tracestate || traceContext?.tracestate || null,
+        };
+      }
+
       const originalRequest = error.config;
 
       if (error.response?.status !== 401 || originalRequest._retry) {

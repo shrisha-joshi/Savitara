@@ -7,16 +7,28 @@ from fastapi import APIRouter, Depends, Query, status
 from typing import Annotated, Dict, Any, List
 import logging
 from datetime import date, datetime, timedelta
+from pydantic import BaseModel, Field
 
 from app.schemas.requests import StandardResponse
-from app.core.security import get_current_user
+from app.core.security import get_current_user, get_current_admin
+from app.core.exceptions import InvalidInputError, ResourceNotFoundError
 from app.services.panchanga_service import panchanga_service
+from app.services.async_job_service import async_job_service
+from app.db.connection import get_db
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/panchanga", tags=["Panchanga"])
 
 _DEFAULT_LAT = 28.6139  # Delhi
 _DEFAULT_LON = 77.2090
+
+
+class YearlyPrecomputeRequest(BaseModel):
+    year: int = Field(..., ge=1000, le=9999)
+    latitude: float = Field(default=_DEFAULT_LAT, ge=-90, le=90)
+    longitude: float = Field(default=_DEFAULT_LON, ge=-180, le=180)
+    panchanga_type: str = Field(default="lunar", pattern="^(lunar|solar)$")
 
 
 def _effective_params(
@@ -59,6 +71,72 @@ def _effective_params(
             user_type = stored_type
 
     return user_lat, user_lon, user_type
+
+
+@router.post(
+    "/precompute/yearly",
+    response_model=StandardResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Queue yearly Panchanga precompute",
+    description="Queues heavy yearly Panchanga generation into async job queue.",
+)
+async def queue_yearly_precompute(
+    request: YearlyPrecomputeRequest,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    if request.panchanga_type not in {"lunar", "solar"}:
+        raise InvalidInputError(
+            message="panchanga_type must be either 'lunar' or 'solar'",
+            field="panchanga_type",
+        )
+
+    job_key = (
+        f"panchanga:yearly:{request.year}:{request.latitude:.4f}:"
+        f"{request.longitude:.4f}:{request.panchanga_type}"
+    )
+    job_id = await async_job_service.enqueue(
+        db,
+        kind="panchanga.yearly_precompute",
+        payload=request.model_dump(mode="json"),
+        created_by=str(current_user.get("id") or current_user.get("user_id") or "system"),
+        job_key=job_key,
+    )
+
+    return StandardResponse(
+        success=True,
+        message="Yearly Panchanga precompute job queued",
+        data={
+            "job_id": job_id,
+            "kind": "panchanga.yearly_precompute",
+            "job_key": job_key,
+        },
+    )
+
+
+@router.get(
+    "/precompute/jobs/{job_id}",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get precompute job status",
+)
+async def get_precompute_job_status(
+    job_id: str,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    job = await async_job_service.get_job(db, job_id=job_id)
+    if not job:
+        raise ResourceNotFoundError(resource_type="AsyncJob", resource_id=job_id)
+
+    # Admin can inspect all jobs, non-admin only own jobs.
+    role = str(current_user.get("role") or "")
+    if role != "admin":
+        current_user_id = str(current_user.get("id") or current_user.get("user_id") or "")
+        if str(job.get("created_by") or "") != current_user_id:
+            raise ResourceNotFoundError(resource_type="AsyncJob", resource_id=job_id)
+
+    return StandardResponse(success=True, data=job)
 
 
 @router.get(

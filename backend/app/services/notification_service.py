@@ -14,9 +14,17 @@ from app.core.config import get_settings
 from app.core.exceptions import ExternalServiceError
 from app.core.interfaces import INotificationService
 from app.utils.circuit_breaker import notification_circuit, CircuitState
+from app.utils.resilience import IntegrationResiliencePolicy, execute_with_resilience
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+FIREBASE_WRITE_POLICY = IntegrationResiliencePolicy(
+    name="firebase.write",
+    timeout_seconds=10.0,
+    max_retries=0,
+    hedging_enabled=False,
+)
 
 
 class NotificationService(INotificationService):
@@ -134,7 +142,11 @@ class NotificationService(INotificationService):
             )
 
             # Send message
-            response = messaging.send(message)
+            response = execute_with_resilience(
+                lambda: messaging.send(message),
+                policy=FIREBASE_WRITE_POLICY,
+                logger=logger,
+            )
             notification_circuit._record_success()  # noqa: SLF001
 
             logger.info(f"Notification sent successfully: {response}")
@@ -242,7 +254,11 @@ class NotificationService(INotificationService):
             )
 
             # Send multicast
-            response = messaging.send_multicast(message)
+            response = execute_with_resilience(
+                lambda: messaging.send_multicast(message),
+                policy=FIREBASE_WRITE_POLICY,
+                logger=logger,
+            )
 
             logger.info(
                 f"Multicast notification sent: {response.success_count} successful, "
@@ -325,7 +341,11 @@ class NotificationService(INotificationService):
             )
 
             # Send to topic
-            response = messaging.send(message)
+            response = execute_with_resilience(
+                lambda: messaging.send(message),
+                policy=FIREBASE_WRITE_POLICY,
+                logger=logger,
+            )
 
             logger.info(f"Topic notification sent to '{topic}': {response}")
             return response

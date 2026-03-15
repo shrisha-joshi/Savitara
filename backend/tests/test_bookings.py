@@ -1958,3 +1958,278 @@ class TestBookingDiscoveryFeatures:
             assert body.get("error", {}).get("code") == "VAL_003"
         finally:
             fastapi_app.dependency_overrides = {}
+
+
+class TestBookingNextWaveFeatures:
+    """Coverage for backlog items 66-70 and app-wide language persistence."""
+
+    @pytest.mark.asyncio
+    async def test_schedule_checklist_reminder_success(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        grihasta_oid = ObjectId()
+        booking_oid = ObjectId()
+        booking_time = datetime.now(timezone.utc) + timedelta(hours=6)
+
+        await test_db.bookings.insert_one(
+            {
+                "_id": booking_oid,
+                "grihasta_id": grihasta_oid,
+                "acharya_id": ObjectId(),
+                "status": "confirmed",
+                "date_time": booking_time,
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[gcu] = lambda: {
+            "id": str(grihasta_oid),
+            "role": "grihasta",
+            "email": "g@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            response = await client.post(
+                f"/api/v1/bookings/{booking_oid}/checklist/reminders",
+                json={"remind_before_minutes": 180, "channels": ["in_app", "push"]},
+            )
+            assert response.status_code == 201, response.text
+            payload = response.json()["data"]
+            assert payload["status"] == "scheduled"
+
+            saved = await test_db.booking_checklist_reminders.find_one(
+                {
+                    "booking_id": str(booking_oid),
+                    "user_id": str(grihasta_oid),
+                    "remind_before_minutes": 180,
+                }
+            )
+            assert saved is not None
+            assert saved.get("status") == "scheduled"
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_defer_lite_flow_and_worker_nudge(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+        from app.workers.booking_expiry_worker import expire_stale_bookings
+
+        grihasta_oid = ObjectId()
+        booking_oid = ObjectId()
+
+        await test_db.users.insert_one(
+            {
+                "_id": grihasta_oid,
+                "fcm_token": "lite-flow-token",
+                "email": "lite@test.com",
+            }
+        )
+        await test_db.bookings.insert_one(
+            {
+                "_id": booking_oid,
+                "grihasta_id": grihasta_oid,
+                "acharya_id": ObjectId(),
+                "status": "confirmed",
+                "date_time": datetime.now(timezone.utc) + timedelta(days=1),
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[gcu] = lambda: {
+            "id": str(grihasta_oid),
+            "role": "grihasta",
+            "email": "lite@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            defer_response = await client.post(
+                f"/api/v1/bookings/{booking_oid}/lite/defer",
+                json={
+                    "reason": "Need more time to complete details",
+                    "defer_minutes": 5,
+                    "checklist_pending": ["flowers", "kalash"],
+                },
+            )
+            assert defer_response.status_code == 200, defer_response.text
+
+            await test_db.booking_lite_deferred.update_one(
+                {"booking_id": str(booking_oid), "user_id": str(grihasta_oid)},
+                {"$set": {"deferred_until": datetime.now(timezone.utc) - timedelta(minutes=1)}},
+            )
+            transitioned = await expire_stale_bookings(test_db)
+            assert transitioned == 0
+
+            nudges = await test_db.outbox_events.find(
+                {"dedupe_key": {"$regex": f"^booking_lite_flow_nudge:.*:{booking_oid}:"}}
+            ).to_list(length=10)
+            assert len(nudges) >= 1
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_reliability_badges_endpoint_returns_punctuality_data(self, client, test_db):
+        acharya_user_oid = ObjectId()
+        acharya_profile_oid = ObjectId()
+        now = datetime.now(timezone.utc)
+
+        await test_db.acharya_profiles.insert_one(
+            {
+                "_id": acharya_profile_oid,
+                "user_id": str(acharya_user_oid),
+                "name": "Pandit Reliable",
+                "status": "verified",
+            }
+        )
+        await test_db.bookings.insert_many(
+            [
+                {
+                    "_id": ObjectId(),
+                    "acharya_id": str(acharya_profile_oid),
+                    "status": "completed",
+                    "date_time": now - timedelta(days=idx + 1, hours=2),
+                    "started_at": now - timedelta(days=idx + 1, hours=2) + timedelta(minutes=10),
+                    "created_at": now - timedelta(days=idx + 1),
+                }
+                for idx in range(6)
+            ]
+        )
+
+        response = await client.get(f"/api/v1/acharyas/{acharya_profile_oid}/reliability")
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        assert "punctuality" in data
+        assert data["punctuality"]["measured_bookings"] >= 5
+        assert data["punctuality"]["badge"] in {
+            "on_time_champion",
+            "reliable_arrival",
+            "needs_attention",
+            "insufficient_data",
+        }
+
+    @pytest.mark.asyncio
+    async def test_no_show_risk_endpoint_returns_interventions(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        grihasta_oid = ObjectId()
+        acharya_profile_oid = ObjectId()
+        booking_oid = ObjectId()
+
+        await test_db.acharya_profiles.insert_one(
+            {
+                "_id": acharya_profile_oid,
+                "user_id": str(ObjectId()),
+                "name": "Pandit Risky",
+                "status": "verified",
+            }
+        )
+        await test_db.penalties.insert_many(
+            [
+                {
+                    "_id": ObjectId(),
+                    "acharya_id": str(acharya_profile_oid),
+                    "status": "active",
+                    "created_at": datetime.now(timezone.utc) - timedelta(days=10),
+                },
+                {
+                    "_id": ObjectId(),
+                    "acharya_id": str(acharya_profile_oid),
+                    "status": "active",
+                    "created_at": datetime.now(timezone.utc) - timedelta(days=20),
+                },
+            ]
+        )
+        await test_db.bookings.insert_one(
+            {
+                "_id": booking_oid,
+                "grihasta_id": grihasta_oid,
+                "acharya_id": acharya_profile_oid,
+                "status": "requested",
+                "booking_mode": "request",
+                "date_time": datetime.now(timezone.utc) + timedelta(hours=3),
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[gcu] = lambda: {
+            "id": str(grihasta_oid),
+            "role": "grihasta",
+            "email": "risk@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            response = await client.get(f"/api/v1/bookings/{booking_oid}/no-show-risk")
+            assert response.status_code == 200, response.text
+            data = response.json()["data"]
+            assert data["risk_level"] in {"low", "medium", "high"}
+            assert data["risk_score"] >= 1
+            assert isinstance(data["interventions"], list)
+            assert data["interventions"]
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_profile_update_persists_preferred_language_user_level(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        user_oid = ObjectId()
+
+        await test_db.users.insert_one(
+            {
+                "_id": user_oid,
+                "email": "lang@test.com",
+                "role": "grihasta",
+                "status": "active",
+                "credits": 0,
+                "preferred_language": "en",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+        await test_db.grihasta_profiles.insert_one(
+            {
+                "_id": ObjectId(),
+                "user_id": str(user_oid),
+                "name": "Language User",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[gcu] = lambda: {
+            "id": str(user_oid),
+            "role": "grihasta",
+            "email": "lang@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            update_resp = await client.put(
+                "/api/v1/users/me",
+                json={"preferred_language": "hi"},
+            )
+            assert update_resp.status_code == 200, update_resp.text
+
+            profile_resp = await client.get("/api/v1/users/profile")
+            assert profile_resp.status_code == 200, profile_resp.text
+            profile_data = profile_resp.json().get("data", {})
+            assert profile_data.get("preferred_language") == "hi"
+
+            user_doc = await test_db.users.find_one({"_id": user_oid})
+            assert user_doc is not None
+            assert user_doc.get("preferred_language") == "hi"
+        finally:
+            fastapi_app.dependency_overrides = {}

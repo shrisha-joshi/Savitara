@@ -61,6 +61,14 @@ def _coerce_utc_datetime(value: Any) -> Optional[datetime]:
     return None
 
 
+def _safe_object_id(value: Any) -> Any:
+    if isinstance(value, ObjectId):
+        return value
+    if isinstance(value, str) and ObjectId.is_valid(value):
+        return ObjectId(value)
+    return value
+
+
 async def _resolve_acharya_notification_target(
     db: AsyncIOMotorDatabase,
     booking: Dict[str, Any],
@@ -112,6 +120,22 @@ async def _resolve_grihasta_notification_target(
     )
     return (
         str(grihasta_ref),
+        (user_doc or {}).get("fcm_token"),
+        (user_doc or {}).get("email"),
+        (user_doc or {}).get("phone"),
+    )
+
+
+async def _resolve_user_notification_target(
+    db: AsyncIOMotorDatabase,
+    user_id: str,
+) -> tuple[str, Optional[str], Optional[str], Optional[str]]:
+    user_doc = await db.users.find_one(
+        {"_id": _safe_object_id(user_id)},
+        {"fcm_token": 1, "email": 1, "phone": 1},
+    )
+    return (
+        user_id,
         (user_doc or {}).get("fcm_token"),
         (user_doc or {}).get("email"),
         (user_doc or {}).get("phone"),
@@ -243,6 +267,112 @@ async def _enqueue_pending_payment_nudge(
             dedupe_key=(
                 f"pending_payment_recovery:sms:{booking_id}:{grihasta_phone}:{threshold_min}"
             ),
+        )
+
+
+async def _enqueue_checklist_reminder(
+    db: AsyncIOMotorDatabase,
+    *,
+    booking_id: str,
+    user_id: str,
+    threshold_min: int,
+    booking_start: datetime,
+    channels: list[str],
+    fcm_token: Optional[str],
+    email: Optional[str],
+    phone: Optional[str],
+) -> None:
+    body = (
+        "Your booking is coming up soon. "
+        "Please complete your preparation checklist."
+    )
+    if "in_app" in channels:
+        await enqueue_ws_personal(
+            db,
+            user_id=user_id,
+            message={
+                "type": "booking_checklist_reminder",
+                "booking_id": booking_id,
+                "remaining_minutes": threshold_min,
+                "booking_start_at": booking_start.isoformat(),
+            },
+            dedupe_key=(
+                f"booking_checklist_reminder:ws:{booking_id}:{user_id}:{threshold_min}"
+            ),
+        )
+
+    if "push" in channels and fcm_token:
+        await enqueue_fcm_single(
+            db,
+            token=fcm_token,
+            title="Booking preparation reminder",
+            body=body,
+            data={
+                "type": "booking_checklist_reminder",
+                "booking_id": booking_id,
+                "remaining_minutes": str(threshold_min),
+            },
+            dedupe_key=(
+                f"booking_checklist_reminder:fcm:{booking_id}:{fcm_token}:{threshold_min}"
+            ),
+        )
+
+    if "email" in channels and email:
+        await enqueue_email(
+            db,
+            to_email=email,
+            subject="Prepare for your upcoming booking",
+            body=body,
+            html_body=(
+                "<p>Your booking is coming up soon.</p>"
+                "<p>Please complete your preparation checklist in the app.</p>"
+            ),
+            dedupe_key=(
+                f"booking_checklist_reminder:email:{booking_id}:{email}:{threshold_min}"
+            ),
+        )
+
+    if "sms" in channels and phone:
+        await enqueue_sms(
+            db,
+            to_number=str(phone),
+            message=body,
+            dedupe_key=(
+                f"booking_checklist_reminder:sms:{booking_id}:{phone}:{threshold_min}"
+            ),
+        )
+
+
+async def _enqueue_lite_flow_nudge(
+    db: AsyncIOMotorDatabase,
+    *,
+    booking_id: str,
+    user_id: str,
+    reason: str,
+    fcm_token: Optional[str],
+) -> None:
+    body = (
+        "Your booking flow is saved in lite mode. "
+        "Tap to complete when convenient."
+    )
+    await enqueue_ws_personal(
+        db,
+        user_id=user_id,
+        message={
+            "type": "booking_lite_flow_nudge",
+            "booking_id": booking_id,
+            "reason": reason,
+        },
+        dedupe_key=f"booking_lite_flow_nudge:ws:{booking_id}:{user_id}",
+    )
+    if fcm_token:
+        await enqueue_fcm_single(
+            db,
+            token=fcm_token,
+            title="Complete your booking when ready",
+            body=body,
+            data={"type": "booking_lite_flow_nudge", "booking_id": booking_id},
+            dedupe_key=f"booking_lite_flow_nudge:fcm:{booking_id}:{fcm_token}",
         )
 
 
@@ -436,6 +566,132 @@ async def _process_pending_payment_recovery_reminders(
     return emitted_count
 
 
+async def _process_booking_checklist_reminders(
+    db: AsyncIOMotorDatabase,
+    now: datetime,
+) -> int:
+    emitted_count = 0
+    cursor = db.booking_checklist_reminders.find(
+        {
+            "status": "scheduled",
+            "remind_at": {"$lte": now},
+        },
+        {
+            "_id": 1,
+            "booking_id": 1,
+            "user_id": 1,
+            "remind_before_minutes": 1,
+            "channels": 1,
+            "booking_start_at": 1,
+        },
+    )
+
+    async for reminder in cursor:
+        reminder_id = reminder.get("_id")
+        booking_id = str(reminder.get("booking_id"))
+        user_id = str(reminder.get("user_id"))
+        threshold_min = int(reminder.get("remind_before_minutes") or 0)
+        booking_start_at = _coerce_utc_datetime(reminder.get("booking_start_at"))
+        if booking_start_at is None:
+            continue
+
+        mark_result = await db.booking_checklist_reminders.update_one(
+            {"_id": reminder_id, "status": "scheduled"},
+            {"$set": {"status": "queued", "updated_at": now}},
+        )
+        if mark_result.modified_count == 0:
+            continue
+
+        try:
+            _, token, email, phone = await _resolve_user_notification_target(db, user_id)
+            channels = reminder.get("channels") or ["in_app", "push"]
+            await _enqueue_checklist_reminder(
+                db,
+                booking_id=booking_id,
+                user_id=user_id,
+                threshold_min=threshold_min,
+                booking_start=booking_start_at,
+                channels=channels,
+                fcm_token=token,
+                email=email,
+                phone=phone,
+            )
+            await db.booking_checklist_reminders.update_one(
+                {"_id": reminder_id},
+                {"$set": {"status": "sent", "sent_at": now, "updated_at": now}},
+            )
+            emitted_count += 1
+        except Exception:
+            await db.booking_checklist_reminders.update_one(
+                {"_id": reminder_id},
+                {"$set": {"status": "scheduled", "updated_at": now}},
+            )
+            raise
+
+    return emitted_count
+
+
+async def _process_lite_flow_deferred_nudges(
+    db: AsyncIOMotorDatabase,
+    now: datetime,
+) -> int:
+    emitted_count = 0
+    cursor = db.booking_lite_deferred.find(
+        {
+            "status": {"$in": ["open", "nudged"]},
+            "deferred_until": {"$lte": now},
+            "nudge_attempts": {"$lt": 3},
+        },
+        {
+            "_id": 1,
+            "booking_id": 1,
+            "user_id": 1,
+            "reason": 1,
+            "nudge_attempts": 1,
+        },
+    )
+
+    async for deferred in cursor:
+        deferred_id = deferred.get("_id")
+        booking_id = str(deferred.get("booking_id"))
+        user_id = str(deferred.get("user_id"))
+
+        mark_result = await db.booking_lite_deferred.update_one(
+            {
+                "_id": deferred_id,
+                "nudge_attempts": deferred.get("nudge_attempts", 0),
+            },
+            {
+                "$inc": {"nudge_attempts": 1},
+                "$set": {"status": "nudged", "updated_at": now, "deferred_until": now + timedelta(minutes=30)},
+            },
+        )
+        if mark_result.modified_count == 0:
+            continue
+
+        try:
+            _, token, _, _ = await _resolve_user_notification_target(db, user_id)
+            await _enqueue_lite_flow_nudge(
+                db,
+                booking_id=booking_id,
+                user_id=user_id,
+                reason=str(deferred.get("reason") or "deferred_completion"),
+                fcm_token=token,
+            )
+            emitted_count += 1
+        except Exception:
+            await db.booking_lite_deferred.update_one(
+                {"_id": deferred_id},
+                {
+                    "$inc": {"nudge_attempts": -1},
+                    "$set": {"status": "open", "updated_at": now},
+                },
+            )
+            raise
+
+    return emitted_count
+
+
 async def _transition_expired_requested_with_sla(
     db: AsyncIOMotorDatabase,
     now: datetime,
@@ -602,6 +858,8 @@ async def expire_stale_bookings(db: AsyncIOMotorDatabase) -> int:
     now = datetime.now(timezone.utc)
     reminder_emissions = await _process_sla_reminders(db, now)
     payment_recovery_emissions = await _process_pending_payment_recovery_reminders(db, now)
+    checklist_reminder_emissions = await _process_booking_checklist_reminders(db, now)
+    lite_flow_nudges = await _process_lite_flow_deferred_nudges(db, now)
     auto_rejected_count = await _transition_expired_requested_with_sla(db, now)
     legacy_cancelled_count = await _transition_legacy_requested_fallback(db, now)
     pending_failed_count = await _transition_stale_pending_payment(db, now)
@@ -617,6 +875,18 @@ async def expire_stale_bookings(db: AsyncIOMotorDatabase) -> int:
         logger.info(
             "[expiry_worker] Emitted %d pending-payment recovery nudges.",
             payment_recovery_emissions,
+        )
+
+    if checklist_reminder_emissions:
+        logger.info(
+            "[expiry_worker] Emitted %d booking checklist reminders.",
+            checklist_reminder_emissions,
+        )
+
+    if lite_flow_nudges:
+        logger.info(
+            "[expiry_worker] Emitted %d lite-flow deferred nudges.",
+            lite_flow_nudges,
         )
 
     if transitioned_count:
@@ -636,12 +906,13 @@ async def run_expiry_loop(db: AsyncIOMotorDatabase) -> None:
     Designed to be launched via asyncio.create_task().
     """
     logger.info(
-        "[expiry_worker] Started (interval=%ds, requested_ttl=%dh, pending_payment_ttl=%dmin, request_sla=%dmin, reminder_schedule=%s).",
+        "[expiry_worker] Started (interval=%ds, requested_ttl=%dh, pending_payment_ttl=%dmin, request_sla=%dmin, reminder_schedule=%s, checklist_schedule=%s).",
         POLL_INTERVAL_SECONDS,
         REQUESTED_TTL_HOURS,
         PENDING_PAYMENT_TTL_MINUTES,
         settings.REQUEST_MODE_SLA_MINUTES,
         settings.REQUEST_MODE_SLA_REMINDER_SCHEDULE,
+        settings.BOOKING_CHECKLIST_REMINDER_SCHEDULE,
     )
     while True:
         try:

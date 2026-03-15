@@ -30,6 +30,23 @@ class BookingDiscoveryService:
         (720, "steady_responder", "Steady Responder"),
     )
 
+    NO_SHOW_INTERVENTIONS = {
+        "low": [
+            "Standard booking reminders remain active",
+            "Checklist nudges continue as scheduled",
+        ],
+        "medium": [
+            "Send proactive reminders to both parties",
+            "Keep backup Acharya shortlist ready",
+            "Prompt user for flexible timing",
+        ],
+        "high": [
+            "Escalate to support watchlist",
+            "Offer immediate alternative Acharya options",
+            "Trigger urgent confirmation nudge for both parties",
+        ],
+    }
+
     @staticmethod
     def _safe_object_id(value: Any) -> Any:
         if isinstance(value, ObjectId):
@@ -291,6 +308,334 @@ class BookingDiscoveryService:
             "response_time_score": score,
             "sample_size": len(response_minutes),
             "eligible": len(response_minutes) >= 3,
+        }
+
+    @staticmethod
+    async def _resolve_acharya_profile(
+        db: AsyncIOMotorDatabase,
+        acharya_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        query: Dict[str, Any] = {"$or": [{"user_id": acharya_id}]}
+        if ObjectId.is_valid(acharya_id):
+            query["$or"].append({"_id": ObjectId(acharya_id)})
+        return await db.acharya_profiles.find_one(query)
+
+    @staticmethod
+    def _parse_cancellation_text(value: Any) -> str:
+        return str(value or "").strip().lower()
+
+    @staticmethod
+    def _derive_on_time_signal(booking: Dict[str, Any]) -> Optional[bool]:
+        scheduled_at = BookingDiscoveryService._normalize_datetime(booking.get("date_time"))
+        started_at = BookingDiscoveryService._normalize_datetime(
+            booking.get("started_at")
+            or (booking.get("attendance") or {}).get("acharya_confirmed_at")
+        )
+        if scheduled_at is None or started_at is None:
+            return None
+        return started_at <= (scheduled_at + timedelta(minutes=15))
+
+    @staticmethod
+    def _summarize_punctuality_metrics(
+        bookings: List[Dict[str, Any]],
+    ) -> tuple[int, int, int]:
+        measurable = 0
+        on_time = 0
+        inferred_no_show = 0
+        for booking in bookings:
+            on_time_signal = BookingDiscoveryService._derive_on_time_signal(booking)
+            if on_time_signal is not None:
+                measurable += 1
+                on_time += int(on_time_signal)
+
+            cancellation_text = BookingDiscoveryService._parse_cancellation_text(
+                booking.get("cancellation_reason")
+            )
+            if "no-show" in cancellation_text or "no show" in cancellation_text:
+                inferred_no_show += 1
+        return measurable, on_time, inferred_no_show
+
+    @staticmethod
+    def _resolve_punctuality_badge(
+        measurable: int,
+        on_time_rate: Optional[float],
+    ) -> str:
+        if on_time_rate is None or measurable < 5:
+            return "insufficient_data"
+        if on_time_rate >= 90:
+            return "on_time_champion"
+        if on_time_rate >= 75:
+            return "reliable_arrival"
+        return "needs_attention"
+
+    @staticmethod
+    def _resolve_compensation_badge(
+        *,
+        active_penalties: int,
+        approved_guarantee_claims: int,
+        inferred_no_show: int,
+    ) -> str:
+        if active_penalties == 0 and approved_guarantee_claims == 0 and inferred_no_show == 0:
+            return "compensation_clean"
+        if active_penalties <= 1 and approved_guarantee_claims <= 1:
+            return "compensation_watch"
+        return "compensation_risk"
+
+    @staticmethod
+    async def _load_reliability_booking_slice(
+        db: AsyncIOMotorDatabase,
+        identifiers: List[str],
+    ) -> List[Dict[str, Any]]:
+        return await db.bookings.find(
+            {
+                "acharya_id": {"$in": identifiers},
+                "created_at": {"$gte": datetime.now(timezone.utc) - timedelta(days=90)},
+                "status": {"$in": ["completed", "cancelled", "rejected", "in_progress"]},
+            },
+            {
+                "date_time": 1,
+                "started_at": 1,
+                "attendance": 1,
+                "status": 1,
+                "cancellation_reason": 1,
+            },
+        ).to_list(length=120)
+
+    @staticmethod
+    async def _load_compensation_counters(
+        db: AsyncIOMotorDatabase,
+        identifiers: List[str],
+    ) -> tuple[int, int]:
+        active_penalties = await db.penalties.count_documents(
+            {"acharya_id": {"$in": identifiers}, "status": {"$ne": "reversed"}}
+        )
+        approved_guarantee_claims = await db.service_guarantees.count_documents(
+            {
+                "acharya_id": {"$in": identifiers},
+                "status": {"$in": ["approved", "APPROVED"]},
+            }
+        )
+        return active_penalties, approved_guarantee_claims
+
+    @staticmethod
+    def _count_no_show_like_docs(candidates: List[Dict[str, Any]]) -> int:
+        count = 0
+        for doc in candidates:
+            text = BookingDiscoveryService._parse_cancellation_text(doc.get("cancellation_reason"))
+            if "no-show" in text or "no show" in text:
+                count += 1
+        return count
+
+    @staticmethod
+    def _apply_request_mode_risk(
+        booking_like: Dict[str, Any],
+        score: int,
+        factors: List[str],
+    ) -> int:
+        if booking_like.get("booking_mode") == "request" and booking_like.get("status") == "requested":
+            factors.append("Request-mode booking still pending Acharya confirmation")
+            return score + 15
+        return score
+
+    @staticmethod
+    def _apply_penalty_history_risk(
+        score: int,
+        factors: List[str],
+        recent_penalties: int,
+    ) -> int:
+        if not recent_penalties:
+            return score
+        penalty_impact = min(45, recent_penalties * 18)
+        factors.append(f"Recent penalty history contributes +{penalty_impact}")
+        return score + penalty_impact
+
+    @staticmethod
+    def _apply_no_show_history_risk(
+        score: int,
+        factors: List[str],
+        no_show_like_count: int,
+    ) -> int:
+        if not no_show_like_count:
+            return score
+        history_impact = min(30, no_show_like_count * 10)
+        factors.append(f"Prior no-show signals contribute +{history_impact}")
+        return score + history_impact
+
+    @staticmethod
+    def _apply_lead_time_risk(
+        score: int,
+        factors: List[str],
+        requested_start: Optional[datetime],
+    ) -> int:
+        if requested_start is None:
+            return score
+        lead_hours = max(
+            0.0,
+            (requested_start - datetime.now(timezone.utc)).total_seconds() / 3600,
+        )
+        if lead_hours <= 6:
+            factors.append("Very short lead time before booking")
+            return score + 20
+        if lead_hours <= 24:
+            factors.append("Short lead time before booking")
+            return score + 8
+        return score
+
+    @staticmethod
+    def _resolve_risk_level(score: int) -> str:
+        if score >= 70:
+            return "high"
+        if score >= 40:
+            return "medium"
+        return "low"
+
+    @staticmethod
+    async def get_reliability_badges(
+        db: AsyncIOMotorDatabase,
+        *,
+        acharya_id: str,
+    ) -> Dict[str, Any]:
+        """Return punctuality and compensation reliability indicators."""
+        profile = await BookingDiscoveryService._resolve_acharya_profile(db, acharya_id)
+        if profile is None:
+            return {
+                "acharya_id": acharya_id,
+                "punctuality": {
+                    "badge": "insufficient_data",
+                    "on_time_rate": None,
+                    "measured_bookings": 0,
+                },
+                "compensation": {
+                    "badge": "insufficient_data",
+                    "active_penalties": 0,
+                    "approved_guarantee_claims": 0,
+                },
+            }
+
+        identifiers = BookingDiscoveryService._resolve_acharya_identifiers(profile)
+        recent_bookings = await BookingDiscoveryService._load_reliability_booking_slice(
+            db,
+            identifiers,
+        )
+
+        measurable, on_time, inferred_no_show = (
+            BookingDiscoveryService._summarize_punctuality_metrics(recent_bookings)
+        )
+        on_time_rate = round((on_time / measurable) * 100, 1) if measurable else None
+        punctuality_badge = BookingDiscoveryService._resolve_punctuality_badge(
+            measurable,
+            on_time_rate,
+        )
+
+        active_penalties, approved_guarantee_claims = (
+            await BookingDiscoveryService._load_compensation_counters(db, identifiers)
+        )
+        compensation_badge = BookingDiscoveryService._resolve_compensation_badge(
+            active_penalties=active_penalties,
+            approved_guarantee_claims=approved_guarantee_claims,
+            inferred_no_show=inferred_no_show,
+        )
+
+        return {
+            "acharya_id": str(profile.get("_id")),
+            "name": profile.get("name"),
+            "punctuality": {
+                "badge": punctuality_badge,
+                "on_time_rate": on_time_rate,
+                "measured_bookings": measurable,
+                "inferred_no_show_events": inferred_no_show,
+            },
+            "compensation": {
+                "badge": compensation_badge,
+                "active_penalties": active_penalties,
+                "approved_guarantee_claims": approved_guarantee_claims,
+            },
+        }
+
+    @staticmethod
+    async def get_no_show_risk(
+        db: AsyncIOMotorDatabase,
+        *,
+        booking_like: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Rules-first no-show risk score with intervention recommendations."""
+        acharya_id = str(booking_like.get("acharya_id") or "")
+        profile = await BookingDiscoveryService._resolve_acharya_profile(db, acharya_id)
+        profile_for_badge = profile or {"_id": acharya_id, "user_id": acharya_id}
+        identifiers = BookingDiscoveryService._resolve_acharya_identifiers(profile_for_badge)
+        requested_start = BookingDiscoveryService._normalize_datetime(booking_like.get("date_time"))
+
+        score = 20
+        factors: List[str] = []
+        score = BookingDiscoveryService._apply_request_mode_risk(
+            booking_like,
+            score,
+            factors,
+        )
+
+        recent_penalties = await db.penalties.count_documents(
+            {
+                "acharya_id": {"$in": identifiers},
+                "status": {"$ne": "reversed"},
+                "created_at": {"$gte": datetime.now(timezone.utc) - timedelta(days=90)},
+            }
+        )
+        score = BookingDiscoveryService._apply_penalty_history_risk(
+            score,
+            factors,
+            recent_penalties,
+        )
+
+        no_show_like_docs = await db.bookings.find(
+            {
+                "acharya_id": {"$in": identifiers},
+                "created_at": {"$gte": datetime.now(timezone.utc) - timedelta(days=60)},
+                "status": {"$in": ["cancelled", "rejected", "failed"]},
+            },
+            {"cancellation_reason": 1},
+        ).to_list(length=80)
+        no_show_like_count = BookingDiscoveryService._count_no_show_like_docs(
+            no_show_like_docs
+        )
+        score = BookingDiscoveryService._apply_no_show_history_risk(
+            score,
+            factors,
+            no_show_like_count,
+        )
+
+        score = BookingDiscoveryService._apply_lead_time_risk(
+            score,
+            factors,
+            requested_start,
+        )
+
+        response_badge = await BookingDiscoveryService.get_response_time_badge(
+            db,
+            profile_for_badge,
+        )
+        if response_badge.get("response_time_score", 0) >= 90:
+            score -= 8
+            factors.append("Fast historical response time lowers no-show risk")
+
+        score = max(1, min(99, int(round(score))))
+        level = BookingDiscoveryService._resolve_risk_level(score)
+
+        alternatives: List[Dict[str, Any]] = []
+        if level in {"medium", "high"}:
+            alternatives = await BookingDiscoveryService.find_alternative_acharyas(
+                db,
+                booking_like=booking_like,
+                exclude_acharya_id=acharya_id,
+                limit=3,
+            )
+
+        return {
+            "risk_score": score,
+            "risk_level": level,
+            "factors": factors,
+            "interventions": BookingDiscoveryService.NO_SHOW_INTERVENTIONS[level],
+            "response_time_badge": response_badge,
+            "backup_alternatives": alternatives,
         }
 
     @staticmethod

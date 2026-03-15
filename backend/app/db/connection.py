@@ -577,6 +577,26 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             [("booking_id", 1), ("created_at", -1)],
         )
 
+        # Booking checklist reminders
+        await cls._create_index_safe(
+            cls.db.booking_checklist_reminders,
+            [("status", 1), ("remind_at", 1)],
+        )
+        await cls._create_index_safe(
+            cls.db.booking_checklist_reminders,
+            [("booking_id", 1), ("user_id", 1), ("remind_before_minutes", 1), ("status", 1)],
+        )
+
+        # Lite-flow deferred completion queue
+        await cls._create_index_safe(
+            cls.db.booking_lite_deferred,
+            [("status", 1), ("deferred_until", 1)],
+        )
+        await cls._create_index_safe(
+            cls.db.booking_lite_deferred,
+            [("booking_id", 1), ("user_id", 1), ("status", 1)],
+        )
+
         # Reliability: Write-ahead audit logs
         await cls._create_index_safe(
             cls.db.write_ahead_audit_logs,

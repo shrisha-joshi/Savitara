@@ -211,6 +211,7 @@ class ProfileUpdateRequest(BaseModel):
     bio: Optional[str] = Field(None, max_length=500)
     specializations: Optional[List[str]] = None
     languages: Optional[List[str]] = None
+    preferred_language: Optional[str] = Field(None, min_length=2, max_length=10)
     panchanga_type: Optional[str] = Field(None, pattern="^(lunar|solar)$")
     location_approved: Optional[bool] = None
 

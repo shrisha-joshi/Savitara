@@ -87,6 +87,30 @@ async def _send_acharya_verification_notification(
         logger.warning(f"Failed to send admin notification: {e}")
 
 
+async def _apply_user_level_profile_updates(
+    db: AsyncIOMotorDatabase,
+    user_id: str,
+    update_fields: Dict[str, Any],
+    now: datetime,
+) -> Dict[str, Any]:
+    """Extract and apply fields that belong to the base users collection."""
+    profile_fields = dict(update_fields)
+    preferred_language = profile_fields.pop("preferred_language", None)
+
+    if preferred_language is not None:
+        await db.users.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "preferred_language": preferred_language,
+                    "updated_at": now,
+                }
+            },
+        )
+
+    return profile_fields
+
+
 # Error message constants
 NO_FIELDS_TO_UPDATE = "No fields to update"
 
@@ -444,6 +468,7 @@ async def get_profile(
             "role": user_doc["role"],
             "status": user_doc["status"],
             "credits": user_doc["credits"],
+            "preferred_language": user_doc.get("preferred_language", "en"),
             "profile_picture": user_doc.get("profile_picture"),
             "referral_code": user_doc.get("referral_code"),
             "created_at": user_doc["created_at"],
@@ -533,11 +558,22 @@ async def update_profile(
         if not update_fields:
             raise InvalidInputError(message=NO_FIELDS_TO_UPDATE, field="body")
 
+        now = datetime.now(timezone.utc)
+        update_fields = await _apply_user_level_profile_updates(
+            db,
+            user_id,
+            update_fields,
+            now,
+        )
+
+        if not update_fields:
+            return StandardResponse(success=True, message="Profile updated successfully")
+
         # Resolve timezone when caller approves the location
         if update_fields.get("location_approved") and isinstance(update_fields.get("location"), dict):
             update_fields["location"] = _resolve_location_timezone(update_fields["location"])
 
-        update_fields["updated_at"] = datetime.now(timezone.utc)
+        update_fields["updated_at"] = now
 
         # Update appropriate profile collection
         if role == UserRole.GRIHASTA.value:
@@ -592,11 +628,24 @@ async def update_grihasta_profile(
         if not update_fields:
             raise InvalidInputError(message=NO_FIELDS_TO_UPDATE, field="body")
 
+        now = datetime.now(timezone.utc)
+        update_fields = await _apply_user_level_profile_updates(
+            db,
+            user_id,
+            update_fields,
+            now,
+        )
+
+        if not update_fields:
+            return StandardResponse(
+                success=True, message="Grihasta profile updated successfully"
+            )
+
         # Resolve timezone when caller approves the location
         if update_fields.get("location_approved") and isinstance(update_fields.get("location"), dict):
             update_fields["location"] = _resolve_location_timezone(update_fields["location"])
 
-        update_fields["updated_at"] = datetime.now(timezone.utc)
+        update_fields["updated_at"] = now
 
         # Update grihasta profile
         result = await db.grihasta_profiles.update_one(
@@ -836,11 +885,24 @@ async def update_acharya_profile(
         if not update_fields:
             raise InvalidInputError(message=NO_FIELDS_TO_UPDATE, field="body")
 
+        now = datetime.now(timezone.utc)
+        update_fields = await _apply_user_level_profile_updates(
+            db,
+            user_id,
+            update_fields,
+            now,
+        )
+
+        if not update_fields:
+            return StandardResponse(
+                success=True, message="Acharya profile updated successfully"
+            )
+
         # Resolve timezone when caller approves the location
         if update_fields.get("location_approved") and isinstance(update_fields.get("location"), dict):
             update_fields["location"] = _resolve_location_timezone(update_fields["location"])
 
-        update_fields["updated_at"] = datetime.now(timezone.utc)
+        update_fields["updated_at"] = now
 
         # Update acharya profile
         result = await db.acharya_profiles.update_one(

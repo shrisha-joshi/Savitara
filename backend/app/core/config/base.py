@@ -21,6 +21,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 DEFAULT_REQUEST_MODE_SLA_MINUTES = 60
 DEFAULT_REQUEST_MODE_SLA_REMINDER_SCHEDULE = [30, 10, 5]
 DEFAULT_PENDING_PAYMENT_RECOVERY_REMINDER_SCHEDULE = [20, 10, 5]
+DEFAULT_BOOKING_CHECKLIST_REMINDER_SCHEDULE = [1440, 180, 60]
+DEFAULT_LITE_FLOW_DEFAULT_DEFER_MINUTES = 30
 
 
 def _parse_sla_schedule_items(value: Union[str, List[int]]) -> List[Union[int, str]]:
@@ -238,6 +240,10 @@ class BaseAppSettings(BaseSettings):
     PENDING_PAYMENT_RECOVERY_REMINDER_SCHEDULE: Union[List[int], str] = (
         DEFAULT_PENDING_PAYMENT_RECOVERY_REMINDER_SCHEDULE
     )
+    BOOKING_CHECKLIST_REMINDER_SCHEDULE: Union[List[int], str] = (
+        DEFAULT_BOOKING_CHECKLIST_REMINDER_SCHEDULE
+    )
+    LITE_FLOW_DEFAULT_DEFER_MINUTES: int = DEFAULT_LITE_FLOW_DEFAULT_DEFER_MINUTES
 
     # ── Testing Helpers ───────────────────────────────────────────────────
     TEST_MODE: bool = False
@@ -292,3 +298,27 @@ class BaseAppSettings(BaseSettings):
         cls, v: Union[str, List[int]]
     ) -> List[int]:
         return _normalize_sla_schedule(_parse_sla_schedule_items(v))
+
+    @field_validator("BOOKING_CHECKLIST_REMINDER_SCHEDULE", mode="before")
+    @classmethod
+    def parse_booking_checklist_reminder_schedule(
+        cls, v: Union[str, List[int]]
+    ) -> List[int]:
+        return _normalize_sla_schedule(_parse_sla_schedule_items(v))
+
+    @field_validator("LITE_FLOW_DEFAULT_DEFER_MINUTES", mode="before")
+    @classmethod
+    def validate_lite_flow_default_defer_minutes(cls, v: Union[str, int]) -> int:
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return DEFAULT_LITE_FLOW_DEFAULT_DEFER_MINUTES
+            try:
+                v = int(v)
+            except ValueError as exc:
+                raise ValueError(
+                    "LITE_FLOW_DEFAULT_DEFER_MINUTES must be a positive integer"
+                ) from exc
+        if int(v) <= 0:
+            raise ValueError("LITE_FLOW_DEFAULT_DEFER_MINUTES must be > 0")
+        return int(v)

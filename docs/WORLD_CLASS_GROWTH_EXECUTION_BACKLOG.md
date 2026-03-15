@@ -12,39 +12,64 @@
 2. [x] P0: Add distributed rate-limit buckets per user, IP, and device fingerprint.
 3. [x] P0: Enforce global request correlation IDs and pass through WebSocket events.
 4. [x] P0: Add centralized error taxonomy with machine-readable codes for all APIs.
-5. [ ] P0: Move all side-effect notifications to outbox pattern + retry workers.
+5. [x] P0: Move all side-effect notifications to outbox pattern + retry workers.
 6. [x] P0: Add per-endpoint latency/error SLO dashboards (p50/p95/p99).
-7. [ ] P0: Enable per-tenant feature flags (region/language/role/city cohorts).
-8. [ ] P1: Introduce schema versioning for response payloads.
-9. [ ] P1: Add async job queue for heavy panchanga/yearly computations.
-10. [ ] P1: Add OpenTelemetry tracing from frontend to backend spans.
-11. [ ] P1: Add resilience policies per integration (retry, timeout, hedging).
-12. [ ] P1: Add DB query budget guards to prevent accidental N+1 patterns.
-13. [ ] P1: Add write-ahead audit logs for all financial/trust actions.
-14. [ ] P1: Add immutable event stream for booking state transitions.
-15. [ ] P1: Add per-route cache hints and adaptive caching in Redis.
-16. [ ] P1: Introduce read replicas for analytics-heavy admin queries.
-17. [ ] P2: Build anti-abuse policy engine with dynamic risk scoring.
-18. [ ] P2: Add zero-downtime migration framework for Mongo schema evolution.
-19. [ ] P2: Add configuration drift detection between environments.
-20. [ ] P2: Add synthetic monitoring for key flows (auth, booking, payment, chat).
-21. [ ] P2: Add API contract tests generated from OpenAPI snapshots.
-22. [ ] P2: Enable progressive delivery with automatic rollback gates.
-23. [ ] P2: Add global emergency kill switches (payments/chat/recommendations).
-24. [ ] P2: Implement adaptive throttling under incident load.
-25. [ ] P2: Build real-time fraud/event anomaly stream processor.
-26. [ ] P2: Add consistency checker between payment records and booking states.
-27. [ ] P2: Introduce operational command bus for admin remediation actions.
-28. [ ] P2: Add deterministic replay tooling for production incidents.
-29. [ ] P2: Implement data retention/archival lifecycle policies by collection.
-30. [ ] P2: Build chaos automation in CI nightly for integration failure modes.
+7. [x] P0: Enable per-tenant feature flags (region/language/role/city cohorts).
+8. [x] P1: Introduce schema versioning for response payloads.
+9. [x] P1: Add async job queue for heavy panchanga/yearly computations.
+10. [x] P1: Add OpenTelemetry tracing from frontend to backend spans.
+11. [x] P1: Add resilience policies per integration (retry, timeout, hedging).
+12. [x] P1: Add DB query budget guards to prevent accidental N+1 patterns.
+13. [x] P1: Add write-ahead audit logs for all financial/trust actions.
+14. [x] P1: Add immutable event stream for booking state transitions.
+15. [x] P1: Add per-route cache hints and adaptive caching in Redis.
+16. [x] P1: Introduce read replicas for analytics-heavy admin queries.
+17. [x] P2: Build anti-abuse policy engine with dynamic risk scoring.
+18. [x] P2: Add zero-downtime migration framework for Mongo schema evolution.
+19. [x] P2: Add configuration drift detection between environments.
+20. [x] P2: Add synthetic monitoring for key flows (auth, booking, payment, chat).
+21. [x] P2: Add API contract tests generated from OpenAPI snapshots.
+22. [x] P2: Enable progressive delivery with automatic rollback gates.
+23. [x] P2: Add global emergency kill switches (payments/chat/recommendations).
+24. [x] P2: Implement adaptive throttling under incident load.
+25. [x] P2: Build real-time fraud/event anomaly stream processor.
+26. [x] P2: Add consistency checker between payment records and booking states.
+27. [x] P2: Introduce operational command bus for admin remediation actions.
+28. [x] P2: Add deterministic replay tooling for production incidents.
+29. [x] P2: Implement data retention/archival lifecycle policies by collection.
+30. [x] P2: Build chaos automation in CI nightly for integration failure modes.
 
 ### Backend Reliability Progress Notes
 - ✅ Item 1 done: `X-Idempotency-Key` enforced for booking create + payment verify, with persisted response snapshots in `idempotency_keys` collection and TTL cleanup.
 - ✅ Item 2 done: rate limiting key now includes user/IP/device/method/path dimensions for distributed buckets.
 - ✅ Item 3 done: correlation ID is carried in request lifecycle and passed into WebSocket messages whenever available.
 - ✅ Item 4 done: HTTP error envelope now normalizes machine-readable codes with request/correlation metadata.
+- ✅ Item 5 done: durable `outbox_events` collection + worker loop added; booking-side FCM/WS side-effects now enqueue with retry/dead-letter semantics.
 - ✅ Item 6 done: Prometheus per-endpoint request count + latency histogram metrics added for API SLO tracking.
+- ✅ Item 7 done: cohort-aware feature flag service + APIs added (`tenant/region/language/role/city`), with admin upsert and user-context evaluation.
+- ✅ Item 8 done: schema negotiation via `X-API-Schema-Version` + `schema_version` query; responses now emit schema-version header and standardized error metadata.
+- ✅ Item 9 done: durable async job queue + worker added for yearly Panchanga precompute (`/panchanga/precompute/yearly` enqueue + job status API).
+- ✅ Item 10 done: W3C trace context propagation added (`traceparent`/`tracestate`) from frontend API clients through backend middleware with continued backend span headers in responses.
+- ✅ Item 11 done: integration resilience policy layer added with per-provider timeout/retry/hedging controls (Razorpay/Firebase/Twilio) and covered by unit tests.
+- ✅ Item 12 done: request-scoped DB query budget guards added via Mongo proxy wrappers (`DB_002` on budget breach) with response diagnostics headers (`X-DB-Query-Budget`, `X-DB-Query-Count`).
+- ✅ Item 13 done: `write_ahead_audit_service` added and integrated across payment/trust-sensitive flows to persist append-only financial and trust audit records before side effects.
+- ✅ Item 14 done: immutable `booking_event_stream_service` introduced with explicit booking transition append points so every state change is durably recorded in sequence.
+- ✅ Item 15 done: middleware now emits per-route cache hint headers, enabling adaptive Redis caching strategies based on endpoint behavior.
+- ✅ Item 16 done: read-replica support added in `DatabaseManager` with `get_read_db()`, and analytics/investor read paths now use replica-aware access.
+- ✅ Item 17 done: dynamic risk policy evaluation added via `risk_policy_engine`, with runtime enforcement hooks wired into reliability middleware.
+- ✅ Item 18 done: zero-downtime migration tooling implemented through `run_migrations_framework.py` for controlled Mongo schema evolution.
+- ✅ Item 19 done: environment drift checks added with `detect_config_drift.py` to surface configuration mismatches early.
+- ✅ Item 20 done: synthetic flow probes implemented in `synthetic_monitor.py` covering critical auth/booking/payment/chat pathways.
+- ✅ Item 21 done: OpenAPI contract snapshot workflow added with `openapi_contract_snapshot.py`, `test_openapi_contract_snapshot.py`, and a committed snapshot baseline file.
+- ✅ Item 22 done: progressive rollout safety gates implemented via `progressive_delivery_gate.py` with automatic rollback decisioning hooks.
+- ✅ Item 23 done: emergency kill switches exposed through the `reliability_admin` router for fast disablement of sensitive subsystems.
+- ✅ Item 24 done: incident-mode adaptive throttling integrated in middleware, backed by `kill_switch_service` controls for real-time load shedding.
+- ✅ Item 25 done: real-time anomaly detection pipeline added with `anomaly_processor_worker` for fraud/event signal processing.
+- ✅ Item 26 done: booking-payment state reconciliation added via `check_payment_booking_consistency.py` to detect and report cross-system inconsistencies.
+- ✅ Item 27 done: operational remediation command flow implemented with command bus patterns and `command_bus_service` for admin-triggered reliability actions.
+- ✅ Item 28 done: deterministic production incident replay utilities implemented in `deterministic_replay.py` for reproducible debugging.
+- ✅ Item 29 done: collection-level retention and archival lifecycle automation added in `retention_lifecycle.py`.
+- ✅ Item 30 done: nightly chaos automation added with `chaos_experiment.py` and CI orchestration in `.github/workflows/chaos-nightly.yml`.
 
 ## B. Security, Trust & Compliance (31-55)
 31. [ ] P0: Enforce device-bound refresh tokens with rotation + reuse detection.
@@ -76,7 +101,7 @@
 ## C. Booking Experience & Revenue Engine (56-85)
 56. [ ] P0: Introduce request-mode SLA countdown (accept/reject timers) with reminders.
 57. [ ] P0: Add instant rebook from completed booking with one tap.
-58. [ ] P0: Add booking abandonment recovery (WhatsApp/SMS/push nudges).
+58. [ ] P0: Add booking abandonment recovery (email/SMS/push nudges/ notifications).
 59. [ ] P0: Add transparent fee breakdown and GST invoice generation.
 60. [ ] P0: Add dynamic slot confidence score (likelihood of completion).
 61. [ ] P0: Add Acharya response-time badges in listing and checkout.
@@ -85,20 +110,20 @@
 64. [ ] P1: Add waitlist + auto-match when preferred slot opens.
 65. [ ] P1: Add alternative Acharya suggestions on decline/timeout.
 66. [ ] P1: Add pre-ritual checklist with auto reminders by ritual type.
-67. [ ] P1: Add multilingual booking forms (Hindi + regional language packs).
-68. [ ] P1: Add low-data “lite booking flow” for weaker networks.
+# 67. [ ] P1: Add multilingual booking forms (Hindi + regional language packs).( as this we want to cover like in the sign up form or setting form the language they select the whole application is going to there prefered languages so this one whould cover there so make that strong and fucntional automatically this one covers)
+68. [ ] P1: Add low-data “lite booking flow” for weaker networks.( but the other things should be taken after by some other further notifications like complete the things like these)
 69. [ ] P1: Add trust-backed “On-time or compensation” badge logic.
 70. [ ] P1: Add no-show prediction model and proactive intervention flows.
-71. [ ] P1: Add add-ons marketplace (samagri kits, prasad delivery, video recording).
-72. [ ] P1: Add recurring ritual subscriptions (monthly sankalp/vrat reminders).
-73. [ ] P1: Add family accounts with guardian booking and elder-friendly mode.
+
+72. [ ] P1: Add recurring ritual subscriptions (monthly sankalp/vrat reminders this we will inculde in the services section where monthly things like sankasta chatrutri , every monday rudra abhisheka, every poornima satyanarayana pooja, like this many things we can add in service etc etc).
+73. [ ] P1: Add family accounts with guardian booking and elder-friendly mode.( add in there profile update not while signing up add family details with there rashi nakshatra, gotra, date of bith with there details also we are not taking this in the sign up so dont make there u can add in the profile upate itself.)
 74. [ ] P1: Add in-flow financing for high-ticket rituals.
-75. [ ] P2: Add AI-assisted ritual advisor before booking finalization.
-76. [ ] P2: Add multilingual voice booking assistant for non-typing users.
+
+
 77. [ ] P2: Add smart pricing model based on region, demand, seasonality.
 78. [ ] P2: Add surge protection + fairness constraints to avoid user distrust.
 79. [ ] P2: Add ceremony timeline tracking (prep→travel→check-in→completion).
-80. [ ] P2: Add family event calendar integration (Google/Apple/WhatsApp export).
+80. [ ] P2: Add family event calendar integration (Google/Apple/WhatsApp export).( here we are also intigrating our own calander for this so this one have to compatable with it so use solid priniples so we can extend it to that one too in future)
 81. [ ] P2: Add conversion-optimized checkout variants by user segment.
 82. [ ] P2: Add “ritual outcome journal” + follow-up recommendations.
 83. [ ] P2: Add NPS-triggered rescue workflow for unhappy bookings.
@@ -130,11 +155,11 @@
 ## E. Chat, Voice & Real-Time Engagement (106-130)
 106. [ ] P0: Replace browser prompt/alert patterns with polished in-app dialogs.
 107. [ ] P0: Add structured message templates (ritual prep checklist, location notes).
-108. [ ] P0: Add smart quick replies in Hindi + English.
+
 109. [ ] P0: Add media upload resumability and retry state indicators.
 110. [ ] P0: Add voice-note noise suppression and waveform preview.
 111. [ ] P0: Add in-chat trust signals (verified profile, completion rate, punctuality).
-112. [ ] P1: Add translation toggle for mixed-language chats.
+
 113. [ ] P1: Add scheduled messages/reminders for ritual timelines.
 114. [ ] P1: Add reaction analytics to detect sentiment drift in conversations.
 115. [ ] P1: Add richer moderation controls with context-aware report forms.
@@ -142,15 +167,15 @@
 117. [ ] P1: Add read-receipt privacy controls and granular mute windows.
 118. [ ] P1: Add searchable chat across text + OCR-on-image.
 119. [ ] P1: Add ephemeral messages for sensitive personal details.
-120. [ ] P2: Add AI copilot for ritual Q&A (with authenticity guardrails).
-121. [ ] P2: Add voice call escalation option with consent + recording policy.
+
+121. [ ] P2: Add voice call escalation option with consent.
 122. [ ] P2: Add conversation quality scoring for support intervention.
 123. [ ] P2: Add “booking room” shared timeline with pinned tasks.
 124. [ ] P2: Add context cards (location weather, traffic ETA for in-person rituals).
 125. [ ] P2: Add anti-spam models using behavior embeddings.
 126. [ ] P2: Add supergroup/community satsang channels with moderation tiers.
 127. [ ] P2: Add encrypted attachment support for sensitive documents.
-128. [ ] P2: Add AI summarization of long threads for quick catch-up.
+
 129. [ ] P2: Add language-aware toxicity moderation with review pipeline.
 130. [ ] P2: Add call-to-book conversion nudges in relevant chat moments.
 

@@ -23,6 +23,7 @@ from app.core.exceptions import (
     InsufficientPermissionsError,
 )
 from app.core.security import get_current_user
+from app.core.config import settings
 from app.db.connection import get_db
 from app.schemas.requests import StandardResponse, BookingCreateRequest, Location
 from app.services.penalty_service import PenaltyService
@@ -38,6 +39,8 @@ router = APIRouter(tags=["Strategy Features"])
 
 # ============= Constants =============
 MATCH_OP = "$match"
+BOOKING_NOT_FOUND_MESSAGE = "Booking not found"
+NOT_A_PARTICIPANT_MESSAGE = "Not a participant in this booking"
 
 
 def _get_scarcity_level(count: int) -> str:
@@ -97,9 +100,34 @@ class WaitlistRequest(BaseModel):
     location: Optional[Location] = None
 
 
+class ChecklistReminderRequest(BaseModel):
+    """Schedule preparation checklist reminders for a booking."""
+
+    remind_before_minutes: int = Field(180, ge=15, le=10080)
+    channels: List[str] = Field(default_factory=lambda: ["in_app", "push"])
+
+
+class LiteFlowDeferRequest(BaseModel):
+    """Defer completion when the user opts into lite flow."""
+
+    reason: str = Field(..., min_length=3, max_length=300)
+    defer_minutes: Optional[int] = Field(None, ge=5, le=2880)
+    checklist_pending: List[str] = Field(default_factory=list, max_length=20)
+
+
 def _current_user_id(current_user: Dict[str, Any]) -> str:
     """Support both `id` and legacy `user_id` auth payload shapes."""
     return str(current_user.get("id") or current_user.get("user_id") or "")
+
+
+def _normalize_reminder_channels(channels: List[str]) -> List[str]:
+    allowed = {"in_app", "push", "email", "sms"}
+    normalized = []
+    for channel in channels:
+        candidate = str(channel).strip().lower()
+        if candidate in allowed and candidate not in normalized:
+            normalized.append(candidate)
+    return normalized or ["in_app", "push"]
 
 
 # ============= Scarcity Display API (Strategy Report §6.5) =============
@@ -225,12 +253,12 @@ async def get_booking_checklist(
     """Strategy Report §8.1 Stage 4 — Auto-generated preparation checklist"""
     booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
     if not booking:
-        raise ResourceNotFoundError(message="Booking not found", resource_id=booking_id)
+        raise ResourceNotFoundError(message=BOOKING_NOT_FOUND_MESSAGE, resource_id=booking_id)
 
     # Verify user is participant
-    user_id = current_user["user_id"]
+    user_id = _current_user_id(current_user)
     if user_id not in [booking.get("grihasta_id"), booking.get("acharya_id")]:
-        raise InsufficientPermissionsError(message="Not a participant in this booking")
+        raise InsufficientPermissionsError(message=NOT_A_PARTICIPANT_MESSAGE)
 
     # Get service/pooja details
     service = None
@@ -253,6 +281,164 @@ async def get_booking_checklist(
             "checklist": checklist_items,
             "total_items": len(checklist_items),
         },
+    )
+
+
+@router.post(
+    "/bookings/{booking_id}/checklist/reminders",
+    response_model=StandardResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Schedule checklist reminder",
+    description="Schedules a pre-booking checklist reminder that the worker can deliver over selected channels.",
+)
+async def schedule_booking_checklist_reminder(
+    booking_id: str,
+    request: ChecklistReminderRequest,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+    if not booking:
+        raise ResourceNotFoundError(message=BOOKING_NOT_FOUND_MESSAGE, resource_id=booking_id)
+
+    user_id = _current_user_id(current_user)
+    participant_ids = {str(booking.get("grihasta_id")), str(booking.get("acharya_id"))}
+    if user_id not in participant_ids and current_user.get("role") != "admin":
+        raise InsufficientPermissionsError(message=NOT_A_PARTICIPANT_MESSAGE)
+
+    booking_start = booking.get("date_time")
+    if not isinstance(booking_start, datetime):
+        raise InvalidInputError(
+            message="Booking start time unavailable for reminder scheduling",
+            field="booking_id",
+        )
+    if booking_start.tzinfo is None:
+        booking_start = booking_start.replace(tzinfo=timezone.utc)
+    else:
+        booking_start = booking_start.astimezone(timezone.utc)
+
+    remind_at = booking_start - timedelta(minutes=request.remind_before_minutes)
+    now = datetime.now(timezone.utc)
+    if remind_at <= now:
+        raise InvalidInputError(
+            message="Reminder window has already passed for this booking",
+            field="remind_before_minutes",
+        )
+
+    channels = _normalize_reminder_channels(request.channels)
+    reminder_doc = {
+        "booking_id": booking_id,
+        "user_id": user_id,
+        "remind_before_minutes": request.remind_before_minutes,
+        "channels": channels,
+        "booking_start_at": booking_start,
+        "remind_at": remind_at,
+        "status": "scheduled",
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    await db.booking_checklist_reminders.update_one(
+        {
+            "booking_id": booking_id,
+            "user_id": user_id,
+            "remind_before_minutes": request.remind_before_minutes,
+            "status": {"$in": ["scheduled", "queued"]},
+        },
+        {"$set": reminder_doc},
+        upsert=True,
+    )
+
+    await db.bookings.update_one(
+        {"_id": booking["_id"]},
+        {
+            "$addToSet": {"checklist_reminder_schedule_minutes": request.remind_before_minutes},
+            "$set": {"updated_at": now},
+        },
+    )
+
+    return StandardResponse(
+        success=True,
+        data={
+            "booking_id": booking_id,
+            "user_id": user_id,
+            "remind_before_minutes": request.remind_before_minutes,
+            "channels": channels,
+            "remind_at": remind_at.isoformat(),
+            "status": "scheduled",
+        },
+        message="Checklist reminder scheduled",
+    )
+
+
+@router.post(
+    "/bookings/{booking_id}/lite/defer",
+    response_model=StandardResponse,
+    summary="Defer lite-flow completion",
+    description="Stores a deferred completion intent and schedules a follow-up nudge window for low-friction continuation.",
+)
+async def defer_lite_flow_completion(
+    booking_id: str,
+    request: LiteFlowDeferRequest,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+    if not booking:
+        raise ResourceNotFoundError(message=BOOKING_NOT_FOUND_MESSAGE, resource_id=booking_id)
+
+    user_id = _current_user_id(current_user)
+    participant_ids = {str(booking.get("grihasta_id")), str(booking.get("acharya_id"))}
+    if user_id not in participant_ids and current_user.get("role") != "admin":
+        raise InsufficientPermissionsError(message=NOT_A_PARTICIPANT_MESSAGE)
+
+    now = datetime.now(timezone.utc)
+    defer_minutes = request.defer_minutes or settings.LITE_FLOW_DEFAULT_DEFER_MINUTES
+    deferred_until = now + timedelta(minutes=defer_minutes)
+
+    defer_doc = {
+        "booking_id": booking_id,
+        "user_id": user_id,
+        "reason": request.reason,
+        "checklist_pending": request.checklist_pending,
+        "defer_minutes": defer_minutes,
+        "deferred_until": deferred_until,
+        "nudge_attempts": 0,
+        "status": "open",
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    await db.booking_lite_deferred.update_one(
+        {
+            "booking_id": booking_id,
+            "user_id": user_id,
+            "status": {"$in": ["open", "nudged"]},
+        },
+        {"$set": defer_doc},
+        upsert=True,
+    )
+    await db.bookings.update_one(
+        {"_id": booking["_id"]},
+        {
+            "$set": {
+                "lite_flow_deferred": True,
+                "lite_flow_pending_items": request.checklist_pending,
+                "updated_at": now,
+            }
+        },
+    )
+
+    return StandardResponse(
+        success=True,
+        data={
+            "booking_id": booking_id,
+            "user_id": user_id,
+            "defer_minutes": defer_minutes,
+            "deferred_until": deferred_until.isoformat(),
+            "status": "open",
+        },
+        message="Lite-flow completion deferred",
     )
 
 
@@ -322,7 +508,7 @@ async def reassign_booking(
 
     booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
     if not booking:
-        raise ResourceNotFoundError(message="Booking not found", resource_id=booking_id)
+        raise ResourceNotFoundError(message=BOOKING_NOT_FOUND_MESSAGE, resource_id=booking_id)
 
     backup = await BackupAcharyaService.find_backup_acharya(
         db, booking, booking["acharya_id"]
@@ -737,4 +923,56 @@ async def create_waitlist_entry(
             if waitlist_entry.get("auto_match_candidates")
             else "Waitlist created"
         ),
+    )
+
+
+@router.get(
+    "/acharyas/{acharya_id}/reliability",
+    response_model=StandardResponse,
+    summary="Acharya on-time and compensation badges",
+    description="Returns punctuality and compensation reliability badges for an Acharya profile.",
+)
+async def get_acharya_reliability_badges(
+    acharya_id: str,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    badges = await BookingDiscoveryService.get_reliability_badges(
+        db,
+        acharya_id=acharya_id,
+    )
+    return StandardResponse(
+        success=True,
+        data=badges,
+        message="Reliability badges ready",
+    )
+
+
+@router.get(
+    "/bookings/{booking_id}/no-show-risk",
+    response_model=StandardResponse,
+    summary="Predict no-show risk and interventions",
+    description="Rules-first no-show risk score with operational interventions and backup options.",
+)
+async def get_booking_no_show_risk(
+    booking_id: str,
+    current_user: Annotated[dict, Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    booking = await db.bookings.find_one({"_id": ObjectId(booking_id)})
+    if not booking:
+        raise ResourceNotFoundError(message="Booking not found", resource_id=booking_id)
+
+    user_id = _current_user_id(current_user)
+    participant_ids = {str(booking.get("grihasta_id")), str(booking.get("acharya_id"))}
+    if user_id not in participant_ids and current_user.get("role") != "admin":
+        raise InsufficientPermissionsError(message=NOT_A_PARTICIPANT_MESSAGE)
+
+    risk = await BookingDiscoveryService.get_no_show_risk(
+        db,
+        booking_like=booking,
+    )
+    return StandardResponse(
+        success=True,
+        data={"booking_id": booking_id, **risk},
+        message="No-show risk forecast ready",
     )

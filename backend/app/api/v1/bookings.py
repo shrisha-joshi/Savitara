@@ -172,6 +172,7 @@ from app.services.booking_state_machine import (  # noqa: E402, PLC0415
 from app.services.idempotency_service import idempotency_service, IdempotencyContext
 from app.services.outbox_dispatcher import enqueue_fcm_single, enqueue_ws_personal
 from app.services.booking_event_stream_service import BookingEventStreamService
+from app.services.invoice_service import InvoiceService
 
 # Legacy transition table retained for reference only.
 # Enforcement is now handled by booking_state_machine.VALID_TRANSITIONS.
@@ -2366,6 +2367,114 @@ async def get_booking_sla_status(
             "remaining_seconds": remaining_seconds,
             "reminder_schedule_minutes": settings.REQUEST_MODE_SLA_REMINDER_SCHEDULE,
             "expired": expired,
+        },
+    )
+
+
+@router.get(
+    "/{booking_id}/fee-breakdown",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get transparent booking fee breakdown",
+)
+async def get_booking_fee_breakdown(
+    booking_id: str,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """Return transparent fee, discount, and GST breakdown for a booking."""
+    booking_oid = ensure_object_id(booking_id, "booking_id")
+    booking_doc = await db.bookings.find_one(
+        {"_id": booking_oid},
+        {
+            "_id": 1,
+            "status": 1,
+            "payment_status": 1,
+            "grihasta_id": 1,
+            "acharya_id": 1,
+            "base_price": 1,
+            "samagri_price": 1,
+            "platform_fee": 1,
+            "discount": 1,
+            "total_amount": 1,
+            "location": 1,
+            "service_name": 1,
+            "pooja_id": 1,
+            "booking_type": 1,
+        },
+    )
+    if not booking_doc:
+        raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
+
+    authorized = await _can_view_booking_sla(db, booking_doc, current_user)
+    if not authorized:
+        raise PermissionDeniedError(action="View booking fee breakdown")
+
+    breakdown = InvoiceService.build_fee_breakdown(booking_doc)
+    return StandardResponse(
+        success=True,
+        data={
+            "booking_id": booking_id,
+            "status": booking_doc.get("status"),
+            "payment_status": booking_doc.get("payment_status"),
+            **breakdown,
+        },
+    )
+
+
+@router.get(
+    "/{booking_id}/invoice/gst",
+    response_model=StandardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get or generate GST invoice for booking",
+)
+async def get_or_generate_booking_gst_invoice(
+    booking_id: str,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_user)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    """Generate GST tax invoice (idempotent) for paid bookings and return it."""
+    booking_oid = ensure_object_id(booking_id, "booking_id")
+    booking_doc = await db.bookings.find_one(
+        {"_id": booking_oid},
+        {
+            "_id": 1,
+            "status": 1,
+            "payment_status": 1,
+            "grihasta_id": 1,
+            "acharya_id": 1,
+            "base_price": 1,
+            "samagri_price": 1,
+            "platform_fee": 1,
+            "discount": 1,
+            "total_amount": 1,
+            "location": 1,
+            "service_name": 1,
+            "pooja_id": 1,
+            "booking_type": 1,
+        },
+    )
+    if not booking_doc:
+        raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
+
+    authorized = await _can_view_booking_sla(db, booking_doc, current_user)
+    if not authorized:
+        raise PermissionDeniedError(action="View GST invoice")
+
+    if booking_doc.get("payment_status") != PaymentStatus.COMPLETED.value:
+        raise InvalidInputError(
+            message="GST invoice can only be generated for paid bookings",
+            field="payment_status",
+        )
+
+    invoice_doc = await InvoiceService.get_or_create_gst_invoice(db, booking=booking_doc)
+    _serialize_document(invoice_doc)
+
+    return StandardResponse(
+        success=True,
+        data={
+            "booking_id": booking_id,
+            "invoice": invoice_doc,
         },
     )
 

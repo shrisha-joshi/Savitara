@@ -545,6 +545,22 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             [("status", 1), ("locked_at", 1)],
         )
 
+        # Booking invoices
+        await cls._create_index_safe(
+            cls.db.invoices,
+            "invoice_number",
+            unique=True,
+        )
+        await cls._create_index_safe(
+            cls.db.invoices,
+            [("booking_id", 1)],
+            unique=True,
+        )
+        await cls._create_index_safe(
+            cls.db.invoices,
+            [("issued_at", -1)],
+        )
+
         # Reliability: Write-ahead audit logs
         await cls._create_index_safe(
             cls.db.write_ahead_audit_logs,

@@ -228,6 +228,11 @@ class BaseAppSettings(BaseSettings):
     MIN_BOOKING_AMOUNT: float = 500.0
     MAX_BOOKING_AMOUNT: float = 100000.0
     REFERRAL_CREDITS: float = 50.0
+    BUSINESS_LEGAL_NAME: str = "Savitara Technologies Pvt Ltd"
+    BUSINESS_GSTIN: str = ""
+    BUSINESS_GST_HOME_STATE: str = "Karnataka"
+    BUSINESS_ADDRESS: str = "Bengaluru, Karnataka, India"
+    BUSINESS_SERVICE_SAC_CODE: str = "998596"
     REQUEST_MODE_SLA_MINUTES: int = DEFAULT_REQUEST_MODE_SLA_MINUTES
     REQUEST_MODE_SLA_REMINDER_SCHEDULE: Union[List[int], str] = DEFAULT_REQUEST_MODE_SLA_REMINDER_SCHEDULE
     PENDING_PAYMENT_RECOVERY_REMINDER_SCHEDULE: Union[List[int], str] = (

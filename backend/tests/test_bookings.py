@@ -1488,3 +1488,158 @@ class TestBookingSlaFeaturesContinuation:
             assert body.get("error", {}).get("code") == "VAL_003"
         finally:
             fastapi_app.dependency_overrides = {}
+
+
+class TestBookingFeeBreakdownAndInvoice:
+    """Coverage for backlog item 59: transparent fee breakdown and GST invoice generation."""
+
+    @pytest.mark.asyncio
+    async def test_get_booking_fee_breakdown_returns_transparent_components(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        grihasta_oid = ObjectId()
+        booking_oid = ObjectId()
+
+        await test_db.bookings.insert_one(
+            {
+                "_id": booking_oid,
+                "grihasta_id": grihasta_oid,
+                "acharya_id": ObjectId(),
+                "status": "confirmed",
+                "payment_status": "completed",
+                "base_price": 1000.0,
+                "samagri_price": 200.0,
+                "platform_fee": 120.0,
+                "discount": 50.0,
+                "total_amount": 1536.0,
+                "location": {"state": "Karnataka"},
+                "service_name": "Ganesh Puja",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[gcu] = lambda: {
+            "id": str(grihasta_oid),
+            "role": "grihasta",
+            "email": "g@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            response = await client.get(f"/api/v1/bookings/{booking_oid}/fee-breakdown")
+            assert response.status_code == 200, response.text
+            body = response.json()
+            data = body["data"]
+            assert data["booking_id"] == str(booking_oid)
+            assert data["base_price"] == pytest.approx(1000.0)
+            assert data["samagri_fee"] == pytest.approx(200.0)
+            assert data["platform_fee"] == pytest.approx(120.0)
+            assert data["discount"] == pytest.approx(50.0)
+            assert data["gst"]["amount"] > 0
+            assert data["total_amount"] == pytest.approx(1536.0)
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_get_booking_gst_invoice_creates_once_and_reuses_existing(self, client, test_db, monkeypatch):
+        from app.core.config import settings
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        monkeypatch.setattr(settings, "BUSINESS_GSTIN", "29ABCDE1234F1Z5", raising=False)
+        monkeypatch.setattr(settings, "BUSINESS_GST_HOME_STATE", "Karnataka", raising=False)
+
+        grihasta_oid = ObjectId()
+        booking_oid = ObjectId()
+
+        await test_db.bookings.insert_one(
+            {
+                "_id": booking_oid,
+                "grihasta_id": grihasta_oid,
+                "acharya_id": ObjectId(),
+                "status": "confirmed",
+                "payment_status": "completed",
+                "base_price": 1000.0,
+                "samagri_price": 200.0,
+                "platform_fee": 120.0,
+                "discount": 0.0,
+                "total_amount": 1534.0,
+                "location": {"state": "Karnataka"},
+                "service_name": "Satyanarayana Puja",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[gcu] = lambda: {
+            "id": str(grihasta_oid),
+            "role": "grihasta",
+            "email": "g@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            first = await client.get(f"/api/v1/bookings/{booking_oid}/invoice/gst")
+            assert first.status_code == 200, first.text
+            first_invoice = first.json()["data"]["invoice"]
+            assert first_invoice["seller"]["gstin"] == "29ABCDE1234F1Z5"
+            assert first_invoice["tax"]["cgst"] > 0
+            assert first_invoice["tax"]["sgst"] > 0
+            assert first_invoice["tax"]["igst"] == pytest.approx(0.0)
+
+            second = await client.get(f"/api/v1/bookings/{booking_oid}/invoice/gst")
+            assert second.status_code == 200, second.text
+            second_invoice = second.json()["data"]["invoice"]
+            assert second_invoice["invoice_number"] == first_invoice["invoice_number"]
+
+            invoices = await test_db.invoices.find({"booking_id": booking_oid}).to_list(length=10)
+            assert len(invoices) == 1
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_get_booking_gst_invoice_requires_paid_booking(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        grihasta_oid = ObjectId()
+        booking_oid = ObjectId()
+
+        await test_db.bookings.insert_one(
+            {
+                "_id": booking_oid,
+                "grihasta_id": grihasta_oid,
+                "acharya_id": ObjectId(),
+                "status": "pending_payment",
+                "payment_status": "pending",
+                "base_price": 1000.0,
+                "samagri_price": 0.0,
+                "platform_fee": 100.0,
+                "discount": 0.0,
+                "total_amount": 1298.0,
+                "location": {"state": "Karnataka"},
+                "service_name": "Pending Payment Puja",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[gcu] = lambda: {
+            "id": str(grihasta_oid),
+            "role": "grihasta",
+            "email": "g@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            response = await client.get(f"/api/v1/bookings/{booking_oid}/invoice/gst")
+            assert response.status_code == 400
+            body = response.json()
+            assert body.get("error", {}).get("code") == "VAL_003"
+        finally:
+            fastapi_app.dependency_overrides = {}

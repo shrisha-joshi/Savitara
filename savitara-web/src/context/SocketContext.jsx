@@ -184,34 +184,32 @@ export const SocketProvider = ({ children }) => {
       wsHost = apiBaseUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     }
 
-    // Fetch a short-lived WS ticket to avoid exposing the JWT in the URL
-    // Uses native fetch (not axios) so browser won't log HTTP error codes to console
+    // In local development, skip ws-ticket endpoint to avoid noisy 503s when Redis is unavailable.
+    // In non-DEV environments, require short-lived ticket auth.
     let wsAuthParam;
-    try {
-      const ticketRes = await fetch(`${apiBaseUrl}/auth/ws-ticket`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: '{}',
-      });
-      if (!ticketRes.ok) throw new Error(`HTTP ${ticketRes.status}`);
-      const ticketData = await ticketRes.json();
-      const ticket = ticketData?.data?.ticket;
-      if (!ticket) throw new Error('No ticket in response');
-      wsAuthParam = `ticket=${ticket}`;
-    } catch (err) {
-      const env = import.meta.env.VITE_ENV || 'development';
-      if (env === 'production') {
-        console.error('[WS] Ticket required in production. Aborting connection:', err);
+    if (import.meta.env.DEV) {
+      wsAuthParam = `token=${encodeURIComponent(token)}`;
+    } else {
+      try {
+        const ticketRes = await fetch(`${apiBaseUrl}/auth/ws-ticket`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: '{}',
+        });
+        if (!ticketRes.ok) throw new Error(`HTTP ${ticketRes.status}`);
+        const ticketData = await ticketRes.json();
+        const ticket = ticketData?.data?.ticket;
+        if (!ticket) throw new Error('No ticket in response');
+        wsAuthParam = `ticket=${ticket}`;
+      } catch (err) {
+        console.error('[WS] Ticket required outside development. Aborting connection:', err);
         setIsConnecting(false);
         connectingRef.current = false;
         return;
       }
-      // Development fallback: use legacy JWT token query param so WS remains functional
-      console.debug('[WS] Ticket unavailable in development. Falling back to token-based WebSocket auth.');
-      wsAuthParam = `token=${encodeURIComponent(token)}`;
     }
     
     const wsUrl = `${protocol}//${wsHost}/ws/${user.id}?${wsAuthParam}`;

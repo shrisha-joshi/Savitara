@@ -61,6 +61,13 @@ const validateSchedule = (dateValue, timeValue) => {
   return { selectedDateTime };
 };
 
+const generateIdempotencyKey = () => {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `booking-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
+
 const ServiceStep = ({
   acharya,
   poojas,
@@ -624,7 +631,14 @@ export default function CreateBooking() {
       const payload = buildPayload();
       logger.log('Submitting booking payload:', payload);
 
-      const response = await api.post('/bookings', payload);
+      const idempotencyKey = generateIdempotencyKey();
+      logger.log('Submitting booking with idempotency key:', idempotencyKey);
+
+      const response = await api.post('/bookings', payload, {
+        headers: {
+          'X-Idempotency-Key': idempotencyKey,
+        },
+      });
       logger.log('Booking response:', response.data);
       
       if (response.data.success) {

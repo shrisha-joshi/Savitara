@@ -215,9 +215,11 @@ async def _resolve_acharya_identity_ids(db: AsyncIOMotorDatabase, user_id: str) 
     """Resolve all possible acharya identifiers for authorization checks."""
     acharya_ids = {user_id}
     acharya_obj = maybe_object_id(user_id)
-    acharya_profile = await db.acharya_profiles.find_one(
-        {"user_id": acharya_obj or user_id}, {"_id": 1}
-    )
+    acharya_profile_lookup: Dict[str, Any] = {"user_id": user_id}
+    if acharya_obj is not None:
+        acharya_profile_lookup = {"$or": [{"user_id": user_id}, {"user_id": acharya_obj}]}
+
+    acharya_profile = await db.acharya_profiles.find_one(acharya_profile_lookup, {"_id": 1})
     if acharya_profile and acharya_profile.get("_id") is not None:
         acharya_ids.add(str(acharya_profile.get("_id")))
     return acharya_ids
@@ -296,9 +298,11 @@ async def refer_booking(
     # Only the current assigned Acharya can refer — resolve profile ID
     acharya_id = current_user["id"]
     acharya_obj = maybe_object_id(acharya_id)
-    acharya_profile = await db.acharya_profiles.find_one(
-        {"user_id": acharya_obj or acharya_id}, {"_id": 1}
-    )
+    acharya_profile_lookup: Dict[str, Any] = {"user_id": acharya_id}
+    if acharya_obj is not None:
+        acharya_profile_lookup = {"$or": [{"user_id": acharya_id}, {"user_id": acharya_obj}]}
+
+    acharya_profile = await db.acharya_profiles.find_one(acharya_profile_lookup, {"_id": 1})
     acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
     if str(booking["acharya_id"]) not in [str(acharya_profile_id), acharya_id]:
         raise PermissionDeniedError(action="Refer booking")
@@ -1387,9 +1391,11 @@ async def _check_status_update_permission(
 
     if user_role == UserRole.ACHARYA.value:
         acharya_obj = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
-        acharya_profile = await db.acharya_profiles.find_one(
-            {"user_id": acharya_obj or user_id}, {"_id": 1}
-        )
+        acharya_profile_lookup: Dict[str, Any] = {"user_id": user_id}
+        if acharya_obj is not None:
+            acharya_profile_lookup = {"$or": [{"user_id": user_id}, {"user_id": acharya_obj}]}
+
+        acharya_profile = await db.acharya_profiles.find_one(acharya_profile_lookup, {"_id": 1})
         acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
         if str(booking.get("acharya_id")) not in [str(acharya_profile_id), user_id]:
             raise PermissionDeniedError(action="Update status")
@@ -1484,9 +1490,11 @@ async def _check_cancel_permission(
             raise PermissionDeniedError(action=ACTION_CANCEL_BOOKING)
     elif user_role == UserRole.ACHARYA.value:
         acharya_obj = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
-        acharya_profile = await db.acharya_profiles.find_one(
-            {"user_id": acharya_obj or user_id}, {"_id": 1}
-        )
+        acharya_profile_lookup: Dict[str, Any] = {"user_id": user_id}
+        if acharya_obj is not None:
+            acharya_profile_lookup = {"$or": [{"user_id": user_id}, {"user_id": acharya_obj}]}
+
+        acharya_profile = await db.acharya_profiles.find_one(acharya_profile_lookup, {"_id": 1})
         acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
         if str(booking["acharya_id"]) not in [str(acharya_profile_id), user_id]:
             raise PermissionDeniedError(action=ACTION_CANCEL_BOOKING)
@@ -1930,9 +1938,11 @@ async def start_booking(
             raise ResourceNotFoundError(resource_type="Booking", resource_id=booking_id)
 
         # Verify Acharya (allow profile id match)
-        acharya_profile = await db.acharya_profiles.find_one(
-            {"user_id": acharya_obj_id or acharya_id}, {"_id": 1}
-        )
+        acharya_profile_lookup: Dict[str, Any] = {"user_id": acharya_id}
+        if acharya_obj_id is not None:
+            acharya_profile_lookup = {"$or": [{"user_id": acharya_id}, {"user_id": acharya_obj_id}]}
+
+        acharya_profile = await db.acharya_profiles.find_one(acharya_profile_lookup, {"_id": 1})
         acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
         if str(booking_doc.get("acharya_id")) not in [str(acharya_profile_id), acharya_id]:
             raise PermissionDeniedError(action="Start booking")

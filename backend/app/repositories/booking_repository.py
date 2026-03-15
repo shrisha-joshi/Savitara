@@ -155,29 +155,75 @@ class MongoBookingRepository(IBookingRepository):
         bookings = await self.db.bookings.aggregate(pipeline).to_list(length=1)
         return bookings[0] if bookings else None
 
+    @staticmethod
+    def _safe_object_id(user_id: str) -> Optional[ObjectId]:
+        try:
+            return ObjectId(user_id)
+        except (InvalidId, ValueError, TypeError):
+            logger.warning("Could not convert user_id to ObjectId: %s", user_id)
+            return None
+
+    @staticmethod
+    def _dedupe_candidates(candidates: List[Any]) -> List[Any]:
+        deduped: List[Any] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            key = f"{type(candidate).__name__}:{candidate}"
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(candidate)
+        return deduped
+
+    @staticmethod
+    def _build_grihasta_query(user_id: str, user_obj_id: Optional[ObjectId]) -> Dict[str, Any]:
+        candidates: List[Any] = [user_id]
+        if user_obj_id:
+            candidates.append(user_obj_id)
+        return {"grihasta_id": {"$in": MongoBookingRepository._dedupe_candidates(candidates)}}
+
+    @staticmethod
+    def _build_acharya_profile_lookup(
+        user_id: str,
+        user_obj_id: Optional[ObjectId],
+    ) -> Dict[str, Any]:
+        if user_obj_id:
+            return {"$or": [{"user_id": user_obj_id}, {"user_id": user_id}]}
+        return {"user_id": user_id}
+
+    async def _build_acharya_query(
+        self,
+        user_id: str,
+        user_obj_id: Optional[ObjectId],
+    ) -> Dict[str, Any]:
+        acharya_profile_lookup = self._build_acharya_profile_lookup(user_id, user_obj_id)
+        acharya_profile = await self.db.acharya_profiles.find_one(
+            acharya_profile_lookup,
+            {"_id": 1},
+        )
+        acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
+
+        candidates: List[Any] = [user_id]
+        if user_obj_id:
+            candidates.append(user_obj_id)
+        if acharya_profile_id is not None:
+            candidates.append(acharya_profile_id)
+            candidates.append(str(acharya_profile_id))
+
+        return {"acharya_id": {"$in": self._dedupe_candidates(candidates)}}
+
     async def _build_user_booking_query(
         self,
         user_id: str,
         role: str,
         status_filter: Optional[str],
     ) -> Dict[str, Any]:
-        try:
-            user_obj_id = ObjectId(user_id)
-        except (InvalidId, ValueError, TypeError):
-            user_obj_id = None
-            logger.warning("Could not convert user_id to ObjectId: %s", user_id)
+        user_obj_id = self._safe_object_id(user_id)
 
-        query: Dict[str, Any] = {}
         if role == UserRole.GRIHASTA.value:
-            query["grihasta_id"] = user_obj_id if user_obj_id else user_id
+            query = self._build_grihasta_query(user_id, user_obj_id)
         elif role == UserRole.ACHARYA.value:
-            acharya_profile = await self.db.acharya_profiles.find_one(
-                {"user_id": user_obj_id or user_id}, {"_id": 1}
-            )
-            acharya_profile_id = acharya_profile.get("_id") if acharya_profile else None
-            query["acharya_id"] = (
-                acharya_profile_id if acharya_profile_id else (user_obj_id or user_id)
-            )
+            query = await self._build_acharya_query(user_id, user_obj_id)
         else:
             raise PermissionDeniedError(action="View bookings")
 

@@ -694,11 +694,8 @@ class DatabaseManager(IConnectionManager, IIndexManager):
         )
 
         # Reliability: Global controls
-        await cls._create_index_safe(
-            cls.db.global_controls,
-            "_id",
-            unique=True,
-        )
+        # MongoDB already provides the built-in unique _id index for every collection.
+        # Do not attempt to recreate it with explicit options, or startup can fail.
 
         # Reliability: Anomaly events
         await cls._create_index_safe(

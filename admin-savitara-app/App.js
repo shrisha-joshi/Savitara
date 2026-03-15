@@ -16,6 +16,7 @@ import {
 } from '@expo-google-fonts/poppins';
 import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider } from './src/context/AuthContext';
+import { RuntimeConfigProvider } from './src/context/RuntimeConfigContext';
 import AppNavigator from './src/navigation/AppNavigator';
 
 // Keep splash screen visible while loading fonts
@@ -80,9 +81,11 @@ export default function App() {
     <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
       <PaperProvider theme={theme}>
         <AuthProvider>
-          <NavigationContainer>
-            <AppNavigator />
-          </NavigationContainer>
+          <RuntimeConfigProvider>
+            <NavigationContainer>
+              <AppNavigator />
+            </NavigationContainer>
+          </RuntimeConfigProvider>
         </AuthProvider>
       </PaperProvider>
     </View>

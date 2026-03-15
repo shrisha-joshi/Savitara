@@ -21,6 +21,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import ConnectionBanner from './src/components/ConnectionBanner';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { AuthProvider } from './src/context/AuthContext';
+import { RuntimeConfigProvider } from './src/context/RuntimeConfigContext';
 import { SocketProvider } from './src/context/SocketContext';
 import './src/i18n';
 import AppNavigator from './src/navigation/AppNavigator';
@@ -79,13 +80,15 @@ export default function App() {
       <SafeAreaProvider onLayout={onLayoutRootView}>
         <PaperProvider>
           <AuthProvider>
-            <SocketProvider>
-              <View style={styles.socketContainer}>
-                <AppContent />
-                <ConnectionBanner />
-              </View>
-              <StatusBar style="auto" />
-            </SocketProvider>
+            <RuntimeConfigProvider>
+              <SocketProvider>
+                <View style={styles.socketContainer}>
+                  <AppContent />
+                  <ConnectionBanner />
+                </View>
+                <StatusBar style="auto" />
+              </SocketProvider>
+            </RuntimeConfigProvider>
           </AuthProvider>
         </PaperProvider>
       </SafeAreaProvider>

@@ -5,6 +5,13 @@ import { Text, Button, ActivityIndicator, Divider, Surface, Icon } from 'react-n
 import RazorpayCheckout from 'react-native-razorpay';
 import { bookingAPI } from '../../services/api';
 import { RAZORPAY_KEY_ID } from '../../config/api.config';
+import { useRuntimeConfig } from '../../context/RuntimeConfigContext';
+
+const DEFAULT_PAYMENT_UI_CONTENT = {
+  title: 'Complete Payment',
+  secure_text: 'Secured by Razorpay · 256-bit SSL encryption',
+  pay_button_prefix: 'Pay ₹',
+};
 
 /**
  * PaymentScreen
@@ -31,6 +38,11 @@ const PaymentScreen = ({ route, navigation }) => {
     booking?.razorpay_order_id || null
   );
   const [receipt, setReceipt] = useState(null); // set after successful verification
+  const { getConfig } = useRuntimeConfig();
+  const paymentUiContentRaw = getConfig('payment_ui_content', DEFAULT_PAYMENT_UI_CONTENT);
+  const paymentUiContent = (paymentUiContentRaw && typeof paymentUiContentRaw === 'object')
+    ? { ...DEFAULT_PAYMENT_UI_CONTENT, ...paymentUiContentRaw }
+    : DEFAULT_PAYMENT_UI_CONTENT;
 
   // Guard against duplicate submissions while Razorpay sheet is open
   const paymentInFlight = useRef(false);
@@ -236,7 +248,7 @@ const PaymentScreen = ({ route, navigation }) => {
   return (
     <ScrollView style={styles.container}>
       <Text variant="headlineSmall" style={styles.title}>
-        Complete Payment
+        {paymentUiContent.title}
       </Text>
 
       <Surface style={styles.bookingCard} elevation={1}>
@@ -262,7 +274,7 @@ const PaymentScreen = ({ route, navigation }) => {
       <View style={styles.secureRow}>
         <Icon source="shield-check" size={18} color="#4CAF50" />
         <Text variant="bodySmall" style={styles.secureText}>
-          {'  '}Secured by Razorpay · 256-bit SSL encryption
+          {'  '}{paymentUiContent.secure_text}
         </Text>
       </View>
 
@@ -274,7 +286,7 @@ const PaymentScreen = ({ route, navigation }) => {
         style={styles.button}
         icon="credit-card"
       >
-        {paying ? 'Processing...' : `Pay ₹${booking?.total_amount ?? 0}`}
+        {paying ? 'Processing...' : `${paymentUiContent.pay_button_prefix}${booking?.total_amount ?? 0}`}
       </Button>
 
       <Button

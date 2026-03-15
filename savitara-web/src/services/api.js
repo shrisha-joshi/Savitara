@@ -43,3 +43,8 @@ api.interceptors.response.use(
 )
 
 export default api
+
+export const growthConfigAPI = {
+  getBootstrap: () => api.get('/growth-configs/bootstrap', { _skipErrorToast: true }),
+  getConfig: (key) => api.get(`/growth-configs/${key}`, { _skipErrorToast: true }),
+}

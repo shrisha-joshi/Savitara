@@ -2257,6 +2257,164 @@ class TestBookingGrowthWave72To85:
         finally:
             fastapi_app.dependency_overrides = {}
 
+
+class TestAdminManagedGrowthConfigurations:
+    """Coverage for dynamic growth config controls and runtime usage."""
+
+    @pytest.mark.asyncio
+    async def test_admin_growth_config_crud_and_user_bootstrap(self, client, test_db):
+        from app.core.security import get_current_admin, get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        admin_oid = ObjectId()
+        user_oid = ObjectId()
+
+        fastapi_app.dependency_overrides[get_current_admin] = lambda: {
+            "id": str(admin_oid),
+            "role": "admin",
+            "email": "admin@growth.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            upsert = await client.put(
+                "/api/v1/admin/growth-configs/custom_runtime_flag",
+                json={
+                    "category": "custom",
+                    "label": "Custom Runtime Flag",
+                    "description": "Used for dynamic rollout tests",
+                    "visibility": "both",
+                    "is_active": True,
+                    "value": {"enabled": True, "cohort": "beta"},
+                },
+            )
+            assert upsert.status_code == 200, upsert.text
+
+            listing = await client.get("/api/v1/admin/growth-configs")
+            assert listing.status_code == 200, listing.text
+            data = listing.json()["data"]
+            assert data["count"] >= 1
+            assert any(config["key"] == "custom_runtime_flag" for config in data["configs"])
+
+            fastapi_app.dependency_overrides[gcu] = lambda: {
+                "id": str(user_oid),
+                "role": "grihasta",
+                "email": "user@growth.com",
+            }
+            bootstrap = await client.get("/api/v1/growth-configs/bootstrap")
+            assert bootstrap.status_code == 200, bootstrap.text
+            config_map = bootstrap.json()["data"]["config_map"]
+            assert "custom_runtime_flag" in config_map
+            assert config_map["custom_runtime_flag"]["enabled"] is True
+
+            deleted = await client.delete("/api/v1/admin/growth-configs/custom_runtime_flag")
+            assert deleted.status_code == 200, deleted.text
+            assert deleted.json()["data"]["action"] in {"deleted", "reset_to_default"}
+        finally:
+            fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_strategy_uses_admin_managed_timeline_and_concierge_config(self, client, test_db):
+        from app.core.security import get_current_user as gcu
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        user_oid = ObjectId()
+        booking_oid = ObjectId()
+        start_dt = datetime.now(timezone.utc) + timedelta(days=1)
+
+        await test_db.bookings.insert_one(
+            {
+                "_id": booking_oid,
+                "grihasta_id": user_oid,
+                "acharya_id": ObjectId(),
+                "service_name": "Dynamic Config Ritual",
+                "status": "confirmed",
+                "location": {"city": "Mysuru"},
+                "date_time": start_dt,
+                "end_time": start_dt + timedelta(hours=2),
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        await test_db.growth_feature_configs.insert_many(
+            [
+                {
+                    "key": "timeline_stages",
+                    "category": "booking_experience",
+                    "label": "Timeline",
+                    "description": "Dynamic stages",
+                    "visibility": "both",
+                    "is_active": True,
+                    "is_system": True,
+                    "value": {
+                        "stages": [
+                            {"code": "arrival", "label": "Arrival", "sort_order": 1, "is_active": True},
+                            {"code": "completion", "label": "Completion", "sort_order": 2, "is_active": True},
+                        ]
+                    },
+                    "created_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(timezone.utc),
+                },
+                {
+                    "key": "concierge_directory",
+                    "category": "booking_experience",
+                    "label": "Concierge Directory",
+                    "description": "Dynamic city routing",
+                    "visibility": "both",
+                    "is_active": True,
+                    "is_system": True,
+                    "value": {
+                        "default_hotline": "+91-120-6200-1085",
+                        "default_hours": "24x7",
+                        "cities": [
+                            {
+                                "city": "mysuru",
+                                "hotline": "+91-821-6200-1085",
+                                "available_hours": "24x7",
+                                "is_active": True,
+                            }
+                        ],
+                    },
+                    "created_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(timezone.utc),
+                },
+            ]
+        )
+
+        fastapi_app.dependency_overrides[gcu] = lambda: {
+            "id": str(user_oid),
+            "role": "grihasta",
+            "email": "dynamic@test.com",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            timeline_post = await client.post(
+                f"/api/v1/bookings/{booking_oid}/timeline/events",
+                json={"stage": "arrival", "note": "Reached venue", "metadata": {"eta": "on-time"}},
+            )
+            assert timeline_post.status_code == 200, timeline_post.text
+
+            invalid_stage = await client.post(
+                f"/api/v1/bookings/{booking_oid}/timeline/events",
+                json={"stage": "prep", "note": "Should fail", "metadata": {}},
+            )
+            assert invalid_stage.status_code == 400
+
+            hotline = await client.get(
+                "/api/v1/concierge/hotline",
+                params={"city": "Mysuru", "festival": "Dasara"},
+            )
+            assert hotline.status_code == 200, hotline.text
+            hotline_data = hotline.json()["data"]
+            assert hotline_data["hotline"] == "+91-821-6200-1085"
+            assert hotline_data["available_hours"] == "24x7"
+        finally:
+            fastapi_app.dependency_overrides = {}
+
     @pytest.mark.asyncio
     async def test_defer_lite_flow_and_worker_nudge(self, client, test_db):
         from app.core.security import get_current_user as gcu

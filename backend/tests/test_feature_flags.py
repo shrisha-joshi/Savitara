@@ -163,3 +163,44 @@ class TestFeatureFlagsApi:
             assert saved.get("enabled") is True
         finally:
             fastapi_app.dependency_overrides = {}
+
+    @pytest.mark.asyncio
+    async def test_admin_can_list_and_delete_feature_flags(self, client, test_db):
+        from app.core.security import get_current_admin
+        from app.db.connection import get_db
+        from app.main import app as fastapi_app
+
+        admin_oid = ObjectId()
+        await test_db.feature_flags.insert_one(
+            {
+                "key": "wallet_experiment",
+                "enabled": True,
+                "is_active": True,
+                "variant": "a",
+                "rollout_percentage": 50,
+                "cohorts": {"roles": ["grihasta"]},
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+
+        fastapi_app.dependency_overrides[get_current_admin] = lambda: {
+            "id": str(admin_oid),
+            "role": "admin",
+            "email": "admin@flags.test",
+        }
+        fastapi_app.dependency_overrides[get_db] = lambda: test_db
+
+        try:
+            list_response = await client.get("/api/v1/feature-flags/admin")
+            assert list_response.status_code == 200
+            body = list_response.json()
+            assert body.get("success") is True
+            assert any(flag.get("key") == "wallet_experiment" for flag in body.get("data", {}).get("flags", []))
+
+            delete_response = await client.delete("/api/v1/feature-flags/admin/wallet_experiment")
+            assert delete_response.status_code == 200
+            delete_body = delete_response.json()
+            assert delete_body.get("data", {}).get("deleted") is True
+            assert await test_db.feature_flags.find_one({"key": "wallet_experiment"}) is None
+        finally:
+            fastapi_app.dependency_overrides = {}

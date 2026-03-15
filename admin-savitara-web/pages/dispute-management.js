@@ -43,6 +43,38 @@ import Layout from '../src/components/Layout';
 import withAuth from '../src/hoc/withAuth';
 import { adminAPI } from '../src/services/api';
 
+const DEFAULT_DISPUTE_STATUS_MAP = {
+  open: { color: 'default', label: 'Open' },
+  under_review: { color: 'info', label: 'Under Review' },
+  evidence_requested: { color: 'warning', label: 'Evidence Requested' },
+  pending_response: { color: 'warning', label: 'Pending Response' },
+  mediation: { color: 'warning', label: 'Mediation' },
+  resolved_refund: { color: 'success', label: 'Resolved (Refund)' },
+  resolved_no_refund: { color: 'success', label: 'Resolved (No Refund)' },
+  resolved_partial_refund: { color: 'success', label: 'Resolved (Partial)' },
+  escalated: { color: 'error', label: 'Escalated' },
+  closed: { color: 'default', label: 'Closed' },
+};
+
+const DEFAULT_DISPUTE_CATEGORY_MAP = {
+  poor_service_quality: { color: 'primary', label: 'Service Quality' },
+  service_not_rendered: { color: 'secondary', label: 'Not Rendered' },
+  incomplete_service: { color: 'secondary', label: 'Incomplete' },
+  payment_issue: { color: 'secondary', label: 'Payment' },
+  pricing_issue: { color: 'secondary', label: 'Pricing' },
+  late_arrival: { color: 'warning', label: 'Late Arrival' },
+  no_show_acharya: { color: 'error', label: 'No Show (Acharya)' },
+  no_show_grihasta: { color: 'error', label: 'No Show (Grihasta)' },
+  rude_behavior: { color: 'error', label: 'Harassment' },
+  offline_payment_request: { color: 'warning', label: 'Offline Payment' },
+  policy_violation: { color: 'error', label: 'Policy Violation' },
+  other: { color: 'default', label: 'Other' },
+  service_quality: { color: 'primary', label: 'Service Quality' },
+  payment: { color: 'secondary', label: 'Payment' },
+  cancellation: { color: 'warning', label: 'Cancellation' },
+  harassment: { color: 'error', label: 'Harassment' },
+};
+
 function DisputeManagement() {
   const [disputes, setDisputes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +85,8 @@ function DisputeManagement() {
   const [refundPercentage, setRefundPercentage] = useState(0);
   const [adminNotes, setAdminNotes] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [statusConfigMap, setStatusConfigMap] = useState(DEFAULT_DISPUTE_STATUS_MAP);
+  const [categoryConfigMap, setCategoryConfigMap] = useState(DEFAULT_DISPUTE_CATEGORY_MAP);
 
   const [stats, setStats] = useState({
     total: 0,
@@ -63,16 +97,40 @@ function DisputeManagement() {
   });
 
   useEffect(() => {
+    fetchConfigMaps();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     fetchDisputes();
     fetchStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
 
+  const fetchConfigMaps = async () => {
+    try {
+      const [statusResponse, categoryResponse] = await Promise.all([
+        adminAPI.getGrowthConfig('admin_dispute_status_map'),
+        adminAPI.getGrowthConfig('admin_dispute_category_map'),
+      ]);
+      const statusMap = statusResponse?.data?.data?.config?.value?.map;
+      const categoryMap = categoryResponse?.data?.data?.config?.value?.map;
+      if (statusMap && typeof statusMap === 'object') {
+        setStatusConfigMap(statusMap);
+      }
+      if (categoryMap && typeof categoryMap === 'object') {
+        setCategoryConfigMap(categoryMap);
+      }
+    } catch (error) {
+      console.warn('Using fallback dispute display maps:', error?.response?.data || error?.message);
+    }
+  };
+
   const fetchDisputes = async () => {
     setLoading(true);
     try {
       const params = statusFilter === 'all' ? {} : { status: statusFilter };
-      const response = await adminAPI.get('/trust/admin/disputes', { params });
+      const response = await adminAPI.listDisputes(params);
       setDisputes(response.data.disputes || []);
     } catch (error) {
       console.error('Error loading disputes:', error);
@@ -84,7 +142,7 @@ function DisputeManagement() {
 
   const fetchStats = async () => {
     try {
-      const response = await adminAPI.get('/trust/admin/disputes/stats');
+      const response = await adminAPI.getDisputeStats();
       setStats(response.data);
     } catch (error) {
       console.error('Failed to load stats:', error);
@@ -93,7 +151,7 @@ function DisputeManagement() {
 
   const handleViewDispute = async (disputeId) => {
     try {
-      const response = await adminAPI.get(`/trust/disputes/${disputeId}`);
+      const response = await adminAPI.getDisputeById(disputeId);
       setSelectedDispute(response.data);
       setViewDialog(true);
     } catch (error) {
@@ -116,7 +174,7 @@ function DisputeManagement() {
       if (refundPercentage === 100) resolution = 'resolved_refund';
       else if (refundPercentage > 0) resolution = 'resolved_partial_refund';
 
-      await adminAPI.post(`/trust/admin/disputes/${selectedDispute._id}/resolve`, {
+      await adminAPI.resolveDispute(selectedDispute._id, {
         resolution,
         compensation_amount: refundPercentage,   // backend field
         resolution_notes: adminNotes,            // backend field
@@ -132,43 +190,12 @@ function DisputeManagement() {
   };
 
   const getStatusChip = (status) => {
-    const statusConfig = {
-      open:                    { color: 'default',  label: 'Open' },
-      under_review:            { color: 'info',     label: 'Under Review' },
-      evidence_requested:      { color: 'warning',  label: 'Evidence Requested' },
-      pending_response:        { color: 'warning',  label: 'Pending Response' },
-      mediation:               { color: 'warning',  label: 'Mediation' },
-      resolved_refund:         { color: 'success',  label: 'Resolved (Refund)' },
-      resolved_no_refund:      { color: 'success',  label: 'Resolved (No Refund)' },
-      resolved_partial_refund: { color: 'success',  label: 'Resolved (Partial)' },
-      escalated:               { color: 'error',    label: 'Escalated' },
-      closed:                  { color: 'default',  label: 'Closed' },
-    };
-    const config = statusConfig[status] || { color: 'default', label: status || 'Unknown' };
+    const config = statusConfigMap[status] || { color: 'default', label: status || 'Unknown' };
     return <Chip label={config.label} color={config.color} size="small" />;
   };
 
   const getCategoryChip = (category) => {
-    const categoryConfig = {
-      poor_service_quality:    { color: 'primary',   label: 'Service Quality' },
-      service_not_rendered:    { color: 'secondary', label: 'Not Rendered' },
-      incomplete_service:      { color: 'secondary', label: 'Incomplete' },
-      payment_issue:           { color: 'secondary', label: 'Payment' },
-      pricing_issue:           { color: 'secondary', label: 'Pricing' },
-      late_arrival:            { color: 'warning',   label: 'Late Arrival' },
-      no_show_acharya:         { color: 'error',     label: 'No Show (Acharya)' },
-      no_show_grihasta:        { color: 'error',     label: 'No Show (Grihasta)' },
-      rude_behavior:           { color: 'error',     label: 'Harassment' },
-      offline_payment_request: { color: 'warning',   label: 'Offline Payment' },
-      policy_violation:        { color: 'error',     label: 'Policy Violation' },
-      other:                   { color: 'default',   label: 'Other' },
-      // Legacy / mapped values from older data
-      service_quality:         { color: 'primary',   label: 'Service Quality' },
-      payment:                 { color: 'secondary', label: 'Payment' },
-      cancellation:            { color: 'warning',   label: 'Cancellation' },
-      harassment:              { color: 'error',     label: 'Harassment' },
-    };
-    const config = categoryConfig[category] || categoryConfig.other;
+    const config = categoryConfigMap[category] || categoryConfigMap.other || { color: 'default', label: category || 'Other' };
     return <Chip label={config.label} color={config.color} size="small" variant="outlined" />;
   };
 
@@ -259,12 +286,10 @@ function DisputeManagement() {
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <MenuItem value="all">All Disputes</MenuItem>
-                <MenuItem value="open">Open</MenuItem>
-                <MenuItem value="under_review">Under Review</MenuItem>
-                <MenuItem value="mediation">Mediation</MenuItem>
-                <MenuItem value="escalated">Escalated</MenuItem>
+                {Object.entries(statusConfigMap).map(([statusKey, config]) => (
+                  <MenuItem key={statusKey} value={statusKey}>{config?.label || statusKey}</MenuItem>
+                ))}
                 <MenuItem value="resolved">Resolved (all)</MenuItem>
-                <MenuItem value="closed">Closed</MenuItem>
               </Select>
             </FormControl>
             <Button

@@ -16,7 +16,7 @@ import { useAuth, SUPER_ADMIN_EMAIL } from '../src/context/AuthContext';
 import { adminAuthAPI } from '../src/services/api';
 
 function AdminManagement() {
-  const { user, isSuperAdmin } = useAuth();
+  const { isSuperAdmin } = useAuth();
   const router = useRouter();
   
   const [admins, setAdmins] = useState([]);
@@ -90,6 +90,98 @@ function AdminManagement() {
     }
   };
 
+  const formatCreatedAt = (createdAt) => {
+    if (!createdAt) {
+      return '-';
+    }
+
+    return new Date(createdAt).toLocaleDateString();
+  };
+
+  let adminRows = (
+    <TableRow>
+      <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+        <Typography color="text.secondary">No admins found</Typography>
+      </TableCell>
+    </TableRow>
+  );
+
+  if (loading) {
+    adminRows = (
+      <TableRow>
+        <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+          <CircularProgress />
+        </TableCell>
+      </TableRow>
+    );
+  } else if (admins.length > 0) {
+    adminRows = admins.map((admin) => (
+      <TableRow key={admin.email} hover>
+        <TableCell>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Email fontSize="small" color="primary" />
+            <Typography variant="body2" fontWeight={500}>
+              {admin.email}
+            </Typography>
+          </Box>
+        </TableCell>
+        <TableCell>
+          {admin.is_super_admin ? (
+            <Chip 
+              icon={<Star />} 
+              label="Super Admin" 
+              size="small" 
+              color="primary"
+              sx={{ fontWeight: 600 }}
+            />
+          ) : (
+            <Chip 
+              label="Admin" 
+              size="small" 
+              variant="outlined"
+            />
+          )}
+        </TableCell>
+        <TableCell>
+          {admin.has_password ? (
+            <Chip 
+              icon={<CheckCircle />} 
+              label="Active" 
+              size="small" 
+              color="success"
+              variant="outlined"
+            />
+          ) : (
+            <Chip 
+              icon={<Warning />} 
+              label="Pending Setup" 
+              size="small" 
+              color="warning"
+              variant="outlined"
+            />
+          )}
+        </TableCell>
+        <TableCell>
+          <Typography variant="body2" color="text.secondary">
+            {formatCreatedAt(admin.created_at)}
+          </Typography>
+        </TableCell>
+        <TableCell align="right">
+          {!admin.is_super_admin && (
+            <Tooltip title="Remove admin">
+              <IconButton 
+                color="error" 
+                onClick={() => setDeleteDialog({ open: true, admin })}
+              >
+                <Delete />
+              </IconButton>
+            </Tooltip>
+          )}
+        </TableCell>
+      </TableRow>
+    ));
+  }
+
   if (!isSuperAdmin) {
     return (
       <Layout>
@@ -157,88 +249,7 @@ function AdminManagement() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
-                      <CircularProgress />
-                    </TableCell>
-                  </TableRow>
-                ) : admins.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
-                      <Typography color="text.secondary">No admins found</Typography>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  admins.map((admin) => (
-                    <TableRow key={admin.email} hover>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Email fontSize="small" color="primary" />
-                          <Typography variant="body2" fontWeight={500}>
-                            {admin.email}
-                          </Typography>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        {admin.is_super_admin ? (
-                          <Chip 
-                            icon={<Star />} 
-                            label="Super Admin" 
-                            size="small" 
-                            color="primary"
-                            sx={{ fontWeight: 600 }}
-                          />
-                        ) : (
-                          <Chip 
-                            label="Admin" 
-                            size="small" 
-                            variant="outlined"
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {admin.has_password ? (
-                          <Chip 
-                            icon={<CheckCircle />} 
-                            label="Active" 
-                            size="small" 
-                            color="success"
-                            variant="outlined"
-                          />
-                        ) : (
-                          <Chip 
-                            icon={<Warning />} 
-                            label="Pending Setup" 
-                            size="small" 
-                            color="warning"
-                            variant="outlined"
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" color="text.secondary">
-                          {admin.created_at 
-                            ? new Date(admin.created_at).toLocaleDateString()
-                            : '-'
-                          }
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">
-                        {!admin.is_super_admin && (
-                          <Tooltip title="Remove admin">
-                            <IconButton 
-                              color="error" 
-                              onClick={() => setDeleteDialog({ open: true, admin })}
-                            >
-                              <Delete />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
+                {adminRows}
               </TableBody>
             </Table>
           </TableContainer>

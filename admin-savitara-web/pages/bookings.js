@@ -47,6 +47,16 @@ import Layout from '../src/components/Layout';
 import withAuth from '../src/hoc/withAuth';
 import { adminAPI } from '../src/services/api';
 
+const DEFAULT_BOOKING_STATUS_MAP = {
+  requested: { label: 'Requested', color: 'info', icon: 'hourglass', show_in_filter: true },
+  pending: { label: 'Pending', color: 'warning', icon: 'hourglass', show_in_filter: true },
+  confirmed: { label: 'Confirmed', color: 'success', icon: 'check', show_in_filter: true },
+  in_progress: { label: 'In Progress', color: 'info', icon: 'progress', show_in_filter: true },
+  'in-progress': { label: 'In Progress', color: 'info', icon: 'progress', show_in_filter: true },
+  completed: { label: 'Completed', color: 'primary', icon: 'check', show_in_filter: true },
+  cancelled: { label: 'Cancelled', color: 'error', icon: 'cancel', show_in_filter: true },
+};
+
 /** Generate and trigger download of a CSV file */
 function downloadCSV(rows, filename) {
   const csvContent = rows
@@ -67,6 +77,7 @@ function Bookings() {
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [viewDialog, setViewDialog] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
+  const [statusConfigMap, setStatusConfigMap] = useState(DEFAULT_BOOKING_STATUS_MAP);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [page, setPage] = useState(1);
@@ -124,6 +135,22 @@ function Bookings() {
     }
   }, [page, statusFilter, startDate, endDate]);
 
+  const loadDisplayConfig = useCallback(async () => {
+    try {
+      const response = await adminAPI.getGrowthConfig('admin_booking_status_map');
+      const statusMap = response?.data?.data?.config?.value?.map;
+      if (statusMap && typeof statusMap === 'object') {
+        setStatusConfigMap(statusMap);
+      }
+    } catch (error) {
+      console.warn('Using fallback booking status map', error?.response?.data || error?.message);
+    }
+  }, []);
+
+  const getStatusConfig = useCallback((status) => {
+    return statusConfigMap[status] || { label: status || 'Unknown', color: 'default', icon: null };
+  }, [statusConfigMap]);
+
   /** Fetch global booking stats from dedicated endpoint — counts ALL bookings */
   const loadStats = useCallback(async () => {
     try {
@@ -145,6 +172,10 @@ function Bookings() {
       setStatsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    loadDisplayConfig();
+  }, [loadDisplayConfig]);
 
   useEffect(() => { loadBookings(); }, [loadBookings]);
   useEffect(() => { loadStats();    }, [loadStats]);
@@ -214,25 +245,15 @@ function Bookings() {
   };
 
   const getStatusColor = (status) => {
-    const colors = {
-      pending: 'warning',
-      requested: 'info',
-      confirmed: 'success',
-      completed: 'primary',
-      cancelled: 'error',
-      'in-progress': 'info',
-    };
-    return colors[status] || 'default';
+    return getStatusConfig(status).color || 'default';
   };
 
   const getStatusIcon = (status) => {
-    const icons = {
-      pending: <HourglassEmpty />,
-      requested: <HourglassEmpty />,
-      confirmed: <CheckCircle />,
-      cancelled: <Cancel />,
-    };
-    return icons[status] || null;
+    const icon = getStatusConfig(status).icon;
+    if (icon === 'hourglass' || icon === 'progress') return <HourglassEmpty />;
+    if (icon === 'check') return <CheckCircle />;
+    if (icon === 'cancel') return <Cancel />;
+    return null;
   };
 
   const formatDateTime = (dateStr, timeStr) => {
@@ -321,11 +342,11 @@ function Bookings() {
                   label="Status Filter"
                 >
                   <MenuItem value="">All</MenuItem>
-                  <MenuItem value="requested">Requested</MenuItem>
-                  <MenuItem value="pending">Pending</MenuItem>
-                  <MenuItem value="confirmed">Confirmed</MenuItem>
-                  <MenuItem value="completed">Completed</MenuItem>
-                  <MenuItem value="cancelled">Cancelled</MenuItem>
+                  {Object.entries(statusConfigMap)
+                    .filter(([, cfg]) => cfg?.show_in_filter)
+                    .map(([statusKey, cfg]) => (
+                      <MenuItem key={statusKey} value={statusKey}>{cfg?.label || statusKey}</MenuItem>
+                    ))}
                 </Select>
               </FormControl>
             </Grid>
@@ -429,7 +450,7 @@ function Bookings() {
                           <TableCell>
                             <Chip
                               icon={getStatusIcon(booking.status)}
-                              label={booking.status}
+                              label={getStatusConfig(booking.status).label}
                               color={getStatusColor(booking.status)}
                               size="small"
                             />
@@ -514,7 +535,7 @@ function Bookings() {
                     </Typography>
                     <Chip
                       icon={getStatusIcon(selectedBooking.status)}
-                      label={selectedBooking.status}
+                      label={getStatusConfig(selectedBooking.status).label}
                       color={getStatusColor(selectedBooking.status)}
                       sx={{ mt: 0.5 }}
                     />

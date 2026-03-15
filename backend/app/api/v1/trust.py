@@ -30,6 +30,11 @@ from pydantic import BaseModel, Field
 router = APIRouter(prefix="/trust", tags=["Trust & Verification"])
 
 _DISPUTE_NOT_FOUND = "Dispute not found"
+_FRAUD_ALERT_NOT_FOUND = "Fraud alert not found"
+_INVALID_FRAUD_ALERT_ID = "Invalid fraud alert ID"
+_UNSUPPORTED_FRAUD_ACTION = "Unsupported fraud alert action"
+_MONGO_COND = "$cond"
+_MONGO_STATUS_FIELD = "$status"
 
 
 def _get_database_soft() -> Optional[AsyncIOMotorDatabase]:
@@ -106,6 +111,13 @@ class ServiceGuaranteeClaimRequest(BaseModel):
     guarantee_type: str  # "QUALITY_GUARANTEE", "TIME_GUARANTEE", "CANCELLATION_PROTECTION"
     claim_reason: Optional[str] = Field(default=None, max_length=1000)
     description: Optional[str] = Field(default=None, max_length=1000)
+
+
+class FraudAlertActionRequest(BaseModel):
+    """Admin action payload for fraud alert review workflows."""
+
+    action: str = Field(min_length=3, max_length=64)
+    notes: Optional[str] = Field(default=None, max_length=500)
 
 
 # ==================== PUBLIC ENDPOINTS ====================
@@ -1096,4 +1108,253 @@ async def get_all_disputes(
         "total": total_count,
         "limit": limit,
         "skip": skip
+    }
+
+
+def _normalize_fraud_status(value: Optional[str]) -> str:
+    normalized = str(value or "pending").strip().lower()
+    status_alias = {
+        "pending": "pending",
+        "investigating": "investigating",
+        "confirmed_fraud": "confirmed_fraud",
+        "false_positive": "false_positive",
+        "resolved": "resolved",
+        "p": "pending",
+    }
+    if normalized in status_alias:
+        return status_alias[normalized]
+    # Backward compatibility with legacy UPPER_CASE values
+    return status_alias.get(normalized.replace(" ", "_").lower(), "pending")
+
+
+def _fraud_signal_description(signal_key: str) -> str:
+    descriptions = {
+        "no_repeat_bookings": "User has no completed repeat bookings",
+        "single_booking_user": "User account has only one booking",
+        "high_chat_activity": "Unusually high pre-booking chat activity",
+        "contact_sharing_detected": "Content analysis indicates contact sharing",
+        "user_cancellations_present": "User has cancellation history",
+    }
+    return descriptions.get(signal_key, signal_key.replace("_", " ").title())
+
+
+def _extract_fraud_signals(doc: Dict[str, Any]) -> List[Dict[str, str]]:
+    signals_map = doc.get("detection_signals") if isinstance(doc.get("detection_signals"), dict) else {}
+    signal_keys = [key for key, active in signals_map.items() if bool(active)]
+    return [
+        {
+            "signal": key,
+            "description": _fraud_signal_description(key),
+        }
+        for key in signal_keys
+    ]
+
+
+async def _resolve_user_name(db: AsyncIOMotorDatabase, user_id: Optional[str]) -> str:
+    if not user_id:
+        return "N/A"
+    user_query = {"_id": ObjectId(user_id)} if ObjectId.is_valid(str(user_id)) else {"_id": user_id}
+    user_doc = await db.users.find_one(user_query, {"full_name": 1, "name": 1, "email": 1})
+    if not user_doc:
+        return "N/A"
+    return user_doc.get("full_name") or user_doc.get("name") or user_doc.get("email") or "N/A"
+
+
+async def _serialize_fraud_alert(db: AsyncIOMotorDatabase, doc: Dict[str, Any]) -> Dict[str, Any]:
+    alert_id = str(doc.get("_id")) if doc.get("_id") is not None else ""
+    confidence = float(doc.get("ml_confidence_score") or 0.0)
+    fraud_signals = _extract_fraud_signals(doc)
+    investigation_status = _normalize_fraud_status(doc.get("investigation_status"))
+    user_id = str(doc.get("user_id") or "")
+    booking_id = str(doc.get("booking_id") or "")
+
+    return {
+        "_id": alert_id,
+        "user_id": user_id,
+        "booking_id": booking_id,
+        "user_name": await _resolve_user_name(db, user_id),
+        "fraud_confidence": round(confidence, 2),
+        "fraud_signals": fraud_signals,
+        "investigation_status": investigation_status,
+        "investigation_recommended": confidence >= 70,
+        "detected_at": doc.get("detected_at") or datetime.now(timezone.utc),
+        "review_notes": doc.get("review_notes") or "",
+        "evidence": {
+            "detection_signals": doc.get("detection_signals") or {},
+        },
+    }
+
+
+@router.get("/admin/fraud-alerts")
+async def get_fraud_alerts(
+    _current_user: Annotated[User, Depends(get_current_admin)],
+    db: Annotated[Optional[AsyncIOMotorDatabase], Depends(_get_database_soft)],
+    status: Optional[str] = None,
+    min_confidence: Optional[int] = None,
+    limit: int = 50,
+    skip: int = 0,
+):
+    """Admin: list offline transaction fraud alerts with status/confidence filters."""
+    if db is None:
+        return []
+
+    query: Dict[str, Any] = {}
+    if status and status != "all":
+        query["investigation_status"] = _normalize_fraud_status(status)
+    if min_confidence is not None:
+        query["ml_confidence_score"] = {"$gte": float(min_confidence)}
+
+    alerts = await (
+        db.offline_transaction_detections
+        .find(query)
+        .sort("detected_at", -1)
+        .skip(max(skip, 0))
+        .limit(max(min(limit, 200), 1))
+        .to_list(length=max(min(limit, 200), 1))
+    )
+    return [await _serialize_fraud_alert(db, doc) for doc in alerts]
+
+
+@router.get("/admin/fraud-alerts/stats")
+async def get_fraud_alert_stats(
+    _current_user: Annotated[User, Depends(get_current_admin)],
+    db: Annotated[Optional[AsyncIOMotorDatabase], Depends(_get_database_soft)],
+):
+    """Admin: aggregate fraud-alert status counts and confidence summary."""
+    if db is None:
+        return {
+            "total_alerts": 0,
+            "pending": 0,
+            "investigating": 0,
+            "confirmed_fraud": 0,
+            "false_positive": 0,
+            "avg_confidence": 0,
+        }
+
+    pipeline = [
+        {
+            "$project": {
+                "status": {"$toLower": {"$ifNull": ["$investigation_status", "pending"]}},
+                "confidence": {"$ifNull": ["$ml_confidence_score", 0]},
+            }
+        },
+        {
+            "$group": {
+                "_id": None,
+                "total_alerts": {"$sum": 1},
+                "pending": {"$sum": {_MONGO_COND: [{"$eq": [_MONGO_STATUS_FIELD, "pending"]}, 1, 0]}},
+                "investigating": {"$sum": {_MONGO_COND: [{"$eq": [_MONGO_STATUS_FIELD, "investigating"]}, 1, 0]}},
+                "confirmed_fraud": {"$sum": {_MONGO_COND: [{"$eq": [_MONGO_STATUS_FIELD, "confirmed_fraud"]}, 1, 0]}},
+                "false_positive": {"$sum": {_MONGO_COND: [{"$eq": [_MONGO_STATUS_FIELD, "false_positive"]}, 1, 0]}},
+                "avg_confidence": {"$avg": "$confidence"},
+            }
+        },
+    ]
+
+    stats = await db.offline_transaction_detections.aggregate(pipeline).to_list(1)
+    if not stats:
+        return {
+            "total_alerts": 0,
+            "pending": 0,
+            "investigating": 0,
+            "confirmed_fraud": 0,
+            "false_positive": 0,
+            "avg_confidence": 0,
+        }
+
+    row = stats[0]
+    return {
+        "total_alerts": int(row.get("total_alerts") or 0),
+        "pending": int(row.get("pending") or 0),
+        "investigating": int(row.get("investigating") or 0),
+        "confirmed_fraud": int(row.get("confirmed_fraud") or 0),
+        "false_positive": int(row.get("false_positive") or 0),
+        "avg_confidence": float(row.get("avg_confidence") or 0),
+    }
+
+
+@router.get(
+    "/admin/fraud-alerts/{alert_id}",
+    responses={
+        400: {"description": _INVALID_FRAUD_ALERT_ID},
+        404: {"description": _FRAUD_ALERT_NOT_FOUND},
+    },
+)
+async def get_fraud_alert_detail(
+    alert_id: str,
+    _current_user: Annotated[User, Depends(get_current_admin)],
+    db: Annotated[Optional[AsyncIOMotorDatabase], Depends(_get_database_soft)],
+):
+    """Admin: fetch fraud-alert details by id."""
+    if db is None:
+        raise HTTPException(status_code=404, detail=_FRAUD_ALERT_NOT_FOUND)
+    if not ObjectId.is_valid(alert_id):
+        raise HTTPException(status_code=400, detail=_INVALID_FRAUD_ALERT_ID)
+
+    doc = await db.offline_transaction_detections.find_one({"_id": ObjectId(alert_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail=_FRAUD_ALERT_NOT_FOUND)
+    return await _serialize_fraud_alert(db, doc)
+
+
+@router.post(
+    "/admin/fraud-alerts/{alert_id}/action",
+    responses={
+        400: {"description": "Invalid fraud alert request"},
+        404: {"description": _FRAUD_ALERT_NOT_FOUND},
+    },
+)
+async def update_fraud_alert_action(
+    alert_id: str,
+    request: FraudAlertActionRequest,
+    current_user: Annotated[User, Depends(get_current_admin)],
+    db: Annotated[Optional[AsyncIOMotorDatabase], Depends(_get_database_soft)],
+):
+    """Admin: apply an investigation action on a fraud alert."""
+    if db is None:
+        raise HTTPException(status_code=404, detail=_FRAUD_ALERT_NOT_FOUND)
+    if not ObjectId.is_valid(alert_id):
+        raise HTTPException(status_code=400, detail=_INVALID_FRAUD_ALERT_ID)
+
+    next_status = _normalize_fraud_status(request.action)
+    if next_status not in {"pending", "investigating", "confirmed_fraud", "false_positive", "resolved"}:
+        raise HTTPException(status_code=400, detail=_UNSUPPORTED_FRAUD_ACTION)
+
+    alert = await db.offline_transaction_detections.find_one({"_id": ObjectId(alert_id)})
+    if not alert:
+        raise HTTPException(status_code=404, detail=_FRAUD_ALERT_NOT_FOUND)
+
+    await db.offline_transaction_detections.update_one(
+        {"_id": ObjectId(alert_id)},
+        {
+            "$set": {
+                "investigation_status": next_status,
+                "review_notes": request.notes or "",
+                "reviewed_by": str(current_user.id),
+                "reviewed_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
+    )
+
+    try:
+        audit = AuditService(db)
+        await audit.log_action(
+            user_id=str(current_user.id),
+            action="FRAUD_ALERT_REVIEWED",
+            resource_type="fraud_alert",
+            resource_id=alert_id,
+            details={
+                "action": request.action,
+                "status": next_status,
+                "notes": request.notes or "",
+            },
+        )
+    except Exception as audit_exc:  # noqa: BLE001
+        _logger.warning("Failed to write fraud-alert audit log for %s: %s", alert_id, audit_exc)
+
+    updated = await db.offline_transaction_detections.find_one({"_id": ObjectId(alert_id)})
+    return {
+        "message": "Fraud alert updated",
+        "alert": await _serialize_fraud_alert(db, updated),
     }

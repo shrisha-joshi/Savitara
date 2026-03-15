@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
+import PropTypes from 'prop-types';
 import {
   Container, Typography, Paper, TextField, Button, Grid, Box,
   Tab, Tabs, Card, CardContent, CardActions, IconButton, Dialog,
@@ -8,8 +9,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow
 } from '@mui/material';
 import {
-  Add, Edit, Delete, Star, Refresh, FormatQuote, Campaign,
-  Visibility, VisibilityOff
+  Add, Edit, Delete, Refresh, FormatQuote, Campaign
 } from '@mui/icons-material';
 import Layout from '../src/components/Layout';
 import withAuth from '../src/hoc/withAuth';
@@ -22,6 +22,28 @@ function TabPanel({ children, value, index, ...other }) {
     </div>
   );
 }
+
+TabPanel.propTypes = {
+  children: PropTypes.node,
+  value: PropTypes.number.isRequired,
+  index: PropTypes.number.isRequired,
+};
+
+TabPanel.defaultProps = {
+  children: null,
+};
+
+const getErrorMessage = (error, fallbackMessage) => error?.response?.data?.detail || fallbackMessage;
+
+const getAnnouncementChipColor = (type) => {
+  if (type === 'warning') {
+    return 'warning';
+  }
+  if (type === 'error') {
+    return 'error';
+  }
+  return 'info';
+};
 
 function ContentManagement() {
   const [tabValue, setTabValue] = useState(0);
@@ -94,9 +116,10 @@ function ContentManagement() {
         setSnackbar({ open: true, message: 'Testimonial created successfully', severity: 'success' });
       }
       setTestimonialDialog(false);
-      fetchAllContent();
+      await fetchAllContent();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to save testimonial', severity: 'error' });
+      console.error('Failed to save testimonial:', error);
+      setSnackbar({ open: true, message: getErrorMessage(error, 'Failed to save testimonial'), severity: 'error' });
     } finally {
       setLoading(false);
     }
@@ -107,18 +130,20 @@ function ContentManagement() {
     try {
       await api.delete(`/admin/content/testimonials/${id}`);
       setSnackbar({ open: true, message: 'Testimonial deleted', severity: 'success' });
-      fetchAllContent();
+      await fetchAllContent();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to delete testimonial', severity: 'error' });
+      console.error('Failed to delete testimonial:', error);
+      setSnackbar({ open: true, message: getErrorMessage(error, 'Failed to delete testimonial'), severity: 'error' });
     }
   };
 
   const handleToggleTestimonial = async (id, isActive) => {
     try {
       await api.patch(`/admin/content/testimonials/${id}/toggle`, { is_active: !isActive });
-      fetchAllContent();
+      await fetchAllContent();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to update status', severity: 'error' });
+      console.error('Failed to update testimonial visibility:', error);
+      setSnackbar({ open: true, message: getErrorMessage(error, 'Failed to update status'), severity: 'error' });
     }
   };
 
@@ -147,9 +172,10 @@ function ContentManagement() {
         setSnackbar({ open: true, message: 'Announcement created successfully', severity: 'success' });
       }
       setAnnouncementDialog(false);
-      fetchAllContent();
+      await fetchAllContent();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to save announcement', severity: 'error' });
+      console.error('Failed to save announcement:', error);
+      setSnackbar({ open: true, message: getErrorMessage(error, 'Failed to save announcement'), severity: 'error' });
     } finally {
       setLoading(false);
     }
@@ -160,9 +186,10 @@ function ContentManagement() {
     try {
       await api.delete(`/admin/content/announcements/${id}`);
       setSnackbar({ open: true, message: 'Announcement deleted', severity: 'success' });
-      fetchAllContent();
+      await fetchAllContent();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to delete announcement', severity: 'error' });
+      console.error('Failed to delete announcement:', error);
+      setSnackbar({ open: true, message: getErrorMessage(error, 'Failed to delete announcement'), severity: 'error' });
     }
   };
 
@@ -267,7 +294,7 @@ function ContentManagement() {
                       {announcement.content}
                     </TableCell>
                     <TableCell>
-                      <Chip label={announcement.type} color={announcement.type === 'warning' ? 'warning' : announcement.type === 'error' ? 'error' : 'info'} size="small" />
+                      <Chip label={announcement.type} color={getAnnouncementChipColor(announcement.type)} size="small" />
                     </TableCell>
                     <TableCell>
                       <Chip label={announcement.is_active ? 'Active' : 'Inactive'} color={announcement.is_active ? 'success' : 'default'} size="small" />

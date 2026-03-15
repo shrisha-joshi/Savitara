@@ -58,6 +58,24 @@ function categorizeRegistrationError(error, backendMessage) {
   return { errorMessage, errorDetails }
 }
 
+function loadCachedUserFromStorage() {
+  try {
+    const rawUser = localStorage.getItem('user')
+    if (!rawUser) {
+      return null
+    }
+    return JSON.parse(rawUser)
+  } catch (error) {
+    console.warn('Failed to parse cached user from storage:', error)
+    return null
+  }
+}
+
+function isHardAuthFailure(error) {
+  const status = error?.response?.status
+  return status === 401 || status === 403
+}
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -76,31 +94,47 @@ export const AuthProvider = ({ children }) => {
   }, [])
 
   const checkAuth = async () => {
+    const cachedUser = loadCachedUserFromStorage()
     try {
       const accessToken = localStorage.getItem('accessToken')
       const refreshToken = localStorage.getItem('refreshToken')
 
       if (!accessToken || !refreshToken) {
+        if (cachedUser) {
+          localStorage.removeItem('user')
+        }
         return
+      }
+
+      if (cachedUser) {
+        setUser(cachedUser)
       }
 
       // Suppress global error toasts for this background check and set a short timeout
       const response = await api.get('/auth/me', { _skipErrorToast: true, timeout: 4000 })
       // Extract user data from StandardResponse format
       const userData = response.data.data || response.data
+      localStorage.setItem('user', JSON.stringify(userData))
       setUser(userData)
     } catch (error) {
       // Avoid noisy console stack traces for transient network failures
       console.debug('Auth check failed (network/unauthenticated):', error?.message || error)
-      try {
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
-        setToken(null)
-      } catch (storageError) {
-        // Storage operations may fail in private browsing mode
-        console.warn('Failed to clear tokens from storage:', storageError)
+      if (isHardAuthFailure(error)) {
+        try {
+          localStorage.removeItem('accessToken')
+          localStorage.removeItem('refreshToken')
+          localStorage.removeItem('user')
+          setToken(null)
+        } catch (storageError) {
+          // Storage operations may fail in private browsing mode
+          console.warn('Failed to clear tokens from storage:', storageError)
+        }
+        setUser(null)
+      } else if (cachedUser) {
+        setUser(cachedUser)
+      } else {
+        setUser(null)
       }
-      setUser(null)
     } finally {
       setLoading(false)
     }
@@ -128,6 +162,7 @@ export const AuthProvider = ({ children }) => {
 
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)
+      localStorage.setItem('user', JSON.stringify(userData))
       setToken(access_token)
       
       setUser(userData)
@@ -205,6 +240,7 @@ export const AuthProvider = ({ children }) => {
       const { access_token, refresh_token, user: userData } = responseData
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)
+      localStorage.setItem('user', JSON.stringify(userData))
       setToken(access_token)
       setUser(userData)
       navigate('/onboarding')
@@ -261,6 +297,7 @@ export const AuthProvider = ({ children }) => {
 
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)
+      localStorage.setItem('user', JSON.stringify(userData))
       setToken(access_token)
       setUser(userData)
 
@@ -288,6 +325,7 @@ export const AuthProvider = ({ children }) => {
 
       localStorage.setItem('accessToken', access_token)
       localStorage.setItem('refreshToken', refresh_token)
+      localStorage.setItem('user', JSON.stringify(userData))
       setToken(access_token)
       setUser(userData)
 
@@ -350,7 +388,9 @@ export const AuthProvider = ({ children }) => {
   // useGoogleLogin hook — opens Google's OAuth2 popup via @react-oauth/google
   // GoogleOAuthProvider (in main.jsx) must have the real VITE_GOOGLE_CLIENT_ID set
   const _googleLoginTrigger = useGoogleLogin({
-    onSuccess: _handleGoogleSuccess,
+    onSuccess: (tokenResponse) => {
+      void _handleGoogleSuccess(tokenResponse)
+    },
     onError: _handleGoogleError,
     flow: 'implicit',
     scope: 'openid email profile',
@@ -383,6 +423,7 @@ export const AuthProvider = ({ children }) => {
     
     localStorage.removeItem('accessToken')
     localStorage.removeItem('refreshToken')
+    localStorage.removeItem('user')
     setToken(null)
     setUser(null)
     navigate('/login')
@@ -400,6 +441,7 @@ export const AuthProvider = ({ children }) => {
   }, [])
 
   const updateUser = useCallback((userData) => {
+    localStorage.setItem('user', JSON.stringify(userData))
     setUser(userData)
   }, [])
 
@@ -408,6 +450,7 @@ export const AuthProvider = ({ children }) => {
       const response = await api.get('/auth/me')
       // Handle StandardResponse format from backend
       const userData = response.data.data || response.data
+      localStorage.setItem('user', JSON.stringify(userData))
       setUser(userData)
     } catch (error) {
       console.error('Failed to refresh user data:', error)

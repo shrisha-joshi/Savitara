@@ -6,7 +6,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Box,
   Button,
-  Card,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -37,12 +36,32 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import Layout from '../src/components/Layout';
+import { adminAPI } from '../src/services/api';
+
+const DEFAULT_COUPON_TABS = [
+  { key: 'active', label: 'Active Coupons', is_active: true },
+  { key: 'inactive', label: 'Inactive', is_active: true },
+  { key: 'first_booking', label: 'First Booking Only', is_active: true },
+  { key: 'all', label: 'All Coupons', is_active: true },
+];
+
+const DEFAULT_COUPON_DISCOUNT_TYPE_MAP = {
+  percentage: { label: 'Percentage', color: 'default' },
+  fixed: { label: 'Fixed Amount', color: 'default' },
+};
+
+const DEFAULT_COUPON_STATUS_MAP = {
+  active: { label: 'Active', color: 'success' },
+  inactive: { label: 'Inactive', color: 'default' },
+};
 
 const CouponManagement = () => {
   const [coupons, setCoupons] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [createDialog, setCreateDialog] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState('active');
+  const [tabConfig, setTabConfig] = useState(DEFAULT_COUPON_TABS);
+  const [discountTypeMap, setDiscountTypeMap] = useState(DEFAULT_COUPON_DISCOUNT_TYPE_MAP);
+  const [statusMap, setStatusMap] = useState(DEFAULT_COUPON_STATUS_MAP);
   const [formData, setFormData] = useState({
     code: '',
     name: '',
@@ -64,12 +83,38 @@ const CouponManagement = () => {
   });
 
   useEffect(() => {
+    fetchDisplayConfig();
     fetchCoupons();
   }, []);
 
+  const fetchDisplayConfig = async () => {
+    try {
+      const [tabsResponse, discountTypeResponse, statusResponse] = await Promise.all([
+        adminAPI.getGrowthConfig('admin_coupon_tabs'),
+        adminAPI.getGrowthConfig('admin_coupon_discount_type_map'),
+        adminAPI.getGrowthConfig('admin_coupon_status_map'),
+      ]);
+      const tabs = tabsResponse?.data?.data?.config?.value?.tabs;
+      const discountTypes = discountTypeResponse?.data?.data?.config?.value?.map;
+      const statuses = statusResponse?.data?.data?.config?.value?.map;
+
+      if (Array.isArray(tabs) && tabs.length > 0) {
+        const activeTabs = tabs.filter((tab) => tab?.is_active !== false);
+        setTabConfig(activeTabs.length > 0 ? activeTabs : DEFAULT_COUPON_TABS);
+      }
+      if (discountTypes && typeof discountTypes === 'object') {
+        setDiscountTypeMap(discountTypes);
+      }
+      if (statuses && typeof statuses === 'object') {
+        setStatusMap(statuses);
+      }
+    } catch (error) {
+      console.warn('Using fallback coupon display config', error?.response?.data || error?.message);
+    }
+  };
+
   const fetchCoupons = async () => {
     try {
-      setLoading(true);
       const token = localStorage.getItem('adminToken');
       // In a real app, this would fetch from API
       // For now, we'll use mock data
@@ -82,8 +127,6 @@ const CouponManagement = () => {
       }
     } catch (error) {
       console.error('Failed to fetch coupons:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -143,9 +186,9 @@ const CouponManagement = () => {
 
   const getFilteredCoupons = () => {
     switch(activeTab) {
-      case 0: return coupons.filter(c => c.is_active);
-      case 1: return coupons.filter(c => !c.is_active);
-      case 2: return coupons.filter(c => c.first_booking_only);
+      case 'active': return coupons.filter(c => c.is_active);
+      case 'inactive': return coupons.filter(c => !c.is_active);
+      case 'first_booking': return coupons.filter(c => c.first_booking_only);
       default: return coupons;
     }
   };
@@ -166,10 +209,9 @@ const CouponManagement = () => {
 
         {/* Tabs */}
         <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)} sx={{ mb: 2 }}>
-          <Tab label="Active Coupons" />
-          <Tab label="Inactive" />
-          <Tab label="First Booking Only" />
-          <Tab label="All Coupons" />
+          {tabConfig.map((tab) => (
+            <Tab key={tab.key} value={tab.key} label={tab.label} />
+          ))}
         </Tabs>
 
         {/* Coupons Table */}
@@ -195,11 +237,17 @@ const CouponManagement = () => {
                   </TableCell>
                   <TableCell>{coupon.name}</TableCell>
                   <TableCell>
+                    {(() => {
+                      const typeCfg = discountTypeMap[coupon.discount_type] || { label: coupon.discount_type, color: 'default' };
+                      return (
                     <Chip 
-                      label={coupon.discount_type} 
+                      label={typeCfg.label || coupon.discount_type} 
                       size="small"
+                      color={typeCfg.color || 'default'}
                       variant="outlined"
                     />
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
                     {coupon.discount_type === 'percentage' 
@@ -215,11 +263,18 @@ const CouponManagement = () => {
                     {new Date(coupon.valid_until).toLocaleDateString()}
                   </TableCell>
                   <TableCell>
+                    {(() => {
+                      const statusCfg = coupon.is_active
+                        ? (statusMap.active || DEFAULT_COUPON_STATUS_MAP.active)
+                        : (statusMap.inactive || DEFAULT_COUPON_STATUS_MAP.inactive);
+                      return (
                     <Chip 
-                      label={coupon.is_active ? 'Active' : 'Inactive'}
-                      color={coupon.is_active ? 'success' : 'default'}
+                      label={statusCfg.label}
+                      color={statusCfg.color || 'default'}
                       size="small"
                     />
+                      );
+                    })()}
                     {coupon.first_booking_only && (
                       <Chip label="1st Booking" size="small" sx={{ ml: 1 }} />
                     )}
@@ -292,7 +347,7 @@ const CouponManagement = () => {
                   label={`Discount Value ${formData.discount_type === 'percentage' ? '(%)' : '(₹)'}`}
                   type="number"
                   value={formData.discount_value}
-                  onChange={(e) => setFormData({...formData, discount_value: parseFloat(e.target.value)})}
+                  onChange={(e) => setFormData({...formData, discount_value: Number.parseFloat(e.target.value)})}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
@@ -301,7 +356,7 @@ const CouponManagement = () => {
                   label="Max Discount (₹)"
                   type="number"
                   value={formData.max_discount || ''}
-                  onChange={(e) => setFormData({...formData, max_discount: e.target.value ? parseFloat(e.target.value) : null})}
+                  onChange={(e) => setFormData({...formData, max_discount: e.target.value ? Number.parseFloat(e.target.value) : null})}
                   helperText="Leave empty for no limit"
                 />
               </Grid>
@@ -311,7 +366,7 @@ const CouponManagement = () => {
                   label="Min Booking Amount (₹)"
                   type="number"
                   value={formData.min_booking_amount}
-                  onChange={(e) => setFormData({...formData, min_booking_amount: parseFloat(e.target.value)})}
+                  onChange={(e) => setFormData({...formData, min_booking_amount: Number.parseFloat(e.target.value)})}
                 />
               </Grid>
               <Grid item xs={12} md={4}>

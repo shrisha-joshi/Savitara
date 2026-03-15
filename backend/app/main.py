@@ -54,6 +54,7 @@ from app.api.v1 import (
     calls,
     services,
     admin_services,
+    admin_growth_configs,
     upload,
     gamification,
     reactions,
@@ -422,6 +423,12 @@ app.include_router(services.router, prefix=API_V1_PREFIX)  # Services catalog
 app.include_router(
     admin_services.router, prefix=API_V1_PREFIX
 )  # Admin services management
+app.include_router(
+    admin_growth_configs.router, prefix=API_V1_PREFIX
+)  # Admin-managed booking growth configs
+app.include_router(
+    admin_growth_configs.public_router, prefix=API_V1_PREFIX
+)  # Frontend-visible booking growth config bootstrap
 app.include_router(
     upload.router, prefix=API_V1_PREFIX, tags=["Upload"]
 )  # File upload endpoints

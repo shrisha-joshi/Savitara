@@ -111,6 +111,13 @@ export default function Login() {
     setEmailStatus(null);
   };
 
+  let loginDescription = 'Enter your admin email to continue';
+  if (step === 1) {
+    loginDescription = emailStatus?.has_password
+      ? 'Enter your password to sign in'
+      : 'Set up your password for first-time access';
+  }
+
   return (
     <Box
       sx={{
@@ -218,12 +225,7 @@ export default function Login() {
           </Typography>
           
           <Typography variant="body1" color="text.secondary" sx={{ mb: 3, fontWeight: 400 }}>
-            {step === 0 
-              ? 'Enter your admin email to continue' 
-              : emailStatus?.has_password 
-                ? 'Enter your password to sign in'
-                : 'Set up your password for first-time access'
-            }
+            {loginDescription}
           </Typography>
 
           {/* Stepper */}

@@ -1,7 +1,8 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider, useAuth } from '../../context/AuthContext';
+import api from '../../services/api';
 
 // Mock react-router-dom navigation
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -53,8 +54,9 @@ const AuthConsumer = () => {
 
 describe('AuthContext', () => {
   beforeEach(() => {
-    // jsdom's localStorage may not implement clear; use vi's reset instead
-    try { localStorage.clear(); } catch (_) { /* ignore */ }
+    if (typeof localStorage?.clear === 'function') {
+      localStorage.clear();
+    }
     vi.clearAllMocks();
   });
 
@@ -83,5 +85,57 @@ describe('AuthContext', () => {
     // After auth init is complete, loading should be false
     expect(screen.getByTestId('loading').textContent).toBe('false');
     expect(screen.getByTestId('user').textContent).toBe('null');
+  });
+
+  it('preserves cached session when auth bootstrap is rate limited', async () => {
+    localStorage.setItem('accessToken', 'access-token');
+    localStorage.setItem('refreshToken', 'refresh-token');
+    localStorage.setItem('user', JSON.stringify({ email: 'cached@example.com', name: 'Cached User' }));
+    api.get.mockRejectedValueOnce({ response: { status: 429 }, message: 'Too Many Requests' });
+
+    await act(async () => {
+      render(
+        <MemoryRouter>
+          <AuthProvider>
+            <AuthConsumer />
+          </AuthProvider>
+        </MemoryRouter>
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading').textContent).toBe('false');
+      expect(screen.getByTestId('user').textContent).toBe('cached@example.com');
+    });
+
+    expect(localStorage.getItem('accessToken')).toBe('access-token');
+    expect(localStorage.getItem('refreshToken')).toBe('refresh-token');
+    expect(JSON.parse(localStorage.getItem('user'))).toMatchObject({ email: 'cached@example.com' });
+  });
+
+  it('clears cached session when auth bootstrap returns unauthorized', async () => {
+    localStorage.setItem('accessToken', 'access-token');
+    localStorage.setItem('refreshToken', 'refresh-token');
+    localStorage.setItem('user', JSON.stringify({ email: 'cached@example.com', name: 'Cached User' }));
+    api.get.mockRejectedValueOnce({ response: { status: 401 }, message: 'Unauthorized' });
+
+    await act(async () => {
+      render(
+        <MemoryRouter>
+          <AuthProvider>
+            <AuthConsumer />
+          </AuthProvider>
+        </MemoryRouter>
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading').textContent).toBe('false');
+      expect(screen.getByTestId('user').textContent).toBe('null');
+    });
+
+    expect(localStorage.getItem('accessToken')).toBeNull();
+    expect(localStorage.getItem('refreshToken')).toBeNull();
+    expect(localStorage.getItem('user')).toBeNull();
   });
 });

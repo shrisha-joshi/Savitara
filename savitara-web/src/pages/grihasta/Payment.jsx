@@ -25,8 +25,18 @@ import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 import { TrustBadgeGroup } from '../../components/TrustBadge';
 import ConfettiCelebration from '../../components/ConfettiCelebration';
 import AnimatedButton from '../../components/AnimatedButton';
+import { useRuntimeConfig } from '../../context/RuntimeConfigContext';
 
 const RAZORPAY_KEY = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_placeholder';
+
+const DEFAULT_PAYMENT_UI_CONTENT = {
+  title: 'Complete Payment',
+  secure_footer: 'Powered by Razorpay • 100% Secure Payment • SSL Encrypted',
+  refund_title: '100% Money-Back Guarantee',
+  refund_body: 'Cancel up to 24 hours before booking for full refund. Payment held in escrow until session is confirmed by both parties.',
+  trust_badges: ['secure', 'privacy-protected'],
+  pay_button_prefix: 'Pay ₹',
+};
 
 export default function Payment() {
   const { bookingId } = useParams();
@@ -46,6 +56,12 @@ export default function Payment() {
   const [useCoins, setUseCoins] = useState(false);
   const [coinBalance, setCoinBalance] = useState(0);
   const [calculatedPrice, setCalculatedPrice] = useState(null);
+  const { getConfig } = useRuntimeConfig();
+
+  const paymentUiContentRaw = getConfig('payment_ui_content', DEFAULT_PAYMENT_UI_CONTENT);
+  const paymentUiContent = (paymentUiContentRaw && typeof paymentUiContentRaw === 'object')
+    ? { ...DEFAULT_PAYMENT_UI_CONTENT, ...paymentUiContentRaw }
+    : DEFAULT_PAYMENT_UI_CONTENT;
 
   const fetchBooking = useCallback(async () => {
     try {
@@ -298,7 +314,7 @@ export default function Payment() {
       <Container maxWidth="sm" sx={{ py: 4 }}>
         <Paper sx={{ p: 4, borderRadius: 2 }}>
           <Typography variant="h4" gutterBottom align="center" sx={{ color: 'var(--saffron-dark)' }}>
-            Complete Payment
+            {paymentUiContent.title}
           </Typography>
 
           {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
@@ -456,14 +472,14 @@ export default function Payment() {
               <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: alpha('#34C759', 0.05), border: '1px solid #34C759' }}>
                 <Box display="flex" alignItems="center" justifyContent="center" gap={3} flexWrap="wrap">
                   <TrustBadgeGroup 
-                    badges={['secure', 'privacy-protected']} 
+                    badges={Array.isArray(paymentUiContent.trust_badges) ? paymentUiContent.trust_badges : DEFAULT_PAYMENT_UI_CONTENT.trust_badges}
                     size="small" 
                     variant="inline"
                     spacing={2}
                   />
                 </Box>
                 <Typography variant="caption" color="text.secondary" textAlign="center" display="block" mt={1}>
-                  Powered by Razorpay • 100% Secure Payment • SSL Encrypted
+                  {paymentUiContent.secure_footer}
                 </Typography>
               </Paper>
 
@@ -483,14 +499,14 @@ export default function Payment() {
                   fontWeight: 600,
                 }}
               >
-                {paying ? 'Processing...' : `Pay ₹${calculatedPrice?.final_amount || booking.total_amount || 0}`}
+                {paying ? 'Processing...' : `${paymentUiContent.pay_button_prefix}${calculatedPrice?.final_amount || booking.total_amount || 0}`}
               </AnimatedButton>
               
               {/* Refund Policy */}
               <Alert severity="info" icon={<FaCheckCircle />} sx={{ mt: 2 }}>
-                <Typography variant="body2" fontWeight={600}>100% Money-Back Guarantee</Typography>
+                <Typography variant="body2" fontWeight={600}>{paymentUiContent.refund_title}</Typography>
                 <Typography variant="caption">
-                  Cancel up to 24 hours before booking for full refund. Payment held in escrow until session is confirmed by both parties.
+                  {paymentUiContent.refund_body}
                 </Typography>
               </Alert>
               

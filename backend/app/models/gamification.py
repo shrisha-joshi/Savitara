@@ -90,16 +90,16 @@ class ActionType(str, Enum):
 class CoinTransaction(BaseModel):
     """Coin transaction model"""
 
-    id: Optional[str] = Field(alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     user_id: str
     transaction_type: str  # "earned", "redeemed", "expired", "transferred"
     amount: int  # Positive for earn, negative for spend
-    action: Optional[ActionType]
+    action: Optional[ActionType] = None
     description: str
-    reference_id: Optional[str]  # Booking ID, Referral ID, etc.
+    reference_id: Optional[str] = None  # Booking ID, Referral ID, etc.
     balance_after: int
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    expires_at: Optional[datetime]  # Coins expire after 1 year
+    expires_at: Optional[datetime] = None  # Coins expire after 1 year
     metadata: Optional[Dict] = {}
 
     model_config = ConfigDict(use_enum_values=True, populate_by_name=True)
@@ -108,7 +108,7 @@ class CoinTransaction(BaseModel):
 class UserCoins(BaseModel):
     """User's coin balance"""
 
-    id: Optional[str] = Field(alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     user_id: str
     total_earned: int = 0
     total_redeemed: int = 0
@@ -125,12 +125,12 @@ class UserCoins(BaseModel):
 class PointsTransaction(BaseModel):
     """Points transaction model"""
 
-    id: Optional[str] = Field(alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     user_id: str
     amount: int
     action: ActionType
     description: str
-    reference_id: Optional[str]
+    reference_id: Optional[str] = None
     balance_after: int
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Optional[Dict] = {}
@@ -141,18 +141,18 @@ class PointsTransaction(BaseModel):
 class UserLoyalty(BaseModel):
     """User's loyalty status"""
 
-    id: Optional[str] = Field(alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     user_id: str
     role: str  # "grihasta" or "acharya"
     current_tier: str  # LoyaltyTier or AcharyaTier
     points: int = 0
     tier_progress: float = 0.0  # 0-100% progress to next tier
-    next_tier: Optional[str]
+    next_tier: Optional[str] = None
     tier_benefits: List[str] = []
     discount_percentage: int = 0
     coin_multiplier: float = 1.0
     last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    tier_upgraded_at: Optional[datetime]
+    tier_upgraded_at: Optional[datetime] = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -163,15 +163,15 @@ class UserLoyalty(BaseModel):
 class Voucher(BaseModel):
     """Voucher model"""
 
-    id: Optional[str] = Field(alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     code: str  # e.g., "NEXT20", "POOJA50"
     name: str
     description: str
     category: VoucherCategory
     discount_type: CouponType
     discount_value: float  # 20 for 20%, 100 for ₹100
-    max_discount: Optional[float]  # Max discount cap
-    min_booking_amount: Optional[float]
+    max_discount: Optional[float] = None  # Max discount cap
+    min_booking_amount: Optional[float] = None
     valid_from: datetime
     valid_until: datetime
     total_quantity: int  # Total available
@@ -190,15 +190,15 @@ class Voucher(BaseModel):
 class UserVoucher(BaseModel):
     """User's voucher ownership"""
 
-    id: Optional[str] = Field(alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     user_id: str
     voucher_id: str
     voucher_code: str
     earned_via: str  # "milestone", "referral", "admin_gift", etc.
     earned_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_used: bool = False
-    used_at: Optional[datetime]
-    used_in_booking: Optional[str]  # Booking ID
+    used_at: Optional[datetime] = None
+    used_in_booking: Optional[str] = None  # Booking ID
     expires_at: datetime
 
     model_config = ConfigDict(populate_by_name=True)
@@ -210,13 +210,13 @@ class UserVoucher(BaseModel):
 class Coupon(BaseModel):
     """Coupon code model (promotional codes)"""
 
-    id: Optional[str] = Field(alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     code: str  # e.g., "FIRST50", "GANESH50"
     name: str
     description: str
     discount_type: CouponType
     discount_value: float
-    max_discount: Optional[float]
+    max_discount: Optional[float] = None
     min_booking_amount: Optional[float] = 0
     valid_from: datetime
     valid_until: datetime
@@ -238,7 +238,7 @@ class Coupon(BaseModel):
 class CouponUsage(BaseModel):
     """Track coupon usage by users"""
 
-    id: Optional[str] = Field(alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     coupon_id: str
     coupon_code: str
     user_id: str
@@ -255,14 +255,14 @@ class CouponUsage(BaseModel):
 class PricingRule(BaseModel):
     """Dynamic pricing rules set by admin"""
 
-    id: Optional[str] = Field(alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     name: str
-    service_id: Optional[str]  # None = applies to all
-    service_category: Optional[str]
+    service_id: Optional[str] = None  # None = applies to all
+    service_category: Optional[str] = None
     base_price: float
     display_price: float  # The "crossed out" price
     discount_percentage: float
-    platform_discount: Optional[float]  # Additional platform discount
+    platform_discount: Optional[float] = None  # Additional platform discount
     final_price: float
     valid_from: datetime
     valid_until: datetime
@@ -300,19 +300,19 @@ class PriceDisplay(BaseModel):
 class Referral(BaseModel):
     """Referral tracking"""
 
-    id: Optional[str] = Field(alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     referrer_id: str  # User who referred
     referrer_role: str  # "grihasta" or "acharya"
-    referee_id: Optional[str]  # User who was referred (after signup)
+    referee_id: Optional[str] = None  # User who was referred (after signup)
     referee_role: str
     referral_code: str  # Unique code per user
     status: str  # "pending", "signed_up", "completed_booking", "rewarded"
     rewards_given: bool = False
     referrer_reward: Dict = {}  # {"coins": 500, "voucher": "REFER500"}
     referee_reward: Dict = {}
-    signed_up_at: Optional[datetime]
-    first_booking_at: Optional[datetime]
-    rewarded_at: Optional[datetime]
+    signed_up_at: Optional[datetime] = None
+    first_booking_at: Optional[datetime] = None
+    rewarded_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = ConfigDict(populate_by_name=True)
@@ -321,7 +321,7 @@ class Referral(BaseModel):
 class ReferralLeaderboard(BaseModel):
     """Monthly referral leaderboard"""
 
-    id: Optional[str] = Field(alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     month: str  # "2026-02"
     user_id: str
     user_name: str
@@ -329,7 +329,7 @@ class ReferralLeaderboard(BaseModel):
     total_referrals: int = 0
     successful_referrals: int = 0  # Completed bookings
     rank: int
-    prize: Optional[Dict]  # {"amount": 5000, "description": "Top referrer"}
+    prize: Optional[Dict] = None  # {"amount": 5000, "description": "Top referrer"}
     last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = ConfigDict(populate_by_name=True)
@@ -341,14 +341,14 @@ class ReferralLeaderboard(BaseModel):
 class DailyReward(BaseModel):
     """Daily reward tracking"""
 
-    id: Optional[str] = Field(alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     user_id: str
     date: str  # "2026-02-04"
     day_number: int  # Day in current streak (1-7)
     reward_type: RewardType
     reward_amount: int
     claimed: bool = False
-    claimed_at: Optional[datetime]
+    claimed_at: Optional[datetime] = None
     streak_count: int  # Total consecutive days
 
     model_config = ConfigDict(use_enum_values=True, populate_by_name=True)
@@ -357,7 +357,7 @@ class DailyReward(BaseModel):
 class UserStreak(BaseModel):
     """User's login streak"""
 
-    id: Optional[str] = Field(alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     user_id: str
     current_streak: int = 0
     longest_streak: int = 0
@@ -374,7 +374,7 @@ class UserStreak(BaseModel):
 class Milestone(BaseModel):
     """Milestone achievements"""
 
-    id: Optional[str] = Field(alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     user_id: str
     milestone_type: str  # "bookings", "referrals", "reviews", "earnings"
     milestone_count: int  # 1, 5, 10, 25, 50, 100

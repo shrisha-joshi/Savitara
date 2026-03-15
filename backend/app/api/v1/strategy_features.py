@@ -30,6 +30,7 @@ from app.services.penalty_service import PenaltyService
 from app.services.backup_acharya_service import BackupAcharyaService
 from app.services.booking_discovery_service import BookingDiscoveryService
 from app.services.guarantee_service import GuaranteeService
+from app.services.growth_config_service import GrowthConfigService
 from app.services.pricing_service import PricingService
 
 import logging
@@ -999,7 +1000,7 @@ class FamilyAccountRequest(BaseModel):
 class TimelineEventRequest(BaseModel):
     """Ceremony timeline update event."""
 
-    stage: str = Field(..., pattern="^(prep|travel|check_in|completion)$")
+    stage: str = Field(..., min_length=2, max_length=60)
     note: Optional[str] = Field(None, max_length=300)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
@@ -1032,25 +1033,6 @@ class GiftRitualCheckoutRequest(BaseModel):
     message: Optional[str] = Field(None, max_length=300)
 
 
-RECURRING_RITUAL_CATALOG = [
-    {
-        "slug": "sankashta-chaturthi",
-        "label": "Sankashta Chaturthi",
-        "default_cadence": "lunar_monthly",
-    },
-    {
-        "slug": "monday-rudra-abhisheka",
-        "label": "Every Monday Rudra Abhisheka",
-        "default_cadence": "weekly",
-    },
-    {
-        "slug": "pournima-satyanarayana",
-        "label": "Every Pournima Satyanarayana Pooja",
-        "default_cadence": "lunar_monthly",
-    },
-]
-
-
 def _is_valid_date_string(value: str) -> bool:
     try:
         datetime.strptime(value, "%Y-%m-%d")
@@ -1075,15 +1057,108 @@ async def _load_authorized_booking(
     return booking
 
 
+async def _get_recurring_ritual_catalog_entries(db: AsyncIOMotorDatabase) -> List[Dict[str, Any]]:
+    config = await GrowthConfigService.get_active_value(
+        db,
+        "recurring_ritual_catalog",
+        fallback={"rituals": []},
+    )
+    rituals = config.get("rituals", []) if isinstance(config, dict) else []
+    active_rituals = [ritual for ritual in rituals if ritual.get("is_active", True)]
+    return sorted(active_rituals, key=lambda item: int(item.get("sort_order", 999)))
+
+
+async def _get_financing_rules(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+    config = await GrowthConfigService.get_active_value(
+        db,
+        "financing_rules",
+        fallback={"minimum_amount": 5000, "plans": []},
+    )
+    return config if isinstance(config, dict) else {"minimum_amount": 5000, "plans": []}
+
+
+async def _get_pricing_rules(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+    config = await GrowthConfigService.get_active_value(
+        db,
+        "pricing_rules",
+        fallback={
+            "window_hours": 2,
+            "demand_thresholds": [],
+            "seasonal_rules": [],
+            "city_multipliers": {},
+            "fairness": {"min_ratio": 0.8, "max_ratio": 1.35},
+        },
+    )
+    return config if isinstance(config, dict) else {}
+
+
+async def _get_timeline_stage_entries(db: AsyncIOMotorDatabase) -> List[Dict[str, Any]]:
+    config = await GrowthConfigService.get_active_value(
+        db,
+        "timeline_stages",
+        fallback={"stages": []},
+    )
+    stages = config.get("stages", []) if isinstance(config, dict) else []
+    active_stages = [stage for stage in stages if stage.get("is_active", True)]
+    return sorted(active_stages, key=lambda item: int(item.get("sort_order", 999)))
+
+
+async def _get_checkout_variant_rules(db: AsyncIOMotorDatabase) -> List[Dict[str, Any]]:
+    config = await GrowthConfigService.get_active_value(
+        db,
+        "checkout_variants",
+        fallback={"variants": []},
+    )
+    variants = config.get("variants", []) if isinstance(config, dict) else []
+    active_variants = [variant for variant in variants if variant.get("is_active", True)]
+    return sorted(active_variants, key=lambda item: int(item.get("sort_order", 999)))
+
+
+async def _get_concierge_directory(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+    config = await GrowthConfigService.get_active_value(
+        db,
+        "concierge_directory",
+        fallback={"default_hotline": "+91-120-6200-1085", "default_hours": "06:00-23:00 IST", "cities": []},
+    )
+    return config if isinstance(config, dict) else {}
+
+
+async def _get_nps_rescue_rules(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+    config = await GrowthConfigService.get_active_value(
+        db,
+        "nps_rescue_rules",
+        fallback={"rescue_threshold": 6, "high_priority_threshold": 3},
+    )
+    return config if isinstance(config, dict) else {"rescue_threshold": 6, "high_priority_threshold": 3}
+
+
+def _select_checkout_variant(variants: List[Dict[str, Any]], bookings_count: int) -> Dict[str, Any]:
+    for variant in variants:
+        min_bookings = int(variant.get("min_bookings", 0))
+        max_bookings = variant.get("max_bookings")
+        max_allowed = bookings_count <= int(max_bookings) if max_bookings is not None else True
+        if bookings_count >= min_bookings and max_allowed:
+            return variant
+    return {
+        "key": "default_checkout",
+        "label": "Default Checkout",
+        "min_bookings": 0,
+        "max_bookings": None,
+    }
+
+
 @router.get(
     "/subscriptions/rituals/catalog",
     response_model=StandardResponse,
     summary="Recurring ritual subscription catalog",
 )
-async def get_recurring_ritual_catalog():
+async def get_recurring_ritual_catalog(
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    rituals = await _get_recurring_ritual_catalog_entries(db)
     return StandardResponse(
         success=True,
-        data={"rituals": RECURRING_RITUAL_CATALOG, "count": len(RECURRING_RITUAL_CATALOG)},
+        data={"rituals": rituals, "count": len(rituals)},
     )
 
 
@@ -1101,6 +1176,13 @@ async def create_recurring_ritual_subscription(
 ):
     if not _is_valid_date_string(request.start_date):
         raise InvalidInputError(message="start_date must be YYYY-MM-DD", field="start_date")
+
+    ritual_catalog = await _get_recurring_ritual_catalog_entries(db)
+    if request.ritual_slug not in {ritual.get("slug") for ritual in ritual_catalog}:
+        raise InvalidInputError(
+            message="ritual_slug is not active in the admin-managed catalog",
+            field="ritual_slug",
+        )
 
     user_id = _current_user_id(current_user)
     start_dt = datetime.strptime(request.start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -1227,14 +1309,25 @@ async def get_financing_options(
 ):
     booking = await _load_authorized_booking(db, booking_id, current_user)
     total_amount = float(booking.get("total_amount") or 0)
-    if total_amount < 5000:
+    financing_rules = await _get_financing_rules(db)
+    minimum_amount = float(financing_rules.get("minimum_amount") or 5000)
+    if total_amount < minimum_amount:
         return StandardResponse(
             success=True,
-            data={"eligible": False, "reason": "Financing available for bookings above ₹5000"},
+            data={
+                "eligible": False,
+                "reason": f"Financing available for bookings above ₹{int(minimum_amount)}",
+            },
         )
 
     plans = []
-    for months, apr in ((3, 0.10), (6, 0.12), (9, 0.14)):
+    for plan in financing_rules.get("plans", []):
+        if not plan.get("is_active", True):
+            continue
+        months = int(plan.get("months", 0))
+        apr = float(plan.get("apr", 0))
+        if months <= 0:
+            continue
         interest = round(total_amount * apr * (months / 12), 2)
         repayable = round(total_amount + interest, 2)
         monthly_emi = round(repayable / months, 2)
@@ -1283,8 +1376,11 @@ async def get_smart_pricing_estimate(
     )
     raw_total = float(dynamic.get("total", 0))
 
-    window_start = booking_dt - timedelta(hours=2)
-    window_end = booking_dt + timedelta(hours=2)
+    pricing_rules = await _get_pricing_rules(db)
+    window_hours = int(pricing_rules.get("window_hours") or 2)
+
+    window_start = booking_dt - timedelta(hours=window_hours)
+    window_end = booking_dt + timedelta(hours=window_hours)
     demand_count = await db.bookings.count_documents(
         {
             "status": {"$in": ["requested", "confirmed", "pending_payment", "in_progress"]},
@@ -1294,16 +1390,31 @@ async def get_smart_pricing_estimate(
     )
 
     demand_multiplier = 1.0
-    if demand_count >= 12:
-        demand_multiplier = 1.2
-    elif demand_count >= 6:
-        demand_multiplier = 1.1
+    demand_thresholds = sorted(
+        pricing_rules.get("demand_thresholds", []),
+        key=lambda item: int(item.get("min_count", 0)),
+        reverse=True,
+    )
+    for threshold in demand_thresholds:
+        if demand_count >= int(threshold.get("min_count", 0)):
+            demand_multiplier = float(threshold.get("multiplier", 1.0))
+            break
 
-    seasonal_multiplier = 1.15 if booking_dt.month in {9, 10, 11} else 1.0
-    unconstrained_total = round(raw_total * demand_multiplier * seasonal_multiplier, 2)
+    seasonal_multiplier = 1.0
+    for rule in pricing_rules.get("seasonal_rules", []):
+        months = {int(month) for month in rule.get("months", [])}
+        if booking_dt.month in months:
+            seasonal_multiplier = float(rule.get("multiplier", 1.0))
+            break
 
-    fairness_min = round(raw_total * 0.8, 2)
-    fairness_max = round(raw_total * 1.35, 2)
+    city_multiplier = float(
+        pricing_rules.get("city_multipliers", {}).get(city.strip().lower(), 1.0)
+    )
+    unconstrained_total = round(raw_total * demand_multiplier * seasonal_multiplier * city_multiplier, 2)
+
+    fairness_rules = pricing_rules.get("fairness", {})
+    fairness_min = round(raw_total * float(fairness_rules.get("min_ratio", 0.8)), 2)
+    fairness_max = round(raw_total * float(fairness_rules.get("max_ratio", 1.35)), 2)
     final_total = max(fairness_min, min(unconstrained_total, fairness_max))
 
     return StandardResponse(
@@ -1312,6 +1423,7 @@ async def get_smart_pricing_estimate(
             "base_dynamic_total": raw_total,
             "demand_multiplier": demand_multiplier,
             "seasonal_multiplier": seasonal_multiplier,
+            "city_multiplier": city_multiplier,
             "unconstrained_total": unconstrained_total,
             "fairness_bounds": {"min": fairness_min, "max": fairness_max},
             "final_total": round(final_total, 2),
@@ -1333,6 +1445,13 @@ async def append_timeline_event(
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     booking = await _load_authorized_booking(db, booking_id, current_user)
+    timeline_stages = await _get_timeline_stage_entries(db)
+    allowed_stages = {stage.get("code") for stage in timeline_stages}
+    if request.stage not in allowed_stages:
+        raise InvalidInputError(
+            message="stage is not enabled in admin-managed timeline stages",
+            field="stage",
+        )
     now = datetime.now(timezone.utc)
     event_doc = {
         "booking_id": booking_id,
@@ -1375,6 +1494,7 @@ async def get_booking_timeline(
         data={
             "booking_id": booking_id,
             "current_stage": booking.get("timeline_stage"),
+            "stage_definitions": await _get_timeline_stage_entries(db),
             "events": events,
             "count": len(events),
         },
@@ -1455,12 +1575,7 @@ async def get_checkout_variant(
 ):
     user_id = _current_user_id(current_user)
     bookings_count = await db.bookings.count_documents({"grihasta_id": user_id})
-    if bookings_count == 0:
-        variant = "guided_first_booking"
-    elif bookings_count < 5:
-        variant = "trust_badge_focus"
-    else:
-        variant = "express_repeat_checkout"
+    variant = _select_checkout_variant(await _get_checkout_variant_rules(db), bookings_count)
 
     return StandardResponse(
         success=True,
@@ -1536,6 +1651,9 @@ async def submit_booking_nps(
 ):
     _ = await _load_authorized_booking(db, booking_id, current_user)
     now = datetime.now(timezone.utc)
+    rescue_rules = await _get_nps_rescue_rules(db)
+    rescue_threshold = int(rescue_rules.get("rescue_threshold", 6))
+    high_priority_threshold = int(rescue_rules.get("high_priority_threshold", 3))
     payload = {
         "booking_id": booking_id,
         "user_id": _current_user_id(current_user),
@@ -1543,17 +1661,17 @@ async def submit_booking_nps(
         "feedback": request.feedback,
         "created_at": now,
     }
-    await db.booking_nps_feedback.insert_one(payload)
+    await db.booking_nps_feedback.insert_one(dict(payload))
 
     rescue_ticket = None
-    if request.score <= 6:
+    if request.score <= rescue_threshold:
         rescue_doc = {
             "booking_id": booking_id,
             "user_id": _current_user_id(current_user),
             "score": request.score,
             "feedback": request.feedback,
             "status": "open",
-            "priority": "high" if request.score <= 3 else "medium",
+            "priority": "high" if request.score <= high_priority_threshold else "medium",
             "created_at": now,
             "updated_at": now,
         }
@@ -1616,14 +1734,18 @@ async def get_concierge_hotline(
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
 ):
     normalized_city = city.strip().lower()
-    hotlines = {
-        "mumbai": "+91-22-6200-1085",
-        "bengaluru": "+91-80-6200-1085",
-        "delhi": "+91-11-6200-1085",
-        "chennai": "+91-44-6200-1085",
-        "pune": "+91-20-6200-1085",
-    }
-    hotline = hotlines.get(normalized_city, "+91-120-6200-1085")
+    concierge_directory = await _get_concierge_directory(db)
+    city_entries = concierge_directory.get("cities", []) if isinstance(concierge_directory, dict) else []
+    city_entry = next(
+        (
+            item
+            for item in city_entries
+            if item.get("is_active", True) and str(item.get("city", "")).strip().lower() == normalized_city
+        ),
+        None,
+    )
+    hotline = (city_entry or {}).get("hotline") or concierge_directory.get("default_hotline", "+91-120-6200-1085")
+    available_hours = (city_entry or {}).get("available_hours") or concierge_directory.get("default_hours", "06:00-23:00 IST")
     peak_festival = bool(festival)
 
     escalation_doc = {
@@ -1635,7 +1757,7 @@ async def get_concierge_hotline(
         "status": "opened",
         "created_at": datetime.now(timezone.utc),
     }
-    await db.concierge_escalations.insert_one(escalation_doc)
+    await db.concierge_escalations.insert_one(dict(escalation_doc))
 
     return StandardResponse(
         success=True,
@@ -1644,7 +1766,7 @@ async def get_concierge_hotline(
             "festival": festival,
             "hotline": hotline,
             "peak_festival": peak_festival,
-            "available_hours": "06:00-23:00 IST",
+            "available_hours": available_hours,
         },
         message="Concierge hotline details ready",
     )

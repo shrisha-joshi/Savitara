@@ -61,24 +61,18 @@ import Layout from '../src/components/Layout';
 import withAuth from '../src/hoc/withAuth';
 import { adminAPI } from '../src/services/api';
 
-function getRoleChipColor(role) {
-  if (role === 'acharya') return 'primary';
-  if (role === 'admin') return 'secondary';
-  return 'default';
-}
+const DEFAULT_USER_ROLE_MAP = {
+  grihasta: { label: 'Grihasta', color: 'default', show_in_filter: true },
+  acharya: { label: 'Acharya', color: 'primary', show_in_filter: true },
+  admin: { label: 'Admin', color: 'secondary', show_in_filter: true },
+};
 
-function getStatusChipColor(status, isSuspended) {
-  if (status === 'suspended' || isSuspended) return 'error';
-  if (status === 'pending') return 'warning';
-  if (status === 'active') return 'success';
-  return 'default';
-}
-
-function getStatusChipLabel(status, isSuspended) {
-  if (status === 'suspended' || isSuspended) return 'Suspended';
-  if (status === 'pending') return 'Pending';
-  return 'Active';
-}
+const DEFAULT_USER_STATUS_MAP = {
+  active: { label: 'Active', color: 'success' },
+  pending: { label: 'Pending', color: 'warning' },
+  suspended: { label: 'Suspended', color: 'error' },
+  default: { label: 'Active', color: 'default' },
+};
 
 function Users() {
   const [users, setUsers] = useState([]);
@@ -90,6 +84,8 @@ function Users() {
   const [suspendDialog, setSuspendDialog] = useState(false);
   const [suspendReason, setSuspendReason] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [roleConfigMap, setRoleConfigMap] = useState(DEFAULT_USER_ROLE_MAP);
+  const [statusConfigMap, setStatusConfigMap] = useState(DEFAULT_USER_STATUS_MAP);
   // ── Server-side pagination state ───────────────────────────────────────────────
   const [usersPage, setUsersPage] = useState(0);      // 0-indexed (MUI style)
   const [rowsPerPage, setRowsPerPage] = useState(25);
@@ -121,6 +117,38 @@ function Users() {
       setLoading(false);
     }
   }, [usersPage, rowsPerPage, roleFilter]);
+
+  const loadDisplayConfig = useCallback(async () => {
+    try {
+      const [roleResponse, statusResponse] = await Promise.all([
+        adminAPI.getGrowthConfig('admin_user_role_map'),
+        adminAPI.getGrowthConfig('admin_user_status_map'),
+      ]);
+      const roleMap = roleResponse?.data?.data?.config?.value?.map;
+      const statusMap = statusResponse?.data?.data?.config?.value?.map;
+      if (roleMap && typeof roleMap === 'object') setRoleConfigMap(roleMap);
+      if (statusMap && typeof statusMap === 'object') setStatusConfigMap(statusMap);
+    } catch (error) {
+      console.warn('Using fallback user role/status maps', error?.response?.data || error?.message);
+    }
+  }, []);
+
+  const getRoleChipProps = useCallback((role) => {
+    const cfg = roleConfigMap[role] || { label: role || 'Unknown', color: 'default' };
+    return {
+      label: String(cfg.label || role || 'Unknown').toUpperCase(),
+      color: cfg.color || 'default',
+    };
+  }, [roleConfigMap]);
+
+  const getStatusChipProps = useCallback((status, isSuspended) => {
+    const key = isSuspended ? 'suspended' : (status || 'default');
+    const cfg = statusConfigMap[key] || statusConfigMap.default || { label: status || 'Active', color: 'default' };
+    return {
+      label: cfg.label || status || 'Active',
+      color: cfg.color || 'default',
+    };
+  }, [statusConfigMap]);
 
   const filterUsers = useCallback(() => {
     let filtered = [...users];
@@ -163,6 +191,10 @@ function Users() {
     downloadCSV([headers, ...rows], `users_page_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
+  useEffect(() => {
+    loadDisplayConfig();
+  }, [loadDisplayConfig]);
+
   useEffect(() => { loadUsers(); }, [loadUsers]);
   // Reset to page 0 whenever role filter changes
   useEffect(() => { setUsersPage(0); }, [roleFilter]);
@@ -171,6 +203,10 @@ function Users() {
     filterUsers();
     calculateStats();
   }, [filterUsers, calculateStats]);
+
+  const roleFilterKeys = Object.entries(roleConfigMap)
+    .filter(([, value]) => value?.show_in_filter)
+    .map(([key]) => key);
 
   const handleViewUser = async (user) => {
     try {
@@ -305,9 +341,11 @@ function Users() {
             sx={{ borderBottom: 1, borderColor: 'divider' }}
           >
             <Tab label={`All (${totalUsers})`} value="all" />
-            <Tab label={`Acharyas (${stats.pageAcharyas})`} value="acharya" />
-            <Tab label={`Grihastas (${stats.pageGrihastas})`} value="grihasta" />
-            <Tab label={`Admins (${stats.pageAdmins})`} value="admin" />
+            {roleFilterKeys.map((roleKey) => {
+              const roleLabel = roleConfigMap[roleKey]?.label || roleKey;
+              const count = users.filter((u) => u.role === roleKey).length;
+              return <Tab key={roleKey} label={`${roleLabel}s (${count})`} value={roleKey} />;
+            })}
           </Tabs>
           <Box sx={{ p: 2 }}>
             <TextField
@@ -371,11 +409,16 @@ function Users() {
                     </TableCell>
                     <TableCell>{user.email || '-'}</TableCell>
                     <TableCell>
+                      {(() => {
+                        const roleChip = getRoleChipProps(user.role);
+                        return (
                       <Chip
-                        label={user.role?.toUpperCase()}
+                        label={roleChip.label}
                         size="small"
-                        color={getRoleChipColor(user.role)}
+                        color={roleChip.color}
                       />
+                        );
+                      })()}
                     </TableCell>
                     <TableCell>{user.phone || user.phone_number || '-'}</TableCell>
                     <TableCell>
@@ -384,11 +427,16 @@ function Users() {
                         : '-'}
                     </TableCell>
                     <TableCell>
+                      {(() => {
+                        const statusChip = getStatusChipProps(user.status, user.is_suspended);
+                        return (
                       <Chip
-                        label={getStatusChipLabel(user.status, user.is_suspended)}
-                        color={getStatusChipColor(user.status, user.is_suspended)}
+                        label={statusChip.label}
+                        color={statusChip.color}
                         size="small"
                       />
+                        );
+                      })()}
                     </TableCell>
                     <TableCell align="center">
                       <Tooltip title="View Details">
@@ -455,9 +503,9 @@ function Users() {
                   {selectedUser?.name || selectedUser?.full_name || 'User Details'}
                 </Typography>
                 <Chip
-                  label={selectedUser?.role?.toUpperCase()}
+                  label={getRoleChipProps(selectedUser?.role).label}
                   size="small"
-                  color={selectedUser?.role === 'acharya' ? 'primary' : 'default'}
+                  color={getRoleChipProps(selectedUser?.role).color}
                 />
               </Box>
             </Box>
@@ -493,8 +541,8 @@ function Users() {
                 <Grid item xs={12} sm={6}>
                   <Typography variant="body2" color="text.secondary" gutterBottom>Status:</Typography>
                   <Chip
-                    label={selectedUser.status?.toUpperCase() || 'UNKNOWN'}
-                    color={getStatusChipColor(selectedUser.status, selectedUser.is_suspended)}
+                    label={String(getStatusChipProps(selectedUser.status, selectedUser.is_suspended).label).toUpperCase()}
+                    color={getStatusChipProps(selectedUser.status, selectedUser.is_suspended).color}
                   />
                 </Grid>
                 {selectedUser.role === 'acharya' && (

@@ -12,6 +12,7 @@ import 'react-toastify/dist/ReactToastify.css'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import { AuthProvider } from './context/AuthContext'
+import { RuntimeConfigProvider } from './context/RuntimeConfigContext'
 import { ThemeContextProvider } from './context/ThemeContext'
 import './styles/global.css'
 
@@ -27,7 +28,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
           <ThemeContextProvider>
             <AuthProvider>
-              <App />
+              <RuntimeConfigProvider>
+                <App />
+              </RuntimeConfigProvider>
             </AuthProvider>
           </ThemeContextProvider>
         </GoogleOAuthProvider>

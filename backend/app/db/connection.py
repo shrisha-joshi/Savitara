@@ -654,6 +654,20 @@ class DatabaseManager(IConnectionManager, IIndexManager):
             [("user_id", 1), ("created_at", -1)],
         )
 
+        await cls._create_index_safe(
+            cls.db.growth_feature_configs,
+            "key",
+            unique=True,
+        )
+        await cls._create_index_safe(
+            cls.db.growth_feature_configs,
+            [("category", 1), ("updated_at", -1)],
+        )
+        await cls._create_index_safe(
+            cls.db.growth_feature_configs,
+            [("visibility", 1), ("is_active", 1)],
+        )
+
         # Reliability: Write-ahead audit logs
         await cls._create_index_safe(
             cls.db.write_ahead_audit_logs,

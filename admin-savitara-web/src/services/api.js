@@ -67,6 +67,35 @@ export const adminAPI = {
   createAnnouncement: (data) => api.post('/admin/content/announcements', data),
   updateAnnouncement: (id, data) => api.put(`/admin/content/announcements/${id}`, data),
   deleteAnnouncement: (id) => api.delete(`/admin/content/announcements/${id}`),
+
+  // Growth Configuration Management
+  listGrowthConfigs: () => api.get('/admin/growth-configs'),
+  getGrowthConfig: (key) => api.get(`/admin/growth-configs/${key}`),
+  saveGrowthConfig: (key, data) => api.put(`/admin/growth-configs/${key}`, data),
+  deleteGrowthConfig: (key) => api.delete(`/admin/growth-configs/${key}`),
+  getGrowthBootstrap: () => api.get('/growth-configs/bootstrap'),
+
+  // Trust / Disputes Management
+  listDisputes: (params) => api.get('/trust/admin/disputes', { params }),
+  getDisputeStats: () => api.get('/trust/admin/disputes/stats'),
+  getDisputeById: (disputeId) => api.get(`/trust/disputes/${disputeId}`),
+  resolveDispute: (disputeId, data) => api.post(`/trust/admin/disputes/${disputeId}/resolve`, data),
+
+  // Trust / Fraud Alerts Management
+  listFraudAlerts: (params) => api.get('/trust/admin/fraud-alerts', { params }),
+  getFraudAlertStats: () => api.get('/trust/admin/fraud-alerts/stats'),
+  getFraudAlertById: (alertId) => api.get(`/trust/admin/fraud-alerts/${alertId}`),
+  takeFraudAlertAction: (alertId, data) => api.post(`/trust/admin/fraud-alerts/${alertId}/action`, data),
+
+  // Reliability / Kill-Switch Control Plane
+  getKillSwitches: () => api.get('/reliability/kill-switches'),
+  updateKillSwitches: (data) => api.put('/reliability/kill-switches', data),
+
+  // Feature Flags Management
+  listFeatureFlags: () => api.get('/feature-flags/admin'),
+  getFeatureFlag: (key) => api.get(`/feature-flags/admin/${key}`),
+  saveFeatureFlag: (key, data) => api.put(`/feature-flags/admin/${key}`, data),
+  deleteFeatureFlag: (key) => api.delete(`/feature-flags/admin/${key}`),
   
   // Admin Management (Super Admin only)
   listAdmins: () => api.get('/admin/auth/admins'),

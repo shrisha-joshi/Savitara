@@ -32,6 +32,8 @@ import {
   CalendarToday as CalendarIcon,
   LightMode,
   DarkMode,
+  ToggleOn as ToggleOnIcon,
+  Build as BuildIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -53,6 +55,9 @@ export default function Layout({ children }) {
     { text: 'Users', icon: <PeopleIcon />, path: '/users' },
     { text: 'Bookings', icon: <CalendarIcon />, path: '/bookings' },
     { text: 'Services', icon: <ContentIcon />, path: '/services' },
+    { text: 'Growth Configs', icon: <AdminIcon />, path: '/growth-configurations' },
+    { text: 'Feature Flags', icon: <ToggleOnIcon />, path: '/feature-flags' },
+    { text: 'Reliability', icon: <BuildIcon />, path: '/reliability-controls' },
     { text: 'Verifications', icon: <VerifiedIcon />, path: '/verifications' },
     { text: 'KYC Verification', icon: <VerifiedIcon />, path: '/kyc-verification' },
     { text: 'Reviews', icon: <ReviewIcon />, path: '/reviews' },

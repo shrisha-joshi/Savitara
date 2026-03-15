@@ -37,6 +37,13 @@ class FeatureFlagUpsertRequest(BaseModel):
     cohorts: FeatureFlagCohorts = Field(default_factory=FeatureFlagCohorts)
 
 
+def _serialize_flag_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
+    serialized = dict(doc)
+    if "_id" in serialized:
+        serialized["_id"] = str(serialized["_id"])
+    return serialized
+
+
 def _to_user_obj_id(user_id: str) -> Optional[ObjectId]:
     return ObjectId(user_id) if ObjectId.is_valid(user_id) else None
 
@@ -137,3 +144,54 @@ async def upsert_feature_flag(
         updated_by=str(current_user.get("id") or current_user.get("user_id") or ""),
     )
     return StandardResponse(success=True, data=saved, message="Feature flag upserted")
+
+
+@router.get(
+    "/admin",
+    response_model=StandardResponse,
+    summary="List feature flags",
+)
+async def list_feature_flags(
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    _ = current_user
+    flags = await db[feature_flag_service.collection_name].find({}).sort("key", 1).to_list(length=500)
+    return StandardResponse(
+        success=True,
+        data={"flags": [_serialize_flag_doc(flag) for flag in flags], "count": len(flags)},
+    )
+
+
+@router.get(
+    "/admin/{key}",
+    response_model=StandardResponse,
+    summary="Get feature flag details",
+)
+async def get_feature_flag(
+    key: str,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    _ = current_user
+    flag = await db[feature_flag_service.collection_name].find_one({"key": key})
+    return StandardResponse(success=True, data={"flag": _serialize_flag_doc(flag) if flag else None})
+
+
+@router.delete(
+    "/admin/{key}",
+    response_model=StandardResponse,
+    summary="Delete feature flag",
+)
+async def delete_feature_flag(
+    key: str,
+    current_user: Annotated[Dict[str, Any], Depends(get_current_admin)] = None,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)] = None,
+):
+    _ = current_user
+    result = await db[feature_flag_service.collection_name].delete_one({"key": key})
+    return StandardResponse(
+        success=True,
+        data={"key": key, "deleted": bool(result.deleted_count)},
+        message="Feature flag deleted" if result.deleted_count else "Feature flag not found",
+    )

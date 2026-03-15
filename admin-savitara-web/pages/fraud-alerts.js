@@ -45,6 +45,14 @@ import Layout from '../src/components/Layout';
 import withAuth from '../src/hoc/withAuth';
 import { adminAPI } from '../src/services/api';
 
+const DEFAULT_FRAUD_STATUS_MAP = {
+  pending: { color: 'warning', label: 'Pending Review' },
+  investigating: { color: 'info', label: 'Investigating' },
+  confirmed_fraud: { color: 'error', label: 'Confirmed Fraud' },
+  false_positive: { color: 'success', label: 'False Positive' },
+  resolved: { color: 'default', label: 'Resolved' },
+};
+
 function FraudAlerts() {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +62,7 @@ function FraudAlerts() {
   const [confidenceFilter, setConfidenceFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('pending');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [statusConfigMap, setStatusConfigMap] = useState(DEFAULT_FRAUD_STATUS_MAP);
 
   const [stats, setStats] = useState({
     total_alerts: 0,
@@ -65,10 +74,27 @@ function FraudAlerts() {
   });
 
   useEffect(() => {
+    fetchStatusConfigMap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     fetchAlerts();
     fetchStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [confidenceFilter, statusFilter]);
+
+  const fetchStatusConfigMap = async () => {
+    try {
+      const response = await adminAPI.getGrowthConfig('admin_fraud_status_map');
+      const statusMap = response?.data?.data?.config?.value?.map;
+      if (statusMap && typeof statusMap === 'object') {
+        setStatusConfigMap(statusMap);
+      }
+    } catch (error) {
+      console.warn('Using fallback fraud display map:', error?.response?.data || error?.message);
+    }
+  };
 
   const fetchAlerts = async () => {
     setLoading(true);
@@ -81,8 +107,8 @@ function FraudAlerts() {
         params.status = statusFilter;
       }
       
-      const response = await adminAPI.get('/trust/admin/fraud-alerts', { params });
-      setAlerts(response.data);
+      const response = await adminAPI.listFraudAlerts(params);
+      setAlerts(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error('Error loading fraud alerts:', error);
       showSnackbar('Failed to load fraud alerts', 'error');
@@ -93,8 +119,8 @@ function FraudAlerts() {
 
   const fetchStats = async () => {
     try {
-      const response = await adminAPI.get('/trust/admin/fraud-alerts/stats');
-      setStats(response.data);
+      const response = await adminAPI.getFraudAlertStats();
+      setStats(response.data || {});
     } catch (error) {
       console.error('Failed to load fraud alert stats:', error);
     }
@@ -102,7 +128,7 @@ function FraudAlerts() {
 
   const handleViewAlert = async (alertId) => {
     try {
-      const response = await adminAPI.get(`/trust/admin/fraud-alerts/${alertId}`);
+      const response = await adminAPI.getFraudAlertById(alertId);
       setSelectedAlert(response.data);
       setViewDialog(true);
     } catch (error) {
@@ -118,7 +144,7 @@ function FraudAlerts() {
 
   const submitAction = async (action) => {
     try {
-      await adminAPI.post(`/trust/admin/fraud-alerts/${selectedAlert._id}/action`, {
+      await adminAPI.takeFraudAlertAction(selectedAlert._id, {
         action,
         notes: `Admin action: ${action}`,
       });
@@ -139,14 +165,7 @@ function FraudAlerts() {
   };
 
   const getStatusChip = (status) => {
-    const statusConfig = {
-      pending: { color: 'warning', label: 'Pending Review' },
-      investigating: { color: 'info', label: 'Investigating' },
-      confirmed_fraud: { color: 'error', label: 'Confirmed Fraud' },
-      false_positive: { color: 'success', label: 'False Positive' },
-      resolved: { color: 'default', label: 'Resolved' },
-    };
-    const config = statusConfig[status] || statusConfig.pending;
+    const config = statusConfigMap[status] || statusConfigMap.pending || { color: 'default', label: status || 'Unknown' };
     return <Chip label={config.label} color={config.color} size="small" />;
   };
 
@@ -237,10 +256,9 @@ function FraudAlerts() {
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <MenuItem value="all">All Statuses</MenuItem>
-                <MenuItem value="pending">Pending Review</MenuItem>
-                <MenuItem value="investigating">Investigating</MenuItem>
-                <MenuItem value="confirmed_fraud">Confirmed Fraud</MenuItem>
-                <MenuItem value="false_positive">False Positive</MenuItem>
+                {Object.entries(statusConfigMap).map(([statusKey, config]) => (
+                  <MenuItem key={statusKey} value={statusKey}>{config?.label || statusKey}</MenuItem>
+                ))}
               </Select>
             </FormControl>
             <FormControl size="small" sx={{ minWidth: 200 }}>

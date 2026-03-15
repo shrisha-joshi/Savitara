@@ -19,6 +19,8 @@ from app.core.exceptions import ResourceNotFoundError
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/services", tags=["Admin - Services"])
 
+_INTERNAL_SERVER_ERROR_RESPONSE = {500: {"description": "Internal server error"}}
+
 
 class ServiceCreate(BaseModel):
     name_english: str = Field(..., min_length=3)
@@ -84,6 +86,7 @@ class BookingStatusUpdate(BaseModel):
     status_code=status.HTTP_201_CREATED,
     summary="Create New Service",
     description="Admin: Create a new spiritual service",
+    responses=_INTERNAL_SERVER_ERROR_RESPONSE,
 )
 async def create_service(
     service_in: ServiceCreate,
@@ -123,6 +126,7 @@ async def create_service(
     response_model=StandardResponse,
     summary="Update Service",
     description="Admin: Update existing service",
+    responses=_INTERNAL_SERVER_ERROR_RESPONSE,
 )
 async def update_service(
     service_id: str,
@@ -163,6 +167,7 @@ async def update_service(
     response_model=StandardResponse,
     summary="Delete Service",
     description="Admin: Soft delete a service (set inactive)",
+    responses=_INTERNAL_SERVER_ERROR_RESPONSE,
 )
 async def delete_service(
     service_id: str,
@@ -201,6 +206,7 @@ async def delete_service(
     response_model=StandardResponse,
     summary="Get All Service Bookings",
     description="Admin: View all service bookings with filtering",
+    responses=_INTERNAL_SERVER_ERROR_RESPONSE,
 )
 async def get_all_service_bookings(
     status_filter: str = None,
@@ -253,6 +259,7 @@ async def get_all_service_bookings(
     response_model=StandardResponse,
     summary="Update Booking Status",
     description="Admin: Update service booking status",
+    responses=_INTERNAL_SERVER_ERROR_RESPONSE,
 )
 async def update_booking_status(
     booking_id: str,
@@ -305,6 +312,7 @@ async def update_booking_status(
     response_model=StandardResponse,
     summary="Assign Acharya to Booking",
     description="Admin: Assign an Acharya to a service booking",
+    responses=_INTERNAL_SERVER_ERROR_RESPONSE,
 )
 async def assign_acharya_to_booking(
     booking_id: str,

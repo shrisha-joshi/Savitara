@@ -13,8 +13,16 @@ import {
   FlatList,
   ActivityIndicator
 } from 'react-native';
-import { Card, Chip, Button, ProgressBar, Divider } from 'react-native-paper';
+import { Card, Chip, Button, ProgressBar } from 'react-native-paper';
 import api from '../services/api';
+
+const unwrapResponsePayload = (response) => response?.data?.data || response?.data || {};
+
+const toTitleCase = (value = '') => value
+  .split('_')
+  .filter(Boolean)
+  .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+  .join(' ');
 
 const RewardsScreen = () => {
   const [loading, setLoading] = useState(true);
@@ -36,22 +44,59 @@ const RewardsScreen = () => {
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      const [coinsRes, loyaltyRes, vouchersRes, referralsRes, milestonesRes, statsRes] = await Promise.all([
+      const [coinsRes, coinTransactionsRes, loyaltyRes, vouchersRes, referralsRes, milestonesRes, statsRes] = await Promise.all([
         api.get('/gamification/coins/balance'),
+        api.get('/gamification/coins/transactions'),
         api.get('/gamification/loyalty/status'),
-        api.get('/gamification/vouchers/my-vouchers'),
-        api.get('/gamification/referrals/my-code'),
-        api.get('/gamification/milestones/my-milestones'),
-        api.get('/gamification/statistics/overview')
+        api.get('/gamification/vouchers/my'),
+        api.get('/gamification/referral/my-code'),
+        api.get('/gamification/milestones/my'),
+        api.get('/gamification/stats/overview')
       ]);
 
+      const coinsPayload = unwrapResponsePayload(coinsRes);
+      const coinTransactionsPayload = unwrapResponsePayload(coinTransactionsRes);
+      const loyaltyPayload = unwrapResponsePayload(loyaltyRes);
+      const vouchersPayload = unwrapResponsePayload(vouchersRes);
+      const referralsPayload = unwrapResponsePayload(referralsRes);
+      const milestonesPayload = unwrapResponsePayload(milestonesRes);
+      const statsPayload = unwrapResponsePayload(statsRes);
+
+      const loyaltyPoints = loyaltyPayload.points ?? 0;
+      const pointsToNextTier = loyaltyPayload.points_to_next_tier ?? 0;
+      const normalizedTierName = loyaltyPayload.current_tier ? toTitleCase(loyaltyPayload.current_tier) : null;
+
       setData({
-        coins: coinsRes.data.data || { balance: 0, transactions: [] },
-        loyalty: loyaltyRes.data.data || { tier: null, points: 0 },
-        vouchers: vouchersRes.data.data?.vouchers || [],
-        referrals: referralsRes.data.data || { code: '', stats: {} },
-        milestones: milestonesRes.data.data?.milestones || [],
-        stats: statsRes.data.data || {}
+        coins: {
+          balance: coinsPayload.current_balance ?? coinsPayload.balance ?? 0,
+          transactions: coinTransactionsPayload.transactions || coinsPayload.transactions || []
+        },
+        loyalty: {
+          points: loyaltyPoints,
+          next_tier: loyaltyPayload.next_tier || null,
+          points_to_next_tier: pointsToNextTier,
+          tier_benefits: loyaltyPayload.tier_benefits || [],
+          tier: normalizedTierName ? {
+            name: normalizedTierName,
+            level: normalizedTierName,
+            cashback_percentage: loyaltyPayload.discount_percentage ?? 0,
+            progress_total: Math.max(loyaltyPoints + pointsToNextTier, 1)
+          } : null
+        },
+        vouchers: vouchersPayload.vouchers || [],
+        referrals: {
+          code: referralsPayload.referral_code || referralsPayload.code || '',
+          link: referralsPayload.referral_link || referralsPayload.link || '',
+          stats: {
+            total_referrals: referralsPayload.stats?.total || referralsPayload.stats?.total_referrals || 0,
+            successful_bookings: referralsPayload.stats?.completed_booking || referralsPayload.stats?.successful_bookings || 0,
+            total_earned: referralsPayload.stats?.completed_booking
+              ? referralsPayload.stats.completed_booking * 500
+              : (referralsPayload.stats?.total_earned || 0)
+          }
+        },
+        milestones: milestonesPayload.milestones || [],
+        stats: statsPayload || {}
       });
     } catch (error) {
       console.error('Failed to fetch gamification data:', error);
@@ -97,13 +142,18 @@ const RewardsScreen = () => {
               </View>
               <Text style={styles.points}>{data.loyalty.points} points</Text>
               <ProgressBar
-                progress={data.loyalty.points / (data.loyalty.tier.min_bookings * 100)}
+                progress={Math.min(1, data.loyalty.points / (data.loyalty.tier.progress_total || 1))}
                 color="#FF6B35"
                 style={styles.progressBar}
               />
               <Text style={styles.benefit}>
-                Cashback: {data.loyalty.tier.cashback_percentage}%
+                Discount: {data.loyalty.tier.cashback_percentage}%
               </Text>
+              {data.loyalty.next_tier && (
+                <Text style={styles.hint}>
+                  {data.loyalty.points_to_next_tier} points to reach {toTitleCase(data.loyalty.next_tier)}
+                </Text>
+              )}
             </>
           ) : (
             <Text style={styles.emptyText}>Complete bookings to unlock loyalty rewards</Text>
@@ -236,7 +286,7 @@ const RewardsScreen = () => {
                   <Text style={styles.voucherDiscount}>
                     {item.discount_type === 'percentage'
                       ? `${item.discount_value}% OFF`
-                      : `₹${item.discount_value} OFF`}
+                      : `₹${item.discount_value ?? item.amount ?? 0} OFF`}
                   </Text>
                   <Text style={styles.voucherExpiry}>
                     Valid until {new Date(item.valid_until).toLocaleDateString()}
@@ -317,18 +367,18 @@ const RewardsScreen = () => {
                 {!item.completed && (
                   <>
                     <ProgressBar
-                      progress={item.progress / item.target}
+                      progress={Math.min(1, (item.progress || 0) / Math.max(item.target || 1, 1))}
                       color="#FF6B35"
                       style={styles.progressBar}
                     />
                     <Text style={styles.progressText}>
-                      {item.progress}/{item.target}
+                      {item.progress || 0}/{item.target || 0}
                     </Text>
                   </>
                 )}
                 <View style={styles.rewardRow}>
                   <Text style={styles.rewardLabel}>Reward:</Text>
-                  <Text style={styles.rewardValue}>{item.reward_coins} coins</Text>
+                  <Text style={styles.rewardValue}>{item.reward_coins || item.reward || 0} coins</Text>
                 </View>
               </Card.Content>
             </Card>

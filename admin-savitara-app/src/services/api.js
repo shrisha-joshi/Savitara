@@ -20,5 +20,10 @@ const api = createApiClient({
   },
 });
 
+export const growthConfigAPI = {
+  getBootstrap: () => api.get('/growth-configs/bootstrap'),
+  getConfig: (key) => api.get(`/growth-configs/${key}`),
+};
+
 export default api;
 
